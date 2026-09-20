@@ -3,6 +3,7 @@ import {
   IndianRupee, 
   ShoppingCart, 
   TrendingUp, 
+  Users,
   Wallet,
   AlertTriangle,
   BrainCircuit,

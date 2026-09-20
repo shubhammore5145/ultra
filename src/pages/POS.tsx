@@ -529,13 +529,13 @@ export default function POS() {
 
       {/* Cart Section (Sidebar on Desktop, Full Overlay on Mobile) */}
       <div className={`
-        fixed inset-0 z-50 bg-background flex flex-col
+        fixed inset-0 z-[100] bg-white dark:bg-zinc-950 text-zinc-950 dark:text-zinc-50 flex flex-col
         md:static md:w-[400px] md:bg-card md:text-card-foreground md:rounded-xl md:border md:shadow-sm md:h-full md:z-auto
         transition-transform duration-300 ease-in-out
         ${showMobileCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
       `}>
         {/* Mobile Header for Cart Overlay */}
-        <div className="md:hidden p-4 border-b bg-card flex items-center justify-between shadow-sm">
+        <div className="md:hidden p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex items-center justify-between shadow-sm">
           <h2 className="font-bold text-xl flex items-center gap-2">
             <ShoppingCart className="h-6 w-6 text-primary" /> Checkout
           </h2>
@@ -591,15 +591,15 @@ export default function POS() {
           )}
         </div>
 
-        <div className="p-4 border-t bg-card md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
-          <div className="flex flex-col gap-2 pb-2 border-b">
+        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
+          <div className="flex flex-col gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
             <label className="text-xs font-medium text-muted-foreground">Customer Mobile No. (For WhatsApp Bill)</label>
             <Input 
               placeholder="e.g. 9876543210" 
               type="tel"
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
-              className="h-12 md:h-10 text-base md:text-sm bg-background border-muted"
+              className="h-12 md:h-10 text-base md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-zinc-50"
             />
           </div>
 

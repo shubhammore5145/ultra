@@ -101,3 +101,36 @@
     }
   }
 }
+
+/* Thermal Printer Styles */
+@media print {
+  /* Hide all non-receipt elements */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Reset margins for POS printer */
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+  
+  /* Make receipt visible and positioned correctly */
+  #receipt-template, #receipt-template * {
+    visibility: visible;
+  }
+  
+  #receipt-template {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 2mm;
+    margin: 0;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.2;
+    color: #000;
+    background: #fff;
+  }
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera } from 'lucide-react';
+import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera, Printer } from 'lucide-react';
 import { collection, query, onSnapshot, writeBatch, doc, addDoc } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { db } from '../lib/firebase';
@@ -250,6 +250,10 @@ export default function POS() {
     window.open(url, '_blank');
   };
 
+  const handlePrintReceipt = () => {
+    window.print();
+  };
+
   const handleVoiceSearch = () => {
     if (!voiceSupported) {
       alert("Voice search is not supported in this browser.");
@@ -319,11 +323,14 @@ export default function POS() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" className="h-12 w-full flex gap-2 font-medium" onClick={handleWhatsAppBill}>
+              <div className="grid grid-cols-3 gap-2">
+                <Button variant="outline" className="h-12 w-full flex gap-1 font-medium px-2" onClick={handleWhatsAppBill}>
                   <MessageCircle className="h-4 w-4 text-green-500" /> WhatsApp
                 </Button>
-                <Button className="h-12 w-full font-bold" onClick={() => setCheckoutResult(null)}>
+                <Button variant="outline" className="h-12 w-full flex gap-1 font-medium px-2" onClick={handlePrintReceipt}>
+                  <Printer className="h-4 w-4 text-blue-500" /> Print
+                </Button>
+                <Button className="h-12 w-full font-bold px-2" onClick={() => setCheckoutResult(null)}>
                   New Bill
                 </Button>
               </div>
@@ -559,6 +566,57 @@ export default function POS() {
           }}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {/* Hidden Receipt Template for Thermal Printing */}
+      {checkoutResult && shopData && (
+        <div id="receipt-template" className="hidden">
+          <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{shopData.shopName || shopData.name}</h2>
+            {shopData.address && <p style={{ margin: 0 }}>{shopData.address}</p>}
+            {shopData.phone && <p style={{ margin: 0 }}>Ph: {shopData.phone}</p>}
+            {shopData.gstNumber && <p style={{ margin: 0 }}>GST: {shopData.gstNumber}</p>}
+          </div>
+          <div style={{ borderBottom: '1px dashed #000', marginBottom: '5px' }}></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+            <span>Date: {new Date().toLocaleString()}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+            <span>Inv: #{checkoutResult.id.slice(-6).toUpperCase()}</span>
+          </div>
+          <div style={{ borderBottom: '1px dashed #000', marginBottom: '10px' }}></div>
+          
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '10px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #000' }}>
+                <th style={{ textAlign: 'left', paddingBottom: '5px' }}>Item</th>
+                <th style={{ textAlign: 'center', paddingBottom: '5px' }}>Qty</th>
+                <th style={{ textAlign: 'right', paddingBottom: '5px' }}>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {checkoutResult.items.map(item => (
+                <tr key={item.id}>
+                  <td style={{ padding: '2px 0' }}>{item.name}</td>
+                  <td style={{ textAlign: 'center' }}>{item.qty}</td>
+                  <td style={{ textAlign: 'right' }}>{((item.sellingPrice || 0) * item.qty).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          <div style={{ borderBottom: '1px dashed #000', marginBottom: '5px' }}></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', marginBottom: '10px' }}>
+            <span>TOTAL</span>
+            <span>₹{checkoutResult.total.toFixed(2)}</span>
+          </div>
+          <div style={{ borderBottom: '1px dashed #000', marginBottom: '10px' }}></div>
+          
+          <div style={{ textAlign: 'center', marginTop: '10px' }}>
+            <p style={{ margin: 0 }}>Thank you for shopping!</p>
+            <p style={{ margin: 0 }}>Visit Again</p>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Plus, Search, Loader2, Edit, Phone, MapPin, IndianRupee } from 'lucide-react';
+import { Plus, Search, Loader2, Edit, Phone, MapPin, IndianRupee, MessageCircle } from 'lucide-react';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -72,6 +72,14 @@ export default function Customers() {
     });
     setEditingId(customer.id);
     setIsAdding(true);
+  };
+
+  const handleWhatsAppReminder = (customer: Customer) => {
+    if (!shopData) return;
+    const text = `Hello ${customer.name},\n\nThis is a gentle reminder from *${shopData.shopName || shopData.name || 'our shop'}*. Your pending udhar balance is *₹${customer.balance.toFixed(2)}*.\n\nPlease clear the dues at your earliest convenience. Thank you!`;
+    const encodedText = encodeURIComponent(text);
+    const url = `https://wa.me/91${customer.phone}?text=${encodedText}`;
+    window.open(url, '_blank');
   };
 
   const filteredCustomers = customers.filter(c => 
@@ -202,7 +210,17 @@ export default function Customers() {
                         {customer.balance?.toFixed(2) || '0.00'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right space-x-2">
+                      {customer.balance > 0 && customer.phone && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                          onClick={() => handleWhatsAppReminder(customer)}
+                        >
+                          <MessageCircle className="h-4 w-4 mr-1" /> Reminder
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(customer)}>
                         <Edit className="h-4 w-4 mr-2" /> Edit
                       </Button>

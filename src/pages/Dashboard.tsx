@@ -83,8 +83,8 @@ export default function Dashboard() {
           custCount++;
           const data = doc.data();
           
-          if (data.pendingBalance && data.pendingBalance > 0) {
-            udharTotal += data.pendingBalance;
+          if (data.balance && data.balance > 0) {
+            udharTotal += data.balance;
             udharCustCount++;
           }
           

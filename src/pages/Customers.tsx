@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Plus, Search, Loader2, Edit, Phone, MapPin, IndianRupee, MessageCircle } from 'lucide-react';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { Plus, Search, Loader2, Edit, Phone, MapPin, IndianRupee, MessageCircle, History, X, ShoppingCart } from 'lucide-react';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import type { Customer } from '../types';
+import type { Customer, Transaction } from '../types';
 
 export default function Customers() {
   const { shopData } = useAuth();
@@ -14,6 +14,11 @@ export default function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // History State
+  const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
+  const [historySales, setHistorySales] = useState<Transaction[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -80,6 +85,33 @@ export default function Customers() {
     const encodedText = encodeURIComponent(text);
     const url = `https://wa.me/91${customer.phone}?text=${encodedText}`;
     window.open(url, '_blank');
+  };
+
+  const handleViewHistory = async (customer: Customer) => {
+    if (!shopData?.shopId) return;
+    setHistoryCustomerId(customer.id);
+    setLoadingHistory(true);
+    setHistorySales([]);
+
+    try {
+      const q = query(
+        collection(db, 'shops', shopData.shopId, 'sales'),
+        where('customerId', '==', customer.id)
+      );
+      const snapshot = await getDocs(q);
+      const sales: Transaction[] = [];
+      snapshot.forEach(doc => {
+        sales.push({ id: doc.id, ...doc.data() } as Transaction);
+      });
+      
+      // Sort by date descending (newest first)
+      sales.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setHistorySales(sales);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   const filteredCustomers = customers.filter(c => 
@@ -180,6 +212,8 @@ export default function Customers() {
                 <tr>
                   <th className="px-6 py-4 font-medium">Name</th>
                   <th className="px-6 py-4 font-medium">Contact</th>
+                  <th className="px-6 py-4 font-medium">Visits</th>
+                  <th className="px-6 py-4 font-medium">Total Spent</th>
                   <th className="px-6 py-4 font-medium">Udhar Balance</th>
                   <th className="px-6 py-4 font-medium text-right">Actions</th>
                 </tr>
@@ -203,6 +237,15 @@ export default function Customers() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
+                      <span className="font-bold">{customer.visits || 0}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-medium text-muted-foreground flex items-center">
+                        <IndianRupee className="h-3 w-3 mr-1" />
+                        {customer.totalSpent?.toFixed(2) || '0.00'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
                       <span className={`font-bold flex items-center ${
                         customer.balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
                       }`}>
@@ -221,6 +264,9 @@ export default function Customers() {
                           <MessageCircle className="h-4 w-4 mr-1" /> Reminder
                         </Button>
                       )}
+                      <Button variant="ghost" size="sm" onClick={() => handleViewHistory(customer)} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                        <History className="h-4 w-4 mr-2" /> History
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(customer)}>
                         <Edit className="h-4 w-4 mr-2" /> Edit
                       </Button>
@@ -232,6 +278,62 @@ export default function Customers() {
           </div>
         )}
       </div>
+
+      {/* History Modal */}
+      {historyCustomerId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+          <div className="bg-card text-card-foreground p-0 rounded-2xl border shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <History className="h-5 w-5" /> Customer History
+              </h2>
+              <Button variant="ghost" size="icon" onClick={() => setHistoryCustomerId(null)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 bg-muted/10">
+              {loadingHistory ? (
+                <div className="flex justify-center p-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : historySales.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p>No past bills found for this customer.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {historySales.map(sale => (
+                    <div key={sale.id} className="bg-background border rounded-xl p-4 shadow-sm">
+                      <div className="flex justify-between items-start mb-3 border-b pb-3">
+                        <div>
+                          <p className="font-bold text-sm">Bill #{sale.id.slice(-6).toUpperCase()}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(sale.createdAt).toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-primary flex items-center justify-end">
+                            <IndianRupee className="h-3 w-3 mr-1" /> {sale.totalAmount.toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground uppercase">{sale.paymentMethod}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {sale.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">{item.name} <span className="text-xs opacity-70">x{item.qty}</span></span>
+                            <span>₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

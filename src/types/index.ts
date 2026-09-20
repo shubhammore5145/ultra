@@ -65,6 +65,8 @@ export interface Customer {
   phone: string;
   address: string;
   balance: number; // Positive means they owe money (Udhar)
+  visits?: number;
+  totalSpent?: number;
   createdAt: string;
 }
 

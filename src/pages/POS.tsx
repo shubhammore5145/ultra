@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera, Printer } from 'lucide-react';
-import { collection, query, onSnapshot, writeBatch, doc, addDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, writeBatch, doc, addDoc, where, getDocs } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -182,7 +182,44 @@ export default function POS() {
     try {
       const batch = writeBatch(db);
       
-      // 1. Create Sale Document
+      let finalCustomerId = null;
+
+      // 1. Check or Create Customer if phone is provided
+      if (customerPhone.trim()) {
+        const phone = customerPhone.trim();
+        const customersRef = collection(db, 'shops', shopData.shopId, 'customers');
+        const q = query(customersRef, where('phone', '==', phone));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          // Customer exists, increment visits and totalSpent
+          const customerDoc = querySnapshot.docs[0];
+          finalCustomerId = customerDoc.id;
+          const customerData = customerDoc.data();
+          const currentVisits = customerData.visits || 0;
+          const currentTotal = customerData.totalSpent || 0;
+          
+          batch.update(customerDoc.ref, {
+            visits: currentVisits + 1,
+            totalSpent: currentTotal + total
+          });
+        } else {
+          // Create new customer
+          const newCustomerRef = doc(customersRef);
+          finalCustomerId = newCustomerRef.id;
+          batch.set(newCustomerRef, {
+            name: 'New Customer',
+            phone: phone,
+            address: '',
+            balance: 0,
+            visits: 1,
+            totalSpent: total,
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
+
+      // 2. Create Sale Document
       const saleRef = doc(collection(db, 'shops', shopData.shopId, 'sales'));
       batch.set(saleRef, {
         totalAmount: total,
@@ -191,6 +228,7 @@ export default function POS() {
         items: cart,
         paymentMethod: 'cash',
         customerPhone: customerPhone.trim() || null,
+        customerId: finalCustomerId,
         createdAt: new Date().toISOString()
       });
 

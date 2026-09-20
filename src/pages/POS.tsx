@@ -32,6 +32,7 @@ export default function POS() {
   const [quickAddBarcode, setQuickAddBarcode] = useState('');
   const [quickAddName, setQuickAddName] = useState('');
   const [quickAddPrice, setQuickAddPrice] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'barcoded' | 'loose'>('all');
   const [isQuickAdding, setIsQuickAdding] = useState(false);
 
   // Checkout Success State
@@ -285,11 +286,17 @@ export default function POS() {
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.barcode?.includes(searchTerm) ||
-    p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          p.barcode?.includes(searchTerm) ||
+                          p.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+
+    if (activeTab === 'barcoded') return !!p.barcode && p.barcode.trim() !== '';
+    if (activeTab === 'loose') return !p.barcode || p.barcode.trim() === '';
+    return true;
+  });
 
   const handleWhatsAppBill = () => {
     if (!checkoutResult || !shopData) return;
@@ -515,6 +522,31 @@ export default function POS() {
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Category Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mt-2">
+          <Button 
+            variant={activeTab === 'all' ? 'default' : 'outline'} 
+            className="rounded-full px-6 whitespace-nowrap"
+            onClick={() => setActiveTab('all')}
+          >
+            All Items
+          </Button>
+          <Button 
+            variant={activeTab === 'loose' ? 'default' : 'outline'} 
+            className="rounded-full px-6 whitespace-nowrap"
+            onClick={() => setActiveTab('loose')}
+          >
+            Loose Items (No Barcode)
+          </Button>
+          <Button 
+            variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
+            className="rounded-full px-6 whitespace-nowrap"
+            onClick={() => setActiveTab('barcoded')}
+          >
+            Barcoded
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-4">

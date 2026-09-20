@@ -13,7 +13,7 @@ import {
   Barcode,
   Loader2
 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
@@ -50,6 +50,18 @@ export default function Products() {
     p.barcode?.includes(searchTerm) ||
     p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDelete = async (id: string) => {
+    if (!shopData?.shopId) return;
+    if (window.confirm('Are you sure you want to delete this product?')) {
+      try {
+        await deleteDoc(doc(db, 'shops', shopData.shopId, 'products', id));
+      } catch (error) {
+        console.error('Failed to delete product', error);
+        alert('Failed to delete product');
+      }
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -154,10 +166,20 @@ export default function Products() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-muted-foreground hover:text-primary"
+                          onClick={() => navigate(`/products/${product.id}`)}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDelete(product.id)}
+                        >
                           <Trash className="h-4 w-4" />
                         </Button>
                       </div>

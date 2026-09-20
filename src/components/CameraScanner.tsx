@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import Tesseract from 'tesseract.js';
-import { X, Camera, CheckCircle2, Loader2, Zap, ZapOff, Sparkles, BrainCircuit, Keyboard, ZoomIn } from 'lucide-react';
+import { X, Camera, CheckCircle2, Loader2, Zap, ZapOff, Sparkles, BrainCircuit, Keyboard, ZoomIn, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 
@@ -18,6 +18,10 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [usingNative, setUsingNative] = useState(false);
+  
+  // Camera Selection State
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [currentCameraId, setCurrentCameraId] = useState<string | null>(localStorage.getItem('preferredCameraId'));
   
   // OCR States
   const [isOCRProcessing, setIsOCRProcessing] = useState(false);
@@ -75,93 +79,25 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
 
   // ============ IMAGE PROCESSING PIPELINE ============
 
-  /** Draw video frame to canvas and return context */
-  const captureFrame = (video: HTMLVideoElement, canvas: HTMLCanvasElement): CanvasRenderingContext2D | null => {
+  /** Crop center scanning area (simulates laser scanner zone) */
+  const cropCenterScanner = (video: HTMLVideoElement, canvas: HTMLCanvasElement): boolean => {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    return ctx;
-  };
-
-  /** Apply high-contrast grayscale for barcode detection */
-  const applyContrastEnhance = (canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const d = imgData.data;
-    let min = 255, max = 0;
-
-    // Find dynamic range
-    for (let i = 0; i < d.length; i += 4) {
-      const gray = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
-      d[i] = d[i+1] = d[i+2] = gray;
-      if (gray < min) min = gray;
-      if (gray > max) max = gray;
-    }
-
-    // Stretch contrast
-    const range = max - min || 1;
-    for (let i = 0; i < d.length; i += 4) {
-      const val = Math.round(((d[i] - min) / range) * 255);
-      d[i] = d[i+1] = d[i+2] = val;
-    }
-    ctx.putImageData(imgData, 0, 0);
-  };
-
-  /** Apply aggressive black/white threshold (good for faded barcodes) */
-  const applyThreshold = (canvas: HTMLCanvasElement, threshold: number = 128) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const gray = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
-      const val = gray < threshold ? 0 : 255;
-      d[i] = d[i+1] = d[i+2] = val;
-    }
-    ctx.putImageData(imgData, 0, 0);
-  };
-
-  /** Apply simple 3x3 sharpen convolution */
-  const applySharpen = (canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    const src = ctx.getImageData(0, 0, w, h);
-    const dst = ctx.createImageData(w, h);
-    const sd = src.data, dd = dst.data;
-    // Sharpen kernel: [0,-1,0,-1,5,-1,0,-1,0]
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const i = (y * w + x) * 4;
-        for (let c = 0; c < 3; c++) {
-          const val = 
-            -sd[((y-1)*w+x)*4+c] +
-            -sd[(y*w+x-1)*4+c] +
-            5*sd[i+c] +
-            -sd[(y*w+x+1)*4+c] +
-            -sd[((y+1)*w+x)*4+c];
-          dd[i+c] = Math.max(0, Math.min(255, val));
-        }
-        dd[i+3] = 255;
-      }
-    }
-    ctx.putImageData(dst, 0, 0);
-  };
-
-  /** Crop center portion of canvas (simulates zoom) */
-  const cropCenter = (srcCanvas: HTMLCanvasElement, dstCanvas: HTMLCanvasElement, zoomFactor: number = 0.5) => {
-    const ctx = dstCanvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    const sw = srcCanvas.width * zoomFactor;
-    const sh = srcCanvas.height * zoomFactor;
-    const sx = (srcCanvas.width - sw) / 2;
-    const sy = (srcCanvas.height - sh) / 2;
-    dstCanvas.width = sw;
-    dstCanvas.height = sh;
-    ctx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    if (!ctx) return false;
+    
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    
+    // We only care about the center 70% width and 30% height (the red box area)
+    const cw = vw * 0.7;
+    const ch = vh * 0.3;
+    const cx = (vw - cw) / 2;
+    const cy = (vh - ch) / 2;
+    
+    canvas.width = cw;
+    canvas.height = ch;
+    
+    ctx.drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch);
+    return true;
   };
 
   // Manual entry submit
@@ -203,27 +139,15 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       }, 800);
     };
 
-    /** Create ZXing reader with ALL formats enabled */
+    /** Create ZXing reader with common formats enabled for speed */
     const createZxingReader = () => {
       const hints = new Map<DecodeHintType, any>();
       hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-        BarcodeFormat.AZTEC,
-        BarcodeFormat.CODABAR,
-        BarcodeFormat.CODE_39,
-        BarcodeFormat.CODE_93,
         BarcodeFormat.CODE_128,
-        BarcodeFormat.DATA_MATRIX,
         BarcodeFormat.EAN_8,
         BarcodeFormat.EAN_13,
-        BarcodeFormat.ITF,
-        BarcodeFormat.MAXICODE,
-        BarcodeFormat.PDF_417,
         BarcodeFormat.QR_CODE,
-        BarcodeFormat.RSS_14,
-        BarcodeFormat.RSS_EXPANDED,
-        BarcodeFormat.UPC_A,
-        BarcodeFormat.UPC_E,
-        BarcodeFormat.UPC_EAN_EXTENSION
+        BarcodeFormat.UPC_A
       ]);
       hints.set(DecodeHintType.TRY_HARDER, true);
       return new BrowserMultiFormatReader(hints);
@@ -274,7 +198,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           height: { ideal: 1080, min: 720 },
         };
 
-        // Try to find the MAIN back camera (avoiding 0.6x ultra-wide)
+        // Try to find cameras
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoInputs = devices.filter(d => d.kind === 'videoinput');
@@ -286,8 +210,19 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
               d.label.toLowerCase().includes('environment') ||
               d.label.toLowerCase().includes('rear')
             );
+            
+            const availableCameras = backCameras.length > 0 ? backCameras : videoInputs;
+            setCameras(availableCameras);
 
-            if (backCameras.length > 0) {
+            if (currentCameraId && availableCameras.some(c => c.deviceId === currentCameraId)) {
+               // Use user preferred camera
+               videoConstraints = {
+                 deviceId: { exact: currentCameraId },
+                 width: { ideal: 1920, min: 1280 },
+                 height: { ideal: 1080, min: 720 },
+               };
+               console.log('[CameraScanner] Using preferred camera:', currentCameraId);
+            } else if (backCameras.length > 0) {
               // Filter out ultra-wide, telephoto, 0.5x, 0.6x
               const standardCameras = backCameras.filter(d => {
                 const label = d.label.toLowerCase();
@@ -302,6 +237,8 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
               const bestCamera = standardCameras.length > 0 ? standardCameras[0] : backCameras[0];
               
               if (bestCamera && bestCamera.deviceId) {
+                setCurrentCameraId(bestCamera.deviceId);
+                localStorage.setItem('preferredCameraId', bestCamera.deviceId);
                 videoConstraints = {
                   deviceId: { exact: bestCamera.deviceId },
                   width: { ideal: 1920, min: 1280 },
@@ -389,68 +326,23 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           }
 
           frameCount++;
-          setScanAttempts(frameCount);
+          
+          // Update UI less frequently to maintain High FPS
+          if (frameCount % 10 === 0) setScanAttempts(frameCount);
 
           const video = videoRef.current;
           const c1 = canvasRef.current;
-          const c2 = canvas2Ref.current;
+          
+          if (!c1) return;
 
-          // ---- STRATEGY 1: Native detect on raw video (every frame) ----
-          if (nativeDetector) {
-            try {
-              const results = await nativeDetector.detect(video);
-              if (results.length > 0) {
-                handleFoundCode(results[0].rawValue);
-                return;
-              }
-            } catch (_e) { /* continue */ }
-          }
-
-          // ---- STRATEGY 2: Every 3rd frame - Enhanced contrast + Native ----
-          if (frameCount % 3 === 0 && c1 && nativeDetector) {
-            captureFrame(video, c1);
-            applyContrastEnhance(c1);
-            applySharpen(c1);
-            try {
-              const results = await nativeDetector.detect(c1);
-              if (results.length > 0) {
-                handleFoundCode(results[0].rawValue);
-                return;
-              }
-            } catch (_e) { /* continue */ }
-          }
-
-          // ---- STRATEGY 3: Every 6th frame - Thresholded + ZXing ----
-          if (frameCount % 6 === 0 && c1) {
-            captureFrame(video, c1);
-            applyThreshold(c1, 110);
-            const code = tryZxingOnCanvas(c1);
-            if (code) {
-              handleFoundCode(code);
-              return;
-            }
-
-            // Try higher threshold too
-            captureFrame(video, c1);
-            applyThreshold(c1, 150);
-            const code2 = tryZxingOnCanvas(c1);
-            if (code2) {
-              handleFoundCode(code2);
-              return;
-            }
-          }
-
-          // ---- STRATEGY 4: Every 10th frame - Center crop zoom + all engines ----
-          if (frameCount % 10 === 0 && c1 && c2) {
-            captureFrame(video, c1);
-            cropCenter(c1, c2, 0.5); // 2x zoom on center
-            applyContrastEnhance(c2);
-            applySharpen(c2);
-
-            // Try native on zoomed
+          // Always crop to center laser zone for High FPS scanning
+          const successCrop = cropCenterScanner(video, c1);
+          
+          if (successCrop) {
+            // HIGH FPS STRATEGY 1: Native detect on cropped area (every frame)
             if (nativeDetector) {
               try {
-                const results = await nativeDetector.detect(c2);
+                const results = await nativeDetector.detect(c1);
                 if (results.length > 0) {
                   handleFoundCode(results[0].rawValue);
                   return;
@@ -458,46 +350,8 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
               } catch (_e) { /* continue */ }
             }
 
-            // Try ZXing on zoomed
-            const code = tryZxingOnCanvas(c2);
-            if (code) {
-              handleFoundCode(code);
-              return;
-            }
-
-            // Try thresholded zoom
-            applyThreshold(c2, 128);
-            const code2 = tryZxingOnCanvas(c2);
-            if (code2) {
-              handleFoundCode(code2);
-              return;
-            }
-          }
-
-          // ---- STRATEGY 5: Every 15th frame - Inverted colors ----
-          if (frameCount % 15 === 0 && c1) {
-            captureFrame(video, c1);
-            const ctx = c1.getContext('2d', { willReadFrequently: true });
-            if (ctx) {
-              const imgData = ctx.getImageData(0, 0, c1.width, c1.height);
-              const d = imgData.data;
-              for (let i = 0; i < d.length; i += 4) {
-                d[i] = 255 - d[i];
-                d[i+1] = 255 - d[i+1];
-                d[i+2] = 255 - d[i+2];
-              }
-              ctx.putImageData(imgData, 0, 0);
-
-              if (nativeDetector) {
-                try {
-                  const results = await nativeDetector.detect(c1);
-                  if (results.length > 0) {
-                    handleFoundCode(results[0].rawValue);
-                    return;
-                  }
-                } catch (_e) { /* continue */ }
-              }
-
+            // STRATEGY 2: ZXing on cropped area (every 4th frame)
+            if (frameCount % 4 === 0) {
               const code = tryZxingOnCanvas(c1);
               if (code) {
                 handleFoundCode(code);
@@ -535,7 +389,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       stopScanner();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentCameraId]);
 
   const toggleTorch = async () => {
     if (!streamRef.current) return;
@@ -546,6 +400,19 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     } catch (e) {
       console.error("Failed to toggle torch", e);
     }
+  };
+
+  const switchCamera = () => {
+    if (cameras.length <= 1) return;
+    const currentIndex = cameras.findIndex(c => c.deviceId === currentCameraId);
+    const nextIndex = (currentIndex + 1) % cameras.length;
+    const nextCameraId = cameras[nextIndex].deviceId;
+    
+    stopScanner(); // Stop current stream
+    setCurrentCameraId(nextCameraId);
+    localStorage.setItem('preferredCameraId', nextCameraId);
+    setIsInitializing(true);
+    // The useEffect depends on currentCameraId, so changing it will re-trigger the setup
   };
 
   const runOCR = async () => {
@@ -721,15 +588,28 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
                   </div>
                 )}
 
-                {/* Torch Toggle */}
-                {!isInitializing && hasTorch && !isOCRProcessing && (
-                  <Button
-                    onClick={toggleTorch}
-                    variant="secondary"
-                    className="absolute top-4 right-4 rounded-full shadow-lg h-10 w-10 p-0 flex items-center justify-center bg-white/20 hover:bg-white/40 text-white backdrop-blur-md border border-white/30 z-20"
-                  >
-                    {torchOn ? <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400" /> : <ZapOff className="h-5 w-5" />}
-                  </Button>
+                {/* Controls Overlay */}
+                {!isInitializing && !isOCRProcessing && (
+                  <div className="absolute top-4 right-4 flex flex-col gap-3 z-20">
+                    {cameras.length > 1 && (
+                      <Button
+                        onClick={switchCamera}
+                        variant="secondary"
+                        className="rounded-full shadow-lg h-10 w-10 p-0 flex items-center justify-center bg-white/20 hover:bg-white/40 text-white backdrop-blur-md border border-white/30"
+                      >
+                        <RefreshCw className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {hasTorch && (
+                      <Button
+                        onClick={toggleTorch}
+                        variant="secondary"
+                        className="rounded-full shadow-lg h-10 w-10 p-0 flex items-center justify-center bg-white/20 hover:bg-white/40 text-white backdrop-blur-md border border-white/30"
+                      >
+                        {torchOn ? <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400" /> : <ZapOff className="h-5 w-5" />}
+                      </Button>
+                    )}
+                  </div>
                 )}
 
                 {/* Engine + Scan Info */}

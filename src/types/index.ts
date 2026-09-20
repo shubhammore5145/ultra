@@ -50,13 +50,25 @@ export interface CartItem extends Product {
 
 export interface Transaction {
   id: string;
-  totalAmount: number;
-  taxAmount: number;
-  subtotal: number;
   items: CartItem[];
-  paymentMethod: string;
+  subtotal: number;
+  taxAmount?: number;
+  discountAmount?: number;
+  totalAmount: number;
+  paymentMethod: 'cash' | 'upi' | 'udhar';
   customerId?: string;
-  createdAt: string;
+  createdAt: string; // ISO string
+}
+
+export interface Expense {
+  id: string;
+  shopId: string;
+  category: 'Salary' | 'Electricity' | 'Stock' | 'Rent' | 'Maintenance' | 'Other';
+  amount: number;
+  description: string;
+  date: string; // ISO string
+  addedBy: string; // userId
+  createdAt: string; // ISO string
 }
 
 export interface Customer {

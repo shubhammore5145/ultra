@@ -10,6 +10,7 @@ import POS from './pages/POS';
 import Customers from './pages/Customers';
 import Udhar from './pages/Udhar';
 import Purchases from './pages/Purchases';
+import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 
@@ -30,6 +31,7 @@ function App() {
               <Route path="/customers" element={<Customers />} />
               <Route path="/udhar" element={<Udhar />} />
               <Route path="/purchases" element={<Purchases />} />
+              <Route path="/expenses" element={<Expenses />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
             </Route>

@@ -7,7 +7,8 @@ import {
   CreditCard,
   FileText,
   Settings,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Wallet
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +20,7 @@ const navItems = [
   { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'staff'] },
   { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'staff'] },
   { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, roles: ['admin'] },
+  { name: 'Expenses', href: '/expenses', icon: Wallet, roles: ['admin'] },
   { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'] },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['admin'] },
 ];

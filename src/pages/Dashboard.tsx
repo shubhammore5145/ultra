@@ -19,7 +19,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import type { Product, Transaction } from '../types';
+import type { Product, Transaction, Expense } from '../types';
 
 const dummyData = [
   { name: 'Mon', sales: 4000 },
@@ -34,6 +34,7 @@ const dummyData = [
 export default function Dashboard() {
   const { shopData } = useAuth();
   const [todaysSales, setTodaysSales] = useState(0);
+  const [todaysExpenses, setTodaysExpenses] = useState(0);
   const [todaysOrders, setTodaysOrders] = useState(0);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [totalUdhar, setTotalUdhar] = useState(0);
@@ -66,9 +67,21 @@ export default function Dashboard() {
           salesTotal += data.totalAmount || 0;
           orderCount++;
         });
-
         setTodaysSales(salesTotal);
         setTodaysOrders(orderCount);
+
+        // 1.5 Fetch Today's Expenses
+        const expenseQuery = query(
+          collection(db, 'shops', shopData.shopId, 'expenses'),
+          where('date', '==', today.toISOString().split('T')[0])
+        );
+        const expenseSnapshot = await getDocs(expenseQuery);
+        let expensesTotal = 0;
+        expenseSnapshot.forEach((doc) => {
+          const data = doc.data() as Expense;
+          expensesTotal += data.amount || 0;
+        });
+        setTodaysExpenses(expensesTotal);
 
         // 2. Fetch Customers Data (Total, Udhar, New Today)
         const customersQuery = query(collection(db, 'shops', shopData.shopId, 'customers'));
@@ -140,6 +153,32 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">₹{todaysSales.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">Today's revenue</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Today's Expenses
+            </CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-500">₹{todaysExpenses.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">Today's expenses</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-500/10 to-primary/10 border-primary/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-primary">
+              Net Profit (Today)
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">₹{(todaysSales - todaysExpenses).toFixed(2)}</div>
+            <p className="text-xs text-primary/80">Sales - Expenses</p>
           </CardContent>
         </Card>
         

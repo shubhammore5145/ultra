@@ -18,6 +18,8 @@ export default function POS() {
   const [searchTerm, setSearchTerm] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [showMobileCart, setShowMobileCart] = useState(false);
+  const [discountType, setDiscountType] = useState<'flat' | 'percent'>('flat');
+  const [discountValue, setDiscountValue] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,7 +35,14 @@ export default function POS() {
   const [isQuickAdding, setIsQuickAdding] = useState(false);
 
   // Checkout Success State
-  const [checkoutResult, setCheckoutResult] = useState<{ id: string, total: number, items: CartItem[], customerPhone: string } | null>(null);
+  const [checkoutResult, setCheckoutResult] = useState<{ 
+    id: string, 
+    subtotal: number,
+    discountAmount: number,
+    total: number, 
+    items: CartItem[], 
+    customerPhone: string 
+  } | null>(null);
 
   // Camera Scanner State
   const [showScanner, setShowScanner] = useState(false);
@@ -174,7 +183,16 @@ export default function POS() {
 
   const subtotal = cart.reduce((sum, item) => sum + ((item.sellingPrice || 0) * item.qty), 0);
   const tax = cart.reduce((sum, item) => sum + (((item.sellingPrice || 0) * item.qty) * ((item.gst || 0) / 100)), 0);
-  const total = subtotal + tax;
+  
+  let discountAmount = 0;
+  const numDiscount = Number(discountValue) || 0;
+  if (discountType === 'flat') {
+    discountAmount = numDiscount;
+  } else {
+    discountAmount = (subtotal * numDiscount) / 100;
+  }
+  
+  const total = Math.max(0, subtotal + tax - discountAmount);
 
   const handleCheckout = async () => {
     if (!shopData?.shopId || cart.length === 0) return;
@@ -223,8 +241,9 @@ export default function POS() {
       // 2. Create Sale Document
       const saleRef = doc(collection(db, 'shops', shopData.shopId, 'sales'));
       batch.set(saleRef, {
-        totalAmount: total,
         subtotal: subtotal,
+        discountAmount: discountAmount,
+        totalAmount: total,
         taxAmount: tax,
         items: cart,
         paymentMethod: 'cash',
@@ -245,6 +264,8 @@ export default function POS() {
       // Save result for the success modal
       setCheckoutResult({
         id: saleRef.id,
+        subtotal,
+        discountAmount,
         total,
         items: [...cart],
         customerPhone: customerPhone.trim()
@@ -254,6 +275,7 @@ export default function POS() {
       setCart([]);
       setSearchTerm('');
       setCustomerPhone('');
+      setDiscountValue('');
       setShowMobileCart(false);
     } catch (error) {
       console.error('Checkout failed:', error);
@@ -278,7 +300,12 @@ export default function POS() {
     checkoutResult.items.forEach(item => {
       text += `${item.name} x${item.qty} - ₹${((item.sellingPrice || 0) * item.qty).toFixed(2)}\n`;
     });
-    text += `\n*Total Amount: ₹${checkoutResult.total.toFixed(2)}*\n\n`;
+    
+    text += `\nSubtotal: ₹${checkoutResult.subtotal.toFixed(2)}\n`;
+    if (checkoutResult.discountAmount > 0) {
+      text += `Discount: -₹${checkoutResult.discountAmount.toFixed(2)}\n`;
+    }
+    text += `*Total Amount: ₹${checkoutResult.total.toFixed(2)}*\n\n`;
     text += `Thank you for shopping with us!`;
 
     const encodedText = encodeURIComponent(text);
@@ -340,6 +367,9 @@ export default function POS() {
               <CheckCircle2 className="h-16 w-16 mx-auto mb-2 opacity-90" />
               <h2 className="text-2xl font-bold">Checkout Complete</h2>
               <p className="opacity-90">Bill Total: ₹{checkoutResult.total.toFixed(2)}</p>
+              {checkoutResult.discountAmount > 0 && (
+                <p className="text-sm opacity-80 mt-1">Includes ₹{checkoutResult.discountAmount.toFixed(2)} savings!</p>
+              )}
             </div>
 
             <div className="p-6 space-y-6">
@@ -603,10 +633,44 @@ export default function POS() {
             />
           </div>
 
+          <div className="flex flex-col gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+            <label className="text-xs font-medium text-muted-foreground">Discount</label>
+            <div className="flex gap-2">
+              <Button 
+                variant={discountType === 'flat' ? 'default' : 'outline'}
+                onClick={() => setDiscountType('flat')}
+                className="w-12 h-10 px-0"
+              >
+                ₹
+              </Button>
+              <Button 
+                variant={discountType === 'percent' ? 'default' : 'outline'}
+                onClick={() => setDiscountType('percent')}
+                className="w-12 h-10 px-0"
+              >
+                %
+              </Button>
+              <Input 
+                placeholder="0" 
+                type="number"
+                min="0"
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                className="h-10 flex-1 text-base bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-zinc-50"
+              />
+            </div>
+          </div>
+
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span className="font-medium">₹{subtotal.toFixed(2)}</span>
           </div>
+          {discountAmount > 0 && (
+            <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400 font-medium">
+              <span>Discount</span>
+              <span>-₹{discountAmount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-lg font-bold pt-1 border-t">
             <span>Total</span>
             <span className="text-primary">₹{total.toFixed(2)}</span>
@@ -677,6 +741,18 @@ export default function POS() {
           </table>
           
           <div style={{ borderBottom: '1px dashed #000', marginBottom: '5px' }}></div>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
+            <span>Subtotal</span>
+            <span>₹{checkoutResult.subtotal.toFixed(2)}</span>
+          </div>
+          {checkoutResult.discountAmount > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
+              <span>Discount</span>
+              <span>-₹{checkoutResult.discountAmount.toFixed(2)}</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', marginBottom: '10px' }}>
             <span>TOTAL</span>
             <span>₹{checkoutResult.total.toFixed(2)}</span>

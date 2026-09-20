@@ -17,6 +17,7 @@ export default function POS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [showMobileCart, setShowMobileCart] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -253,6 +254,7 @@ export default function POS() {
       setCart([]);
       setSearchTerm('');
       setCustomerPhone('');
+      setShowMobileCart(false);
     } catch (error) {
       console.error('Checkout failed:', error);
       alert('Checkout failed. Please try again.');
@@ -448,7 +450,7 @@ export default function POS() {
       )}
 
       {/* Products & Search Section */}
-      <div className="flex-1 flex flex-col gap-4">
+      <div className="flex-1 flex flex-col gap-4 pb-20 md:pb-0">
         <div className="relative flex items-center">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input 
@@ -509,9 +511,41 @@ export default function POS() {
         </div>
       </div>
 
-      {/* Cart Section */}
-      <div className="w-full md:w-[400px] flex flex-col bg-card text-card-foreground rounded-xl border shadow-sm h-full pb-64 md:pb-0">
-        <div className="p-4 border-b bg-muted/30 rounded-t-xl flex items-center justify-between">
+      {/* Mobile Floating Cart Summary */}
+      <div className="md:hidden fixed bottom-[60px] left-0 right-0 p-3 bg-card border-t border-border shadow-[0_-4px_15px_rgba(0,0,0,0.1)] z-30">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{cart.length} Items</p>
+            <p className="text-xl font-extrabold text-foreground">₹{total.toFixed(2)}</p>
+          </div>
+          <Button 
+            className="flex-1 h-12 text-base font-bold shadow-md"
+            onClick={() => setShowMobileCart(true)}
+          >
+            <ShoppingCart className="mr-2 h-5 w-5" /> View Cart
+          </Button>
+        </div>
+      </div>
+
+      {/* Cart Section (Sidebar on Desktop, Full Overlay on Mobile) */}
+      <div className={`
+        fixed inset-0 z-50 bg-background flex flex-col
+        md:static md:w-[400px] md:bg-card md:text-card-foreground md:rounded-xl md:border md:shadow-sm md:h-full md:z-auto
+        transition-transform duration-300 ease-in-out
+        ${showMobileCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
+      `}>
+        {/* Mobile Header for Cart Overlay */}
+        <div className="md:hidden p-4 border-b bg-card flex items-center justify-between shadow-sm">
+          <h2 className="font-bold text-xl flex items-center gap-2">
+            <ShoppingCart className="h-6 w-6 text-primary" /> Checkout
+          </h2>
+          <Button variant="ghost" size="icon" onClick={() => setShowMobileCart(false)} className="rounded-full bg-muted/50">
+            <X className="h-6 w-6" />
+          </Button>
+        </div>
+
+        {/* Desktop Header */}
+        <div className="hidden md:flex p-4 border-b bg-muted/30 rounded-t-xl items-center justify-between">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" /> Current Bill
           </h2>
@@ -526,6 +560,9 @@ export default function POS() {
               <ShoppingCart className="h-12 w-12 opacity-20" />
               <p>Cart is empty</p>
               <p className="text-xs">Scan a barcode to add products</p>
+              <Button variant="outline" className="mt-4 md:hidden" onClick={() => setShowMobileCart(false)}>
+                Go Back to Products
+              </Button>
             </div>
           ) : (
             cart.map(item => (
@@ -554,7 +591,7 @@ export default function POS() {
           )}
         </div>
 
-        <div className="p-4 border-t bg-muted/10 md:rounded-b-xl space-y-3 fixed bottom-[60px] left-0 right-0 z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.1)] md:static md:shadow-none md:z-auto md:bottom-auto">
+        <div className="p-4 border-t bg-card md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
           <div className="flex flex-col gap-2 pb-2 border-b">
             <label className="text-xs font-medium text-muted-foreground">Customer Mobile No. (For WhatsApp Bill)</label>
             <Input 
@@ -562,7 +599,7 @@ export default function POS() {
               type="tel"
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
-              className="h-10 text-sm bg-background"
+              className="h-12 md:h-10 text-base md:text-sm bg-background border-muted"
             />
           </div>
 
@@ -577,7 +614,7 @@ export default function POS() {
 
           <div className="pt-2">
             <Button 
-              className="w-full h-14 text-lg font-bold shadow-md" 
+              className="w-full h-14 text-lg font-bold shadow-md bg-gradient-to-r from-primary to-purple-600 hover:opacity-90" 
               disabled={cart.length === 0 || checkoutLoading}
               onClick={handleCheckout}
             >

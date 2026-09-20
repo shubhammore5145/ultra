@@ -267,12 +267,56 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     const startCamera = async () => {
       try {
         console.log('[CameraScanner] Requesting HD camera...');
+        
+        let videoConstraints: any = {
+          facingMode: 'environment',
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+        };
+
+        // Try to find the MAIN back camera (avoiding 0.6x ultra-wide)
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter(d => d.kind === 'videoinput');
+          
+          if (videoInputs.length > 0) {
+            // Find back cameras
+            const backCameras = videoInputs.filter(d => 
+              d.label.toLowerCase().includes('back') || 
+              d.label.toLowerCase().includes('environment') ||
+              d.label.toLowerCase().includes('rear')
+            );
+
+            if (backCameras.length > 0) {
+              // Filter out ultra-wide, telephoto, 0.5x, 0.6x
+              const standardCameras = backCameras.filter(d => {
+                const label = d.label.toLowerCase();
+                return !label.includes('ultra') && 
+                       !label.includes('0.5x') && 
+                       !label.includes('0.6x') && 
+                       !label.includes('wide') &&
+                       !label.includes('telephoto');
+              });
+
+              // Prefer standard camera, otherwise fallback to the first back camera we found
+              const bestCamera = standardCameras.length > 0 ? standardCameras[0] : backCameras[0];
+              
+              if (bestCamera && bestCamera.deviceId) {
+                videoConstraints = {
+                  deviceId: { exact: bestCamera.deviceId },
+                  width: { ideal: 1920, min: 1280 },
+                  height: { ideal: 1080, min: 720 },
+                };
+                console.log('[CameraScanner] Selected specific camera:', bestCamera.label);
+              }
+            }
+          }
+        } catch (_e) {
+          console.log('[CameraScanner] Could not enumerate devices, falling back to facingMode');
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 },
-          } as any
+          video: videoConstraints
         });
 
         if (!isMounted.current) {

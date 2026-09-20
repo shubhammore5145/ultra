@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import Tesseract from 'tesseract.js';
 import { X, Camera, CheckCircle2, Loader2, Zap, ZapOff, Sparkles, BrainCircuit, Keyboard, ZoomIn } from 'lucide-react';
 import { Button } from './ui/button';
@@ -202,11 +203,37 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       }, 800);
     };
 
+    /** Create ZXing reader with ALL formats enabled */
+    const createZxingReader = () => {
+      const hints = new Map<DecodeHintType, any>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.AZTEC,
+        BarcodeFormat.CODABAR,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.CODE_93,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.DATA_MATRIX,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.ITF,
+        BarcodeFormat.MAXICODE,
+        BarcodeFormat.PDF_417,
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.RSS_14,
+        BarcodeFormat.RSS_EXPANDED,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.UPC_EAN_EXTENSION
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      return new BrowserMultiFormatReader(hints);
+    };
+
     /** Try to decode a canvas using ZXing (for processed frames) */
     const tryZxingOnCanvas = (canvas: HTMLCanvasElement): string | null => {
       try {
         if (!zxingReaderRef.current) {
-          zxingReaderRef.current = new BrowserMultiFormatReader();
+          zxingReaderRef.current = createZxingReader();
         }
         const result = zxingReaderRef.current.decodeFromCanvas(canvas);
         return result?.getText() || null;
@@ -217,7 +244,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
 
     const startZxingLive = () => {
       setUsingNative(false);
-      const codeReader = new BrowserMultiFormatReader();
+      const codeReader = createZxingReader();
       if (!videoRef.current) return;
       
       console.log('[CameraScanner] Starting ZXing live decode');
@@ -289,7 +316,11 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           setUsingNative(true);
           try {
             nativeDetector = new (window as any).BarcodeDetector({
-              formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'codabar', 'itf', 'qr_code', 'data_matrix']
+              formats: [
+                'aztec', 'code_128', 'code_39', 'code_93', 'codabar', 
+                'data_matrix', 'ean_13', 'ean_8', 'itf', 'pdf417', 
+                'qr_code', 'upc_a', 'upc_e', 'unknown'
+              ]
             });
           } catch (_e) {
             nativeDetector = null;
@@ -297,7 +328,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
         }
 
         // Also prepare ZXing for processed frames
-        zxingReaderRef.current = new BrowserMultiFormatReader();
+        zxingReaderRef.current = createZxingReader();
 
         // If we have no native detector, start ZXing live as primary
         if (!nativeDetector) {

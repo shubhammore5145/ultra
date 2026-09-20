@@ -35,6 +35,10 @@ export default function Dashboard() {
   const { shopData } = useAuth();
   const [todaysSales, setTodaysSales] = useState(0);
   const [todaysOrders, setTodaysOrders] = useState(0);
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [totalUdhar, setTotalUdhar] = useState(0);
+  const [udharCustomersCount, setUdharCustomersCount] = useState(0);
+  const [newCustomersToday, setNewCustomersToday] = useState(0);
   const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -66,7 +70,35 @@ export default function Dashboard() {
         setTodaysSales(salesTotal);
         setTodaysOrders(orderCount);
 
-        // 2. Fetch Low Stock Products
+        // 2. Fetch Customers Data (Total, Udhar, New Today)
+        const customersQuery = query(collection(db, 'shops', shopData.shopId, 'customers'));
+        const customersSnapshot = await getDocs(customersQuery);
+        
+        let custCount = 0;
+        let udharTotal = 0;
+        let udharCustCount = 0;
+        let newCustTodayCount = 0;
+        
+        customersSnapshot.forEach((doc) => {
+          custCount++;
+          const data = doc.data();
+          
+          if (data.pendingBalance && data.pendingBalance > 0) {
+            udharTotal += data.pendingBalance;
+            udharCustCount++;
+          }
+          
+          if (data.createdAt && data.createdAt >= todayStr) {
+            newCustTodayCount++;
+          }
+        });
+
+        setTotalCustomers(custCount);
+        setTotalUdhar(udharTotal);
+        setUdharCustomersCount(udharCustCount);
+        setNewCustomersToday(newCustTodayCount);
+
+        // 3. Fetch Low Stock Products
         const productsQuery = query(collection(db, 'shops', shopData.shopId, 'products'));
         const productsSnapshot = await getDocs(productsQuery);
         
@@ -132,8 +164,8 @@ export default function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2,350</div>
-            <p className="text-xs text-muted-foreground">+4 new today</p>
+            <div className="text-2xl font-bold">{totalCustomers}</div>
+            <p className="text-xs text-muted-foreground">{newCustomersToday > 0 ? `+${newCustomersToday} new today` : 'All customers'}</p>
           </CardContent>
         </Card>
 
@@ -145,8 +177,8 @@ export default function Dashboard() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">₹45,231</div>
-            <p className="text-xs text-muted-foreground">From 12 customers</p>
+            <div className="text-2xl font-bold text-orange-600">₹{totalUdhar.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">From {udharCustomersCount} customer{udharCustomersCount !== 1 ? 's' : ''}</p>
           </CardContent>
         </Card>
       </div>

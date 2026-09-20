@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import type { UserData, Shop } from '../types';
 
@@ -27,6 +27,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let shopUnsubscribe: (() => void) | undefined;
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -39,10 +41,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             
             if (data.shopId) {
               const shopDocRef = doc(db, 'shops', data.shopId);
-              const shopDoc = await getDoc(shopDocRef);
-              if (shopDoc.exists()) {
-                setShopData({ shopId: shopDoc.id, ...shopDoc.data() } as Shop);
-              }
+              // Use onSnapshot so settings (like UPI ID) update instantly across the app
+              shopUnsubscribe = onSnapshot(shopDocRef, (shopDoc) => {
+                if (shopDoc.exists()) {
+                  setShopData({ shopId: shopDoc.id, ...shopDoc.data() } as Shop);
+                }
+              });
             }
           }
         } catch (error) {
@@ -51,11 +55,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setUserData(null);
         setShopData(null);
+        if (shopUnsubscribe) {
+          shopUnsubscribe();
+        }
       }
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (shopUnsubscribe) {
+        shopUnsubscribe();
+      }
+    };
   }, []);
 
   return (

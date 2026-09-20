@@ -54,12 +54,21 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const stopScanner = useCallback(() => {
     if (loopRef.current) cancelAnimationFrame(loopRef.current);
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        // Turn off torch if leaving
+        if (hasTorch && torchOn) {
+          try { track.applyConstraints({ advanced: [{ torch: false }] }); } catch(e) {}
+        }
+        track.stop();
+      });
     }
-  }, []);
+  }, [hasTorch, torchOn]);
 
   const playBeep = () => {
     try {
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
@@ -114,6 +123,10 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     }
   };
 
+  // Double Validation State
+  const lastScannedCodeRef = useRef<string | null>(null);
+  const scanCountRef = useRef(0);
+
   useEffect(() => {
     isMounted.current = true;
     let zxingControls: any = null;
@@ -121,7 +134,21 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     const handleFoundCode = (code: string) => {
       if (!isMounted.current || scanSuccessRef.current) return;
       
-      console.log('[CameraScanner] Barcode found:', code);
+      // Double Validation: Ensure we read the same barcode twice consecutively
+      if (lastScannedCodeRef.current === code) {
+        scanCountRef.current += 1;
+      } else {
+        lastScannedCodeRef.current = code;
+        scanCountRef.current = 1;
+      }
+
+      // Need 2 consecutive reads to confirm (prevents half-reads of small codes)
+      if (scanCountRef.current < 2) {
+        console.log('[CameraScanner] Validating barcode...', code);
+        return;
+      }
+
+      console.log('[CameraScanner] Barcode confirmed:', code);
 
       if (zxingControls) {
         try { zxingControls.stop(); } catch (_e) { /* ignore */ }
@@ -136,7 +163,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       
       setTimeout(() => {
         if (isMounted.current) onScanRef.current(code);
-      }, 800);
+      }, 500); // reduced delay slightly for faster feel
     };
 
     /** Create ZXing reader with common formats enabled for speed */
@@ -263,7 +290,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
 
         streamRef.current = stream;
 
-        // Enable continuous autofocus
+        // Enable continuous autofocus and detect torch
         const track = stream.getVideoTracks()[0];
         try {
           const caps = track.getCapabilities ? track.getCapabilities() : {} as any;
@@ -271,8 +298,15 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
             await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] });
             console.log('[CameraScanner] Autofocus: continuous');
           }
-          if ((caps as any).torch) setHasTorch(true);
-        } catch (_e) { /* ok */ }
+          if (caps.torch) {
+            setHasTorch(true);
+            console.log('[CameraScanner] Torch is supported');
+          } else {
+            setHasTorch(false);
+          }
+        } catch (e) {
+          console.warn('[CameraScanner] Could not apply advanced constraints', e);
+        }
 
         const settings = track.getSettings();
         console.log('[CameraScanner] Resolution:', settings.width, 'x', settings.height);
@@ -616,7 +650,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
                 {!isInitializing && !isOCRProcessing && (
                   <div className="absolute top-2 left-2 flex flex-col gap-1">
                     <div className="px-2 py-1 bg-black/50 backdrop-blur-md rounded-md text-[10px] text-white/70 font-mono flex items-center gap-1">
-                      {usingNative ? <><Sparkles className="h-3 w-3 text-green-400" /> Multi-Engine</> : 'ZXing HD'}
+                      <Sparkles className="h-3 w-3 text-green-400" /> Laser Mode (Fast)
                     </div>
                     <div className="px-2 py-1 bg-black/50 backdrop-blur-md rounded-md text-[10px] text-white/70 font-mono flex items-center gap-1">
                       <ZoomIn className="h-3 w-3 text-blue-400" /> {scanAttempts > 0 ? `Scanning... (${scanAttempts})` : 'Ready'}

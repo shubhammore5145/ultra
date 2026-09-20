@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle } from 'lucide-react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,6 +10,7 @@ export default function Settings() {
   const { shopData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [formData, setFormData] = useState({
     shopName: '',
     ownerName: '',
@@ -70,6 +71,29 @@ export default function Settings() {
           <Store className="h-8 w-8" /> Shop Settings
         </h1>
         <p className="text-muted-foreground">Manage your shop profile, address, and GST details.</p>
+      </div>
+
+      <div className="bg-primary/10 border border-primary/20 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div>
+          <h3 className="font-bold text-primary flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" /> Shop Access Code (Shop ID)
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Give this code to your cashiers/staff when they sign up to join your shop.
+          </p>
+        </div>
+        
+        {shopData?.plan === 'pro' ? (
+          <div className="bg-background px-4 py-2 rounded-lg border font-mono font-bold select-all flex-shrink-0 text-foreground">
+            {shopData?.shopId}
+          </div>
+        ) : (
+          <div className="flex-shrink-0">
+            <Button onClick={() => window.location.href = '/upgrade'} className="shadow-md bg-yellow-500 hover:bg-yellow-600 text-black">
+              👑 Upgrade to Pro to Add Staff
+            </Button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -170,14 +194,34 @@ export default function Settings() {
           </div>
           
           <div className="border-t pt-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4">Add New Staff</h3>
-            <div className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <label className="text-sm font-medium">Staff Email Address</label>
-                <Input placeholder="staff@kiranapro.com" />
+            <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4">Invite Staff / Cashier</h3>
+            <p className="text-sm text-muted-foreground mb-4">Share your Shop ID with your cashier. They can use it to join your shop during sign-up.</p>
+            <div className="flex gap-3">
+              <div className="flex-1 bg-muted rounded-lg px-4 py-3 font-mono text-sm text-foreground select-all border">
+                {shopData?.shopId || 'Loading...'}
               </div>
-              <Button onClick={() => alert("Invite sent! They will receive an email with login instructions.")}>
-                <UserPlus className="h-4 w-4 mr-2" /> Invite Staff
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (shopData?.shopId) {
+                    navigator.clipboard.writeText(shopData.shopId);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
+              >
+                {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  const text = `Hello! Join my shop on KiranaPro. Sign up at the app and use this Shop ID to join: ${shopData?.shopId}`;
+                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                }}
+                className="bg-green-500 hover:bg-green-600 text-white"
+              >
+                <UserPlus className="h-4 w-4 mr-2" /> WhatsApp Invite
               </Button>
             </div>
           </div>

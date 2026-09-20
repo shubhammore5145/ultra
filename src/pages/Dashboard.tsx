@@ -1,4 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { useNavigate } from 'react-router-dom';
 import { 
   IndianRupee, 
   ShoppingCart, 
@@ -9,7 +11,8 @@ import {
   BrainCircuit,
   Sparkles,
   TrendingDown,
-  PackageMinus
+  PackageMinus,
+  Download
 } from 'lucide-react';
 import {
   LineChart,
@@ -143,6 +146,61 @@ export default function Dashboard() {
 
     fetchDashboardData();
   }, [shopData?.shopId]);
+
+  const handleExportCSV = async () => {
+    if (!shopData?.shopId) return;
+    
+    if (shopData.plan !== 'pro') {
+      if (confirm("🔒 This is a PRO feature! Would you like to upgrade to Premium to download CA-ready reports?")) {
+        navigate('/upgrade');
+      }
+      return;
+    }
+
+    try {
+      // Just a quick visual indicator
+      const btn = document.getElementById('export-btn');
+      if (btn) btn.innerHTML = 'Exporting...';
+      
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
+      
+      const salesQuery = query(collection(db, 'shops', shopData.shopId, 'sales'), where('createdAt', '>=', firstDay));
+      const expQuery = query(collection(db, 'shops', shopData.shopId, 'expenses'), where('date', '>=', firstDay.split('T')[0]));
+      
+      const [salesSnap, expSnap] = await Promise.all([getDocs(salesQuery), getDocs(expQuery)]);
+      
+      let csv = "Date,Type,Amount (Rs),Description / Customer\n";
+      
+      salesSnap.forEach(doc => {
+        const d = doc.data() as Transaction;
+        const dateStr = new Date(d.createdAt).toLocaleDateString('en-IN');
+        csv += `${dateStr},Sale,${d.totalAmount},${d.customerPhone || 'Walk-in'}\n`;
+      });
+      
+      expSnap.forEach(doc => {
+        const d = doc.data() as Expense;
+        csv += `${d.date},Expense,-${d.amount},${d.description || d.category}\n`;
+      });
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `KiranaPro_Report_${today.toLocaleString('en-IN', { month: 'short' })}_${today.getFullYear()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      if (btn) btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Export Monthly Report';
+    } catch(err) {
+      console.error(err);
+      alert('Failed to export report');
+      const btn = document.getElementById('export-btn');
+      if (btn) btn.innerHTML = 'Export Failed';
+    }
+  };
   // --- AI Insights Computation (Demo Logic) ---
   // In a real app, this would use an ML model or complex SQL grouping over past sales.
   const getAIInsights = () => {
@@ -166,6 +224,13 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold tracking-tight text-foreground">
           Dashboard
         </h1>
+        <Button 
+          id="export-btn"
+          onClick={handleExportCSV}
+          className="bg-red-600 hover:bg-red-700 text-white font-bold shadow-md transition-all"
+        >
+          <Download className="mr-2 h-4 w-4" /> Export Monthly Report
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -195,16 +260,64 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500/10 to-primary/10 border-primary/20">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-primary">
               Net Profit (Today)
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-primary" />
+            <Wallet className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">₹{(todaysSales - todaysExpenses).toFixed(2)}</div>
             <p className="text-xs text-primary/80">Sales - Expenses</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-500/10 to-primary/10 border-primary/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-primary">
+              AI Prediction: Trending
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent className="relative">
+            {shopData?.plan !== 'pro' && (
+              <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-[2px] flex items-center justify-center rounded-xl cursor-pointer" onClick={() => navigate('/upgrade')}>
+                <span className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow flex items-center gap-1">👑 Upgrade to View</span>
+              </div>
+            )}
+            <div className={`space-y-2 ${shopData?.plan !== 'pro' ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}>
+              {aiInsights.trendingItems.length > 0 ? aiInsights.trendingItems.map((item, i) => (
+                <div key={i} className="flex justify-between items-center text-sm">
+                  <span className="truncate max-w-[120px] font-medium">{item.name}</span>
+                  <span className="text-green-600 font-bold">₹{item.sellingPrice}</span>
+                </div>
+              )) : <div className="text-sm text-muted-foreground">No data yet</div>}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-orange-500/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-orange-600">
+              AI Alert: Restock
+            </CardTitle>
+            <PackageMinus className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent className="relative">
+            {shopData?.plan !== 'pro' && (
+              <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-[2px] flex items-center justify-center rounded-xl cursor-pointer" onClick={() => navigate('/upgrade')}>
+                <span className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow flex items-center gap-1">👑 Upgrade to View</span>
+              </div>
+            )}
+            <div className={`space-y-2 ${shopData?.plan !== 'pro' ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}>
+              {aiInsights.restockItems.length > 0 ? aiInsights.restockItems.map((item, i) => (
+                <div key={i} className="flex justify-between items-center text-sm">
+                  <span className="truncate max-w-[120px] font-medium text-orange-700">{item.name}</span>
+                  <span className="text-red-500 font-bold">{item.stock} left</span>
+                </div>
+              )) : <div className="text-sm text-muted-foreground">Stock is healthy</div>}
+            </div>
           </CardContent>
         </Card>
         

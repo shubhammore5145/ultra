@@ -13,6 +13,8 @@ import Purchases from './pages/Purchases';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Upgrade from './pages/Upgrade';
+import Support from './pages/Support';
 
 function App() {
   return (
@@ -23,17 +25,26 @@ function App() {
           
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
+              {/* Cashier + Admin Routes */}
               <Route path="/pos" element={<POS />} />
+              <Route path="/customers" element={<Customers />} />
+              <Route path="/udhar" element={<Udhar />} />
               <Route path="/products" element={<Products />} />
               <Route path="/products/new" element={<ProductForm />} />
               <Route path="/products/:id" element={<ProductForm />} />
-              <Route path="/customers" element={<Customers />} />
-              <Route path="/udhar" element={<Udhar />} />
+              <Route path="/support" element={<Support />} />
+            </Route>
+          </Route>
+          
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route element={<Layout />}>
+              {/* Admin Only Routes */}
+              <Route path="/" element={<Dashboard />} />
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/upgrade" element={<Upgrade />} />
             </Route>
           </Route>
           

@@ -8,27 +8,31 @@ import {
   FileText,
   Settings,
   ArrowLeftRight,
-  Wallet
+  Wallet,
+  Crown,
+  HelpCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
 const navItems = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'staff'] },
-  { name: 'POS Billing', href: '/pos', icon: ShoppingCart, roles: ['admin', 'staff'] },
-  { name: 'Products', href: '/products', icon: Package, roles: ['admin', 'staff'] },
-  { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'staff'] },
-  { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'staff'] },
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'] },
+  { name: 'POS Billing', href: '/pos', icon: ShoppingCart, roles: ['admin', 'cashier'] },
+  { name: 'Products', href: '/products', icon: Package, roles: ['admin', 'cashier'] },
+  { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'cashier'] },
+  { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'cashier'] },
   { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, roles: ['admin'] },
   { name: 'Expenses', href: '/expenses', icon: Wallet, roles: ['admin'] },
   { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'] },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['admin'] },
+  { name: 'Support', href: '/support', icon: HelpCircle, roles: ['admin', 'cashier'] },
+  { name: 'Upgrade', href: '/upgrade', icon: Crown, roles: ['admin'] },
 ];
 
 /** Desktop Sidebar */
 export function Sidebar() {
   const { userData } = useAuth();
-  const userRole = userData?.role || 'staff';
+  const userRole = userData?.role || 'cashier';
 
   const filteredNav = navItems.filter(item => item.roles.includes(userRole));
 
@@ -50,7 +54,7 @@ export function Sidebar() {
                 )
               }
             >
-              <Icon className="mr-3 h-5 w-5 flex-shrink-0" aria-hidden="true" />
+              <Icon className={cn("mr-3 h-5 w-5 flex-shrink-0", item.name.includes('Upgrade') && "text-yellow-500")} aria-hidden="true" />
               {item.name}
             </NavLink>
           );
@@ -63,7 +67,7 @@ export function Sidebar() {
 /** Mobile Bottom Navigation Bar */
 export function MobileBottomNav() {
   const { userData } = useAuth();
-  const userRole = userData?.role || 'staff';
+  const userRole = userData?.role || 'cashier';
 
   // Show only the most important items on mobile bottom bar
   const mobileNavItems = navItems

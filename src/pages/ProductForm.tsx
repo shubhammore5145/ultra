@@ -249,7 +249,21 @@ export default function ProductForm() {
                 <div className="flex items-center justify-between">
                   <Label htmlFor="barcode">Barcode</Label>
                   <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm" className="h-7 px-3 text-xs" onClick={() => setShowScanner(true)}>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-7 px-3 text-xs" 
+                      onClick={() => {
+                        if (shopData?.plan === 'pro') {
+                          setShowScanner(true);
+                        } else {
+                          if (confirm("Barcode scanning is a PRO feature. Upgrade to unlock!")) {
+                            navigate('/upgrade');
+                          }
+                        }
+                      }}
+                    >
                       <Camera className="mr-1 h-3 w-3" /> Scan Camera
                     </Button>
                     <Button type="button" variant="ghost" size="sm" className="h-7 px-3 text-xs text-primary" onClick={generateBarcode}>
@@ -265,10 +279,28 @@ export default function ProductForm() {
                 />
               </div>
               {formData.barcode && (
-                <div className="md:col-span-2 flex flex-col items-center justify-center p-4 border rounded-lg bg-white mt-2">
+                <div id="barcode-label-area" className="md:col-span-2 flex flex-col items-center justify-center p-4 border rounded-lg bg-white mt-2">
                   <svg ref={barcodeRef}></svg>
-                  <Button type="button" variant="outline" size="sm" className="mt-2">
-                    Print Label
+                  <p className="text-xs font-semibold text-black mt-1 mb-2">{formData.name || 'Product'}</p>
+                  <p className="text-sm font-bold text-black">₹{formData.sellingPrice || '0'}</p>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={() => {
+                      const printWindow = window.open('', '', 'width=300,height=200');
+                      const el = document.getElementById('barcode-label-area');
+                      if (printWindow && el) {
+                        printWindow.document.write(`<html><head><title>Print Label</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;">${el.innerHTML}</body></html>`);
+                        printWindow.document.close();
+                        printWindow.focus();
+                        printWindow.print();
+                        printWindow.close();
+                      }
+                    }}
+                  >
+                    🖨️ Print Label
                   </Button>
                 </div>
               )}

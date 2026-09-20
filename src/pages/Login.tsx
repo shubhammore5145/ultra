@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -19,6 +19,8 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [shopName, setShopName] = useState('');
+  const [roleChoice, setRoleChoice] = useState<'admin' | 'cashier'>('admin');
+  const [joinShopId, setJoinShopId] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,29 +33,54 @@ export default function Login() {
         navigate('/');
       } else {
         // Sign Up Flow
+        if (roleChoice === 'cashier' && !joinShopId.trim()) {
+          throw new Error('Please enter the Shop ID to join.');
+        }
+
+        // Verify Shop ID if joining
+        if (roleChoice === 'cashier') {
+          const shopRef = doc(db, 'shops', joinShopId.trim());
+          const shopSnap = await getDoc(shopRef);
+          if (!shopSnap.exists()) {
+            throw new Error('Invalid Shop ID. Shop not found.');
+          }
+
+          // Check if cashier limit (3) is reached
+          const q = query(collection(db, 'users'), where('shopId', '==', joinShopId.trim()), where('role', '==', 'cashier'));
+          const querySnapshot = await getDocs(q);
+          if (querySnapshot.size >= 3) {
+            throw new Error('This shop has reached the maximum limit of 3 cashiers.');
+          }
+        }
+
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // Generate a random shop ID
-        const shopId = `shop_${Date.now()}`;
+        let finalShopId = '';
 
-        // Create Shop Document
-        await setDoc(doc(db, 'shops', shopId), {
-          id: shopId,
-          name: shopName,
-          address: '',
-          phone: '',
-          gstNumber: '',
-          createdAt: new Date().toISOString()
-        });
+        if (roleChoice === 'admin') {
+          // Generate a random shop ID
+          finalShopId = `shop_${Date.now()}`;
+          // Create Shop Document
+          await setDoc(doc(db, 'shops', finalShopId), {
+            id: finalShopId,
+            name: shopName,
+            address: '',
+            phone: '',
+            gstNumber: '',
+            createdAt: new Date().toISOString()
+          });
+        } else {
+          finalShopId = joinShopId.trim();
+        }
 
         // Create User Document
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           email: user.email,
           name: name,
-          role: 'admin',
-          shopId: shopId,
+          role: roleChoice,
+          shopId: finalShopId,
           createdAt: new Date().toISOString()
         });
 
@@ -92,9 +119,9 @@ export default function Login() {
         <div className="relative z-10 flex items-center gap-4 text-sm font-medium text-white/60">
           <span>© {new Date().getFullYear()} KiranaPro Software</span>
           <span>•</span>
-          <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+          <a href="/support" className="hover:text-white transition-colors">Privacy Policy</a>
           <span>•</span>
-          <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
+          <a href="/support" className="hover:text-white transition-colors">Terms of Service</a>
         </div>
       </div>
 
@@ -124,6 +151,25 @@ export default function Login() {
             <div className="space-y-4">
               {!isLogin && (
                 <>
+                  <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-muted rounded-lg">
+                    <Button 
+                      type="button"
+                      variant={roleChoice === 'admin' ? 'default' : 'ghost'} 
+                      className="text-xs sm:text-sm font-semibold"
+                      onClick={() => setRoleChoice('admin')}
+                    >
+                      Create Shop (Admin)
+                    </Button>
+                    <Button 
+                      type="button"
+                      variant={roleChoice === 'cashier' ? 'default' : 'ghost'} 
+                      className="text-xs sm:text-sm font-semibold"
+                      onClick={() => setRoleChoice('cashier')}
+                    >
+                      Join Shop (Cashier)
+                    </Button>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="name" className="text-foreground font-medium">Your Name</Label>
                     <Input
@@ -135,17 +181,32 @@ export default function Login() {
                       className="h-12 bg-background border-input focus:ring-primary"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="shopName" className="text-foreground font-medium">Shop Name</Label>
-                    <Input
-                      id="shopName"
-                      placeholder="e.g. Patel Provision Store"
-                      value={shopName}
-                      onChange={(e) => setShopName(e.target.value)}
-                      required={!isLogin}
-                      className="h-12 bg-background border-input focus:ring-primary"
-                    />
-                  </div>
+                  
+                  {roleChoice === 'admin' ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="shopName" className="text-foreground font-medium">Shop Name</Label>
+                      <Input
+                        id="shopName"
+                        placeholder="e.g. Patel Provision Store"
+                        value={shopName}
+                        onChange={(e) => setShopName(e.target.value)}
+                        required={!isLogin && roleChoice === 'admin'}
+                        className="h-12 bg-background border-input focus:ring-primary"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="joinShopId" className="text-foreground font-medium">Shop ID to Join</Label>
+                      <Input
+                        id="joinShopId"
+                        placeholder="e.g. shop_123456789"
+                        value={joinShopId}
+                        onChange={(e) => setJoinShopId(e.target.value)}
+                        required={!isLogin && roleChoice === 'cashier'}
+                        className="h-12 bg-background border-input focus:ring-primary font-mono text-sm"
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -166,7 +227,23 @@ export default function Login() {
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password" className="text-foreground font-medium">Password</Label>
                   {isLogin && (
-                    <a href="#" className="text-sm font-medium text-primary hover:underline hover:text-primary/80 transition-colors">
+                    <a 
+                      href="#" 
+                      className="text-sm font-medium text-primary hover:underline hover:text-primary/80 transition-colors"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        if (!email) {
+                          alert('Please enter your email address first.');
+                          return;
+                        }
+                        try {
+                          await sendPasswordResetEmail(auth, email);
+                          alert(`Password reset email sent to ${email}. Please check your inbox.`);
+                        } catch (err: any) {
+                          alert(err.message || 'Failed to send reset email.');
+                        }
+                      }}
+                    >
                       Forgot password?
                     </a>
                   )}

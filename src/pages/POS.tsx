@@ -388,7 +388,7 @@ export default function POS() {
                     ? 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900' 
                     : 'bg-muted/30 border-muted relative overflow-hidden'
                 }`}>
-                  {!paymentVerified && (
+                  {shopData?.plan === 'pro' && !paymentVerified && (
                     <div className="absolute inset-0 pointer-events-none opacity-20">
                       <div className="w-full h-[2px] bg-primary animate-[scan_2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(var(--primary),0.8)]"></div>
                     </div>
@@ -398,7 +398,11 @@ export default function POS() {
                     {paymentVerified ? (
                       <><CheckCircle2 className="h-5 w-5" /> Payment Verified Successfully</>
                     ) : (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Listening for Payment...</>
+                      shopData?.plan === 'pro' ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Listening for Payment...</>
+                      ) : (
+                        <span>Scan to Pay with UPI</span>
+                      )
                     )}
                   </div>
                   
@@ -411,13 +415,23 @@ export default function POS() {
                   </div>
                   
                   {!paymentVerified ? (
-                    <Button 
-                      variant="default" 
-                      className="w-full h-10 font-bold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 shadow-none"
-                      onClick={() => setPaymentVerified(true)}
-                    >
-                      Verify Manually
-                    </Button>
+                    shopData?.plan === 'pro' ? (
+                      <Button 
+                        variant="default" 
+                        className="w-full h-10 font-bold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 shadow-none"
+                        onClick={() => setPaymentVerified(true)}
+                      >
+                        Verify Manually
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="default" 
+                        className="w-full h-10 font-bold bg-yellow-500 hover:bg-yellow-600 text-black shadow-md"
+                        onClick={() => window.location.href = '/upgrade'}
+                      >
+                        👑 Upgrade for Smart UPI
+                      </Button>
+                    )
                   ) : (
                     <p className="text-xs text-green-600 dark:text-green-400 font-bold uppercase tracking-wider">Transaction Complete</p>
                   )}
@@ -527,12 +541,20 @@ export default function POS() {
             autoFocus
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="rounded-full shadow-sm hover:border-primary/50 text-primary bg-primary/5 h-10 w-10"
-              onClick={() => setShowScanner(true)}
-            >
+              <Button
+                variant="outline"
+                size="icon"
+                className="rounded-full shadow-sm hover:border-primary/50 text-primary bg-primary/5 h-10 w-10"
+                onClick={() => {
+                  if (shopData?.plan === 'pro') {
+                    setShowScanner(true);
+                  } else {
+                    if (confirm("Barcode scanning is a PRO feature. Upgrade to unlock!")) {
+                      window.location.href = '/upgrade';
+                    }
+                  }
+                }}
+              >
               <Camera className="h-5 w-5" />
             </Button>
             {voiceSupported && (
@@ -765,7 +787,7 @@ export default function POS() {
 
       {/* Hidden Receipt Template for Thermal Printing */}
       {checkoutResult && shopData && (
-        <div id="receipt-template" className="hidden">
+        <div id="receipt-template" className="hidden print:block absolute left-0 top-0 w-[80mm] bg-white text-black text-[12px] leading-[1.2] font-mono z-0">
           <div style={{ textAlign: 'center', marginBottom: '10px' }}>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{shopData.shopName || shopData.name}</h2>
             {shopData.address && <p style={{ margin: 0 }}>{shopData.address}</p>}

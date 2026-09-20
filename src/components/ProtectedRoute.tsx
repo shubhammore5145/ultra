@@ -17,7 +17,7 @@ export const ProtectedRoute = ({ allowedRoles }: { allowedRoles?: string[] }) =>
   }
 
   if (allowedRoles && !allowedRoles.includes(userData.role)) {
-    return <Navigate to="/unauthorized" replace />;
+    return <Navigate to="/pos" replace />;
   }
 
   return <Outlet />;

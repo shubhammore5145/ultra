@@ -19,6 +19,8 @@ export interface Shop {
   address: string;
   gstNumber: string;
   upiId?: string;
+  plan?: 'free' | 'pro';
+  planExpiry?: string; // ISO String date for subscription expiry
   settings: {
     invoicePrefix: string;
     currency: string;

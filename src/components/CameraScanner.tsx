@@ -134,20 +134,6 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     const handleFoundCode = (code: string) => {
       if (!isMounted.current || scanSuccessRef.current) return;
       
-      // Double Validation: Ensure we read the same barcode twice consecutively
-      if (lastScannedCodeRef.current === code) {
-        scanCountRef.current += 1;
-      } else {
-        lastScannedCodeRef.current = code;
-        scanCountRef.current = 1;
-      }
-
-      // Need 2 consecutive reads to confirm (prevents half-reads of small codes)
-      if (scanCountRef.current < 2) {
-        console.log('[CameraScanner] Validating barcode...', code);
-        return;
-      }
-
       console.log('[CameraScanner] Barcode confirmed:', code);
 
       if (zxingControls) {

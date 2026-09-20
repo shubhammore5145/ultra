@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [udharCustomersCount, setUdharCustomersCount] = useState(0);
   const [newCustomersToday, setNewCustomersToday] = useState(0);
   const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -120,15 +121,18 @@ export default function Dashboard() {
         const productsSnapshot = await getDocs(productsQuery);
         
         const lowStock: Product[] = [];
+        const allProds: Product[] = [];
         productsSnapshot.forEach((doc) => {
-          const product = doc.data() as Product;
+          const product = { ...doc.data(), id: doc.id } as Product;
+          allProds.push(product);
           const minStock = product.minStock || 5;
           if (product.stock <= minStock) {
-            lowStock.push({ ...product, id: doc.id });
+            lowStock.push(product);
           }
         });
 
-        setLowStockItems(lowStock);
+        setAllProducts(allProds);
+        setLowStockItems(lowStock.sort((a, b) => a.stock - b.stock));
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -142,13 +146,13 @@ export default function Dashboard() {
   // In a real app, this would use an ML model or complex SQL grouping over past sales.
   const getAIInsights = () => {
     // Restock Prediction: Items running out soon
-    const restockItems = products.filter(p => p.stock <= (p.minStock || 5)).slice(0, 3);
+    const restockItems = allProducts.filter(p => p.stock <= (p.minStock || 5)).slice(0, 3);
     
     // Trending: Items with high price and low stock, or just some random top items
-    const trendingItems = [...products].sort((a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0)).slice(0, 2);
+    const trendingItems = [...allProducts].sort((a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0)).slice(0, 2);
     
     // Dead Stock: Items with high stock
-    const deadStock = [...products].sort((a, b) => b.stock - a.stock).slice(0, 2);
+    const deadStock = [...allProducts].sort((a, b) => b.stock - a.stock).slice(0, 2);
 
     return { restockItems, trendingItems, deadStock };
   };

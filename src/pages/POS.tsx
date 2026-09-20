@@ -16,6 +16,7 @@ export default function POS() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,7 +32,7 @@ export default function POS() {
   const [isQuickAdding, setIsQuickAdding] = useState(false);
 
   // Checkout Success State
-  const [checkoutResult, setCheckoutResult] = useState<{ id: string, total: number, items: CartItem[] } | null>(null);
+  const [checkoutResult, setCheckoutResult] = useState<{ id: string, total: number, items: CartItem[], customerPhone: string } | null>(null);
 
   // Camera Scanner State
   const [showScanner, setShowScanner] = useState(false);
@@ -189,6 +190,7 @@ export default function POS() {
         taxAmount: tax,
         items: cart,
         paymentMethod: 'cash',
+        customerPhone: customerPhone.trim() || null,
         createdAt: new Date().toISOString()
       });
 
@@ -205,12 +207,14 @@ export default function POS() {
       setCheckoutResult({
         id: saleRef.id,
         total,
-        items: [...cart]
+        items: [...cart],
+        customerPhone: customerPhone.trim()
       });
 
       // Clear cart on success
       setCart([]);
       setSearchTerm('');
+      setCustomerPhone('');
     } catch (error) {
       console.error('Checkout failed:', error);
       alert('Checkout failed. Please try again.');
@@ -228,7 +232,7 @@ export default function POS() {
   const handleWhatsAppBill = () => {
     if (!checkoutResult || !shopData) return;
     
-    let text = `*${shopData.shopName}*\n`;
+    let text = `*${shopData.name || 'Kirana Store'}*\n`;
     text += `Invoice: #${checkoutResult.id.slice(-6).toUpperCase()}\n\n`;
     text += `*Items:*\n`;
     checkoutResult.items.forEach(item => {
@@ -238,8 +242,12 @@ export default function POS() {
     text += `Thank you for shopping with us!`;
 
     const encodedText = encodeURIComponent(text);
-    // Open WhatsApp (works on web and mobile)
-    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+    
+    // If we have a customer phone, send directly to them. Otherwise, let user pick contact.
+    const phone = checkoutResult.customerPhone;
+    const url = phone ? `https://wa.me/91${phone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
+    
+    window.open(url, '_blank');
   };
 
   const handleVoiceSearch = () => {
@@ -457,8 +465,8 @@ export default function POS() {
       </div>
 
       {/* Cart Section */}
-      <div className="w-full md:w-[400px] flex flex-col bg-white dark:bg-gray-800 rounded-xl border shadow-sm h-full">
-        <div className="p-4 border-b bg-gray-50/50 dark:bg-gray-900/50 rounded-t-xl flex items-center justify-between">
+      <div className="w-full md:w-[400px] flex flex-col bg-card text-card-foreground rounded-xl border shadow-sm h-full">
+        <div className="p-4 border-b bg-muted/30 rounded-t-xl flex items-center justify-between">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" /> Current Bill
           </h2>
@@ -501,7 +509,18 @@ export default function POS() {
           )}
         </div>
 
-        <div className="p-4 border-t bg-gray-50 dark:bg-gray-800 rounded-b-xl space-y-3">
+        <div className="p-4 border-t bg-muted/10 rounded-b-xl space-y-3">
+          <div className="flex flex-col gap-2 pb-2 border-b">
+            <label className="text-xs font-medium text-muted-foreground">Customer Mobile No. (For WhatsApp Bill)</label>
+            <Input 
+              placeholder="e.g. 9876543210" 
+              type="tel"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              className="h-10 text-sm"
+            />
+          </div>
+
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span className="font-medium">₹{subtotal.toFixed(2)}</span>
@@ -515,15 +534,9 @@ export default function POS() {
             <span className="text-primary">₹{total.toFixed(2)}</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Button variant="outline" className="h-12 flex flex-col gap-1 text-xs">
-              <Users className="h-4 w-4" /> Add Customer
-            </Button>
-            <Button variant="outline" className="h-12 flex flex-col gap-1 text-xs">
-              <FileText className="h-4 w-4" /> Save Draft
-            </Button>
+          <div className="pt-2">
             <Button 
-              className="col-span-2 h-14 text-lg font-bold" 
+              className="w-full h-14 text-lg font-bold" 
               disabled={cart.length === 0 || checkoutLoading}
               onClick={handleCheckout}
             >

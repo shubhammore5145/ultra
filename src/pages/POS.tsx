@@ -510,7 +510,7 @@ export default function POS() {
       </div>
 
       {/* Cart Section */}
-      <div className="w-full md:w-[400px] flex flex-col bg-card text-card-foreground rounded-xl border shadow-sm h-full">
+      <div className="w-full md:w-[400px] flex flex-col bg-card text-card-foreground rounded-xl border shadow-sm h-full pb-64 md:pb-0">
         <div className="p-4 border-b bg-muted/30 rounded-t-xl flex items-center justify-between">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" /> Current Bill
@@ -554,7 +554,7 @@ export default function POS() {
           )}
         </div>
 
-        <div className="p-4 border-t bg-muted/10 rounded-b-xl space-y-3">
+        <div className="p-4 border-t bg-muted/10 md:rounded-b-xl space-y-3 fixed bottom-[60px] left-0 right-0 z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.1)] md:static md:shadow-none md:z-auto md:bottom-auto">
           <div className="flex flex-col gap-2 pb-2 border-b">
             <label className="text-xs font-medium text-muted-foreground">Customer Mobile No. (For WhatsApp Bill)</label>
             <Input 
@@ -562,7 +562,7 @@ export default function POS() {
               type="tel"
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
-              className="h-10 text-sm"
+              className="h-10 text-sm bg-background"
             />
           </div>
 
@@ -570,18 +570,14 @@ export default function POS() {
             <span className="text-muted-foreground">Subtotal</span>
             <span className="font-medium">₹{subtotal.toFixed(2)}</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Tax</span>
-            <span className="font-medium">₹{tax.toFixed(2)}</span>
-          </div>
-          <div className="flex items-center justify-between text-lg font-bold pt-2 border-t">
+          <div className="flex items-center justify-between text-lg font-bold pt-1 border-t">
             <span>Total</span>
             <span className="text-primary">₹{total.toFixed(2)}</span>
           </div>
 
           <div className="pt-2">
             <Button 
-              className="w-full h-14 text-lg font-bold" 
+              className="w-full h-14 text-lg font-bold shadow-md" 
               disabled={cart.length === 0 || checkoutLoading}
               onClick={handleCheckout}
             >

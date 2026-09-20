@@ -34,6 +34,7 @@ export default function POS() {
   const [quickAddPrice, setQuickAddPrice] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'barcoded' | 'loose'>('all');
   const [isQuickAdding, setIsQuickAdding] = useState(false);
+  const [paymentVerified, setPaymentVerified] = useState(false);
 
   // Checkout Success State
   const [checkoutResult, setCheckoutResult] = useState<{ 
@@ -271,6 +272,7 @@ export default function POS() {
         items: [...cart],
         customerPhone: customerPhone.trim()
       });
+      setPaymentVerified(false);
 
       // Clear cart on success
       setCart([]);
@@ -381,18 +383,44 @@ export default function POS() {
 
             <div className="p-6 space-y-6">
               {shopData?.upiId ? (
-                <div className="flex flex-col items-center justify-center space-y-3 bg-muted/30 p-4 rounded-xl border border-muted">
-                  <div className="flex items-center gap-2 text-muted-foreground font-medium text-sm">
-                    <QrCode className="h-4 w-4" /> Scan to Pay with Any App
+                <div className={`flex flex-col items-center justify-center space-y-3 p-4 rounded-xl border transition-all duration-300 ${
+                  paymentVerified 
+                    ? 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900' 
+                    : 'bg-muted/30 border-muted relative overflow-hidden'
+                }`}>
+                  {!paymentVerified && (
+                    <div className="absolute inset-0 pointer-events-none opacity-20">
+                      <div className="w-full h-[2px] bg-primary animate-[scan_2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(var(--primary),0.8)]"></div>
+                    </div>
+                  )}
+
+                  <div className={`flex items-center gap-2 font-medium text-sm transition-colors ${paymentVerified ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                    {paymentVerified ? (
+                      <><CheckCircle2 className="h-5 w-5" /> Payment Verified Successfully</>
+                    ) : (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Listening for Payment...</>
+                    )}
                   </div>
-                  <div className="bg-white p-3 rounded-xl shadow-sm border">
+                  
+                  <div className={`bg-white p-3 rounded-xl shadow-sm border transition-all duration-500 ${paymentVerified ? 'scale-90 opacity-50 blur-[2px]' : 'scale-100 opacity-100'}`}>
                     <QRCodeSVG 
                       value={`upi://pay?pa=${shopData.upiId}&pn=${encodeURIComponent(shopData.shopName || shopData.name || 'Store')}&am=${checkoutResult.total.toFixed(2)}&cu=INR`} 
-                      size={180} 
+                      size={160} 
                       level="H"
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground font-medium">UPI: {shopData.upiId}</p>
+                  
+                  {!paymentVerified ? (
+                    <Button 
+                      variant="default" 
+                      className="w-full h-10 font-bold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 shadow-none"
+                      onClick={() => setPaymentVerified(true)}
+                    >
+                      Verify Manually
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-green-600 dark:text-green-400 font-bold uppercase tracking-wider">Transaction Complete</p>
+                  )}
                 </div>
               ) : (
                 <div className="text-center text-sm text-muted-foreground bg-orange-50 dark:bg-orange-950 p-3 rounded-lg border border-orange-200 dark:border-orange-900">

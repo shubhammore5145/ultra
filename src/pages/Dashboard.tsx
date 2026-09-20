@@ -3,8 +3,12 @@ import {
   IndianRupee, 
   ShoppingCart, 
   TrendingUp, 
-  Users, 
-  AlertTriangle 
+  Wallet,
+  AlertTriangle,
+  BrainCircuit,
+  Sparkles,
+  TrendingDown,
+  PackageMinus
 } from 'lucide-react';
 import {
   LineChart,
@@ -134,6 +138,23 @@ export default function Dashboard() {
 
     fetchDashboardData();
   }, [shopData?.shopId]);
+  // --- AI Insights Computation (Demo Logic) ---
+  // In a real app, this would use an ML model or complex SQL grouping over past sales.
+  const getAIInsights = () => {
+    // Restock Prediction: Items running out soon
+    const restockItems = products.filter(p => p.stock <= (p.minStock || 5)).slice(0, 3);
+    
+    // Trending: Items with high price and low stock, or just some random top items
+    const trendingItems = [...products].sort((a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0)).slice(0, 2);
+    
+    // Dead Stock: Items with high stock
+    const deadStock = [...products].sort((a, b) => b.stock - a.stock).slice(0, 2);
+
+    return { restockItems, trendingItems, deadStock };
+  };
+
+  const aiInsights = getAIInsights();
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -218,6 +239,79 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">₹{totalUdhar.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">From {udharCustomersCount} customer{udharCustomersCount !== 1 ? 's' : ''}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* AI Smart Insights Section */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="col-span-3 bg-gradient-to-r from-indigo-900 to-purple-900 text-white border-none shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-10">
+            <BrainCircuit className="h-48 w-48 -mr-12 -mt-12" />
+          </div>
+          <CardHeader className="relative z-10 pb-2">
+            <CardTitle className="text-xl font-bold flex items-center gap-2">
+              <BrainCircuit className="h-6 w-6 text-purple-300" /> 
+              AI Smart Insights <span className="bg-purple-500/30 text-purple-200 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full">Beta</span>
+            </CardTitle>
+            <p className="text-indigo-200 text-sm">Actionable predictions based on your shop's data</p>
+          </CardHeader>
+          <CardContent className="relative z-10 pt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            {/* Trending */}
+            <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-green-500/20 p-2 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-green-400" />
+                </div>
+                <h3 className="font-bold text-green-400">Fast Moving (Trending)</h3>
+              </div>
+              <ul className="space-y-2">
+                {aiInsights.trendingItems.length > 0 ? aiInsights.trendingItems.map(item => (
+                  <li key={item.id} className="text-sm flex justify-between">
+                    <span className="opacity-90">{item.name}</span>
+                    <span className="font-mono text-green-300 font-bold">₹{item.sellingPrice}</span>
+                  </li>
+                )) : <li className="text-sm opacity-70">Not enough data yet.</li>}
+              </ul>
+            </div>
+
+            {/* Restock Prediction */}
+            <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-orange-500/20 p-2 rounded-lg">
+                  <PackageMinus className="h-5 w-5 text-orange-400" />
+                </div>
+                <h3 className="font-bold text-orange-400">Restock Soon</h3>
+              </div>
+              <ul className="space-y-2">
+                {aiInsights.restockItems.length > 0 ? aiInsights.restockItems.map(item => (
+                  <li key={item.id} className="text-sm flex justify-between">
+                    <span className="opacity-90">{item.name}</span>
+                    <span className="text-orange-300 text-xs bg-orange-500/20 px-2 py-0.5 rounded-md">Only {item.stock} left</span>
+                  </li>
+                )) : <li className="text-sm opacity-70">Stock levels are good!</li>}
+              </ul>
+            </div>
+
+            {/* Dead Stock */}
+            <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-red-500/20 p-2 rounded-lg">
+                  <TrendingDown className="h-5 w-5 text-red-400" />
+                </div>
+                <h3 className="font-bold text-red-400">Dead Stock (Not Selling)</h3>
+              </div>
+              <ul className="space-y-2">
+                {aiInsights.deadStock.length > 0 ? aiInsights.deadStock.map(item => (
+                  <li key={item.id} className="text-sm flex justify-between items-center">
+                    <span className="opacity-90 truncate max-w-[120px]">{item.name}</span>
+                    <span className="text-red-300 text-xs bg-red-500/20 px-2 py-0.5 rounded-md">{item.stock} units stuck</span>
+                  </li>
+                )) : <li className="text-sm opacity-70">No dead stock found.</li>}
+              </ul>
+            </div>
+
           </CardContent>
         </Card>
       </div>

@@ -1,5 +1,5 @@
-// Use environment variable for API URL in production, fallback to localhost for local dev
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Use relative path for API so it works perfectly with Vite proxy or production
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Helper to get token
 const getToken = () => localStorage.getItem('auth_token');

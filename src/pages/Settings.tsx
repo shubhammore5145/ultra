@@ -24,7 +24,7 @@ export default function Settings() {
 
   const fetchWhatsappStatus = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/whatsapp/status');
+      const res = await fetch('/api/whatsapp/status');
       const data = await res.json();
       setWhatsappStatus(data);
     } catch (err) {
@@ -53,7 +53,7 @@ export default function Settings() {
 
   const handleStartWhatsapp = async () => {
     try {
-      await fetch('http://localhost:5000/api/whatsapp/start', { method: 'POST' });
+      await fetch('/api/whatsapp/start', { method: 'POST' });
       fetchWhatsappStatus();
     } catch (err) {
       alert('Failed to start WhatsApp bot.');
@@ -62,7 +62,7 @@ export default function Settings() {
 
   const handleLogoutWhatsapp = async () => {
     try {
-      await fetch('http://localhost:5000/api/whatsapp/logout', { method: 'POST' });
+      await fetch('/api/whatsapp/logout', { method: 'POST' });
       fetchWhatsappStatus();
     } catch (err) {
       alert('Failed to logout WhatsApp bot.');

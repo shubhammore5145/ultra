@@ -12,7 +12,7 @@ export default function Receipt() {
   useEffect(() => {
     const fetchReceipt = async () => {
       try {
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const API_URL = import.meta.env.VITE_API_URL || '/api';
         const res = await fetch(`${API_URL}/public/receipt/${id}`);
         if (!res.ok) throw new Error('Receipt not found');
         const data = await res.json();

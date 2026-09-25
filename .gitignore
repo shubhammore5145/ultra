@@ -25,3 +25,6 @@ dist-ssr
 
 .env
 backend/.env
+
+backend/.wwebjs_auth/
+backend/.wwebjs_cache/

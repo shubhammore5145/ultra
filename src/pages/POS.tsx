@@ -341,7 +341,7 @@ export default function POS() {
     
     // Check if auto bot is enabled
     try {
-      const res = await fetch('http://localhost:5000/api/whatsapp/status');
+      const res = await fetch('/api/whatsapp/status');
       const data = await res.json();
       
       if (data.status === 'CONNECTED' || data.status === 'AUTHENTICATED') {
@@ -350,7 +350,7 @@ export default function POS() {
           return;
         }
         
-        const sendRes = await fetch('http://localhost:5000/api/whatsapp/send', {
+        const sendRes = await fetch('/api/whatsapp/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone, message: text })

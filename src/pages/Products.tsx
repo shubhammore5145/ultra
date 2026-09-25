@@ -11,10 +11,10 @@ import {
   Edit,
   Trash,
   Barcode,
-  Loader2
+  Loader2,
+  Save
 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
 
@@ -23,43 +23,89 @@ export default function Products() {
   const [searchTerm, setSearchTerm] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Bulk Edit State
+  const [bulkEditMode, setBulkEditMode] = useState(false);
+  const [editedProducts, setEditedProducts] = useState<Record<string, Partial<Product>>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!shopData?.shopId) return;
 
-    const q = query(
-      collection(db, 'shops', shopData.shopId, 'products'),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const prods: Product[] = [];
-      snapshot.forEach((doc) => {
-        prods.push(doc.data() as Product);
-      });
-      setProducts(prods);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    const fetchProducts = async () => {
+      try {
+        const data = await api.products.list();
+        setProducts(data);
+      } catch (err) {
+        console.error('Failed to load products', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchProducts();
   }, [shopData?.shopId]);
 
   const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.barcode?.includes(searchTerm) ||
-    p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (p.barcode || '').includes(searchTerm) ||
+    (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleDelete = async (id: string) => {
     if (!shopData?.shopId) return;
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
-        await deleteDoc(doc(db, 'shops', shopData.shopId, 'products', id));
+        await api.products.delete(id);
+        setProducts(products.filter(p => p.id !== id));
       } catch (error) {
         console.error('Failed to delete product', error);
         alert('Failed to delete product');
       }
+    }
+  };
+
+  const handleBulkChange = (id: string, field: keyof Product, value: any) => {
+    setEditedProducts(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSaveBulkEdits = async () => {
+    const idsToUpdate = Object.keys(editedProducts);
+    if (idsToUpdate.length === 0) {
+      setBulkEditMode(false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await Promise.all(idsToUpdate.map(async (id) => {
+        const changes = editedProducts[id];
+        const originalProduct = products.find(p => p.id === id);
+        if (originalProduct) {
+          const updatedProduct = { ...originalProduct, ...changes };
+          await api.products.update(id, updatedProduct);
+        }
+      }));
+
+      // Refresh products
+      const data = await api.products.list();
+      setProducts(data);
+      setEditedProducts({});
+      setBulkEditMode(false);
+      alert('Prices and Stock updated successfully!');
+    } catch (err) {
+      console.error('Failed to save bulk edits', err);
+      alert('Failed to save changes');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -75,15 +121,21 @@ export default function Products() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="hidden md:flex">
-            <Upload className="mr-2 h-4 w-4" /> Import
-          </Button>
-          <Button variant="outline" size="sm" className="hidden md:flex">
-            <Download className="mr-2 h-4 w-4" /> Export
-          </Button>
-          <Button size="sm" onClick={() => navigate('/products/new')}>
-            <Plus className="mr-2 h-4 w-4" /> Add Product
-          </Button>
+          {bulkEditMode ? (
+            <Button size="sm" onClick={handleSaveBulkEdits} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white">
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Changes
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setBulkEditMode(true)} className="hidden md:flex text-blue-600 border-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                <Edit className="mr-2 h-4 w-4" /> Bulk Edit
+              </Button>
+              <Button size="sm" onClick={() => navigate('/products/new')}>
+                <Plus className="mr-2 h-4 w-4" /> Add Product
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -138,13 +190,26 @@ export default function Products() {
                 filteredProducts.map((product) => (
                   <tr key={product.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">
-                        {product.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground flex gap-2 mt-0.5">
-                        <span>SKU: {product.sku || 'N/A'}</span>
-                        <span>•</span>
-                        <span>Bar: {product.barcode || 'N/A'}</span>
+                      <div className="flex items-center gap-3">
+                        {product.imageUrl ? (
+                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-white">
+                            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="h-10 w-10 shrink-0 flex items-center justify-center rounded-md border bg-muted/50 text-muted-foreground text-xs font-medium">
+                            {product.name ? product.name.charAt(0).toUpperCase() : '?'}
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-medium text-foreground">
+                            {product.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground flex gap-2 mt-0.5">
+                            <span>SKU: {product.sku || 'N/A'}</span>
+                            <span>•</span>
+                            <span>Bar: {product.barcode || 'N/A'}</span>
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -153,16 +218,36 @@ export default function Products() {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-medium">
-                      ₹{(product.sellingPrice || 0).toFixed(2)}
+                      {bulkEditMode ? (
+                        <div className="flex flex-col gap-1 w-24">
+                          <Input 
+                            type="number" 
+                            className="h-7 text-xs" 
+                            defaultValue={product.sellingPrice} 
+                            onChange={(e) => handleBulkChange(product.id, 'sellingPrice', Number(e.target.value))}
+                          />
+                        </div>
+                      ) : (
+                        `₹${Number(product.sellingPrice || 0).toFixed(2)}`
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        product.stock > (product.minStock || 5) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                        product.stock > 0 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      }`}>
-                        {product.stock || 0} {product.unit || 'units'}
-                      </span>
+                      {bulkEditMode ? (
+                        <Input 
+                          type="number" 
+                          className="h-7 text-xs w-20" 
+                          defaultValue={product.stock} 
+                          onChange={(e) => handleBulkChange(product.id, 'stock', Number(e.target.value))}
+                        />
+                      ) : (
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          Number(product.stock || 0) > Number(product.minStock || 5) ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                          Number(product.stock || 0) > 0 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        }`}>
+                          {product.stock || 0} {product.unit || 'units'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">

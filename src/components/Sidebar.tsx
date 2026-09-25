@@ -10,7 +10,8 @@ import {
   ArrowLeftRight,
   Wallet,
   Crown,
-  HelpCircle
+  HelpCircle,
+  ClipboardList
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +20,7 @@ const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'] },
   { name: 'POS Billing', href: '/pos', icon: ShoppingCart, roles: ['admin', 'cashier'] },
   { name: 'Products', href: '/products', icon: Package, roles: ['admin', 'cashier'] },
+  { name: 'Inventory & AI', href: '/inventory', icon: ClipboardList, roles: ['admin', 'cashier'] },
   { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'cashier'] },
   { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'cashier'] },
   { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, roles: ['admin'] },
@@ -26,7 +28,6 @@ const navItems = [
   { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'] },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['admin'] },
   { name: 'Support', href: '/support', icon: HelpCircle, roles: ['admin', 'cashier'] },
-  { name: 'Upgrade', href: '/upgrade', icon: Crown, roles: ['admin'] },
 ];
 
 /** Desktop Sidebar */

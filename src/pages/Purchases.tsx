@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ShoppingCart, Printer, AlertTriangle, Loader2 } from 'lucide-react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import type { Product } from '../types';
@@ -14,26 +13,19 @@ export default function Purchases() {
   useEffect(() => {
     if (!shopData?.shopId) return;
 
-    // We can't do a direct firestore query like `where('stock', '<', 'minStock')` 
-    // because Firestore doesn't support comparing two fields in a where clause yet.
-    // So we fetch all products or maintain a boolean 'isLowStock' field. 
-    // Given kirana scale, fetching all products and filtering locally is fine for now, 
-    // or filtering locally on an existing listener. We'll fetch all products here for simplicity.
+    const fetchLowStockProducts = async () => {
+      try {
+        const prods = await api.products.list();
+        const lowStock = prods.filter((p: Product) => (p.stock || 0) <= (p.minStock || 0));
+        setLowStockProducts(lowStock);
+      } catch (err) {
+        console.error('Failed to load products', err);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    const q = query(collection(db, 'shops', shopData.shopId, 'products'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const prods: Product[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as Product;
-        if ((data.stock || 0) <= (data.minStock || 0)) {
-          prods.push({ ...data, id: doc.id });
-        }
-      });
-      setLowStockProducts(prods);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    fetchLowStockProducts();
   }, [shopData?.shopId]);
 
   const handlePrint = () => {

@@ -43,6 +43,7 @@ export interface Product {
   sku: string;
   barcode: string;
   expiryDate?: string;
+  imageUrl?: string;
   createdAt: string;
 }
 
@@ -79,6 +80,7 @@ export interface Customer {
   phone: string;
   address: string;
   balance: number; // Positive means they owe money (Udhar)
+  loyaltyPoints?: number;
   visits?: number;
   totalSpent?: number;
   createdAt: string;

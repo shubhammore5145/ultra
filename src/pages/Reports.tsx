@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart3, TrendingUp, DollarSign, PackageOpen, Loader2 } from 'lucide-react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { db } from '../lib/firebase';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Transaction, Product } from '../types';
 
@@ -17,31 +16,22 @@ export default function Reports() {
   useEffect(() => {
     if (!shopData?.shopId) return;
 
-    let salesLoaded = false;
-    let productsLoaded = false;
-
-    const salesQ = query(collection(db, 'shops', shopData.shopId, 'sales'));
-    const unSubSales = onSnapshot(salesQ, (snapshot) => {
-      const s: Transaction[] = [];
-      snapshot.forEach(doc => s.push({ id: doc.id, ...doc.data() } as Transaction));
-      setSales(s);
-      salesLoaded = true;
-      if (productsLoaded) setLoading(false);
-    });
-
-    const productsQ = query(collection(db, 'shops', shopData.shopId, 'products'));
-    const unSubProducts = onSnapshot(productsQ, (snapshot) => {
-      const p: Product[] = [];
-      snapshot.forEach(doc => p.push({ id: doc.id, ...doc.data() } as Product));
-      setProducts(p);
-      productsLoaded = true;
-      if (salesLoaded) setLoading(false);
-    });
-
-    return () => {
-      unSubSales();
-      unSubProducts();
+    const fetchData = async () => {
+      try {
+        const [salesData, productsData] = await Promise.all([
+          api.transactions.list(),
+          api.products.list()
+        ]);
+        setSales(salesData);
+        setProducts(productsData);
+      } catch (err) {
+        console.error('Failed to load report data', err);
+      } finally {
+        setLoading(false);
+      }
     };
+    
+    fetchData();
   }, [shopData?.shopId]);
 
   // Derived Analytics Data
@@ -60,10 +50,10 @@ export default function Reports() {
     const itemMap = new Map<string, { name: string, qty: number, revenue: number }>();
 
     sales.forEach(sale => {
-      rev += sale.totalAmount;
+      rev += Number(sale.totalAmount || 0);
       
       const dateStr = new Date(sale.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      daysMap.set(dateStr, (daysMap.get(dateStr) || 0) + sale.totalAmount);
+      daysMap.set(dateStr, (daysMap.get(dateStr) || 0) + Number(sale.totalAmount || 0));
 
       sale.items.forEach(item => {
         // Calculate profit if we know purchase price

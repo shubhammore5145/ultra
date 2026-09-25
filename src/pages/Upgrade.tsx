@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+// Firebase removed
 import { Button } from '../components/ui/button';
 import { Check, Crown, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../lib/api';
 
 declare global {
   interface Window {
@@ -35,10 +35,7 @@ export default function Upgrade() {
           const expiryDate = new Date();
           expiryDate.setDate(expiryDate.getDate() + days);
 
-          await updateDoc(doc(db, 'shops', shopData.shopId), {
-            plan: 'pro',
-            planExpiry: expiryDate.toISOString()
-          });
+          await api.shops.upgradePlan(`PRO - ${planName}`);
           alert(`🎉 Congratulations! Your shop is now on the PRO plan for ${planName}!`);
           navigate('/');
         } catch (err) {

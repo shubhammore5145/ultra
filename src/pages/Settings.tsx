@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle } from 'lucide-react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone } from 'lucide-react';
+// Firebase removed
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 
 export default function Settings() {
   const { shopData } = useAuth();
@@ -20,32 +20,54 @@ export default function Settings() {
     upiId: ''
   });
 
-  useEffect(() => {
-    const fetchShopDetails = async () => {
-      if (!shopData?.shopId) return;
-      try {
-        const docRef = doc(db, 'shops', shopData.shopId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setFormData({
-            shopName: data.shopName || '',
-            ownerName: data.ownerName || '',
-            phone: data.phone || '',
-            address: data.address || '',
-            gstNumber: data.gstNumber || '',
-            upiId: data.upiId || ''
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching shop details:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const [whatsappStatus, setWhatsappStatus] = useState<any>(null);
 
-    fetchShopDetails();
-  }, [shopData?.shopId]);
+  const fetchWhatsappStatus = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/whatsapp/status');
+      const data = await res.json();
+      setWhatsappStatus(data);
+    } catch (err) {
+      console.error('Error fetching WA status', err);
+    }
+  };
+
+  useEffect(() => {
+    if (shopData) {
+      setFormData({
+        shopName: shopData.shopName || shopData.name || '',
+        ownerName: shopData.ownerName || '',
+        phone: shopData.phone || '',
+        address: shopData.address || '',
+        gstNumber: shopData.gstNumber || '',
+        upiId: shopData.upiId || ''
+      });
+      setLoading(false);
+      
+      // Fetch status every 3 seconds
+      fetchWhatsappStatus();
+      const interval = setInterval(fetchWhatsappStatus, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [shopData]);
+
+  const handleStartWhatsapp = async () => {
+    try {
+      await fetch('http://localhost:5000/api/whatsapp/start', { method: 'POST' });
+      fetchWhatsappStatus();
+    } catch (err) {
+      alert('Failed to start WhatsApp bot.');
+    }
+  };
+
+  const handleLogoutWhatsapp = async () => {
+    try {
+      await fetch('http://localhost:5000/api/whatsapp/logout', { method: 'POST' });
+      fetchWhatsappStatus();
+    } catch (err) {
+      alert('Failed to logout WhatsApp bot.');
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,9 +75,14 @@ export default function Settings() {
 
     setSaving(true);
     try {
-      const docRef = doc(db, 'shops', shopData.shopId);
-      await updateDoc(docRef, formData);
-      alert('Shop settings updated successfully!');
+      await api.shops.update({
+        name: formData.shopName,
+        ownerName: formData.ownerName,
+        phone: formData.phone,
+        address: formData.address,
+        upiId: formData.upiId
+      });
+      alert("Settings updated successfully!");
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Failed to save settings.');
@@ -83,17 +110,9 @@ export default function Settings() {
           </p>
         </div>
         
-        {shopData?.plan === 'pro' ? (
-          <div className="bg-background px-4 py-2 rounded-lg border font-mono font-bold select-all flex-shrink-0 text-foreground">
-            {shopData?.shopId}
-          </div>
-        ) : (
-          <div className="flex-shrink-0">
-            <Button onClick={() => window.location.href = '/upgrade'} className="shadow-md bg-yellow-500 hover:bg-yellow-600 text-black">
-              👑 Upgrade to Pro to Add Staff
-            </Button>
-          </div>
-        )}
+        <div className="bg-background px-4 py-2 rounded-lg border font-mono font-bold select-all flex-shrink-0 text-foreground">
+          {shopData?.shopId}
+        </div>
       </div>
 
       {loading ? (
@@ -227,6 +246,52 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* WhatsApp Bot Section */}
+      <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
+    <div className="p-6 border-b bg-green-500/10">
+      <h2 className="text-xl font-bold flex items-center gap-2 text-green-600">
+        <Smartphone className="h-6 w-6" /> Auto WhatsApp Bot
+      </h2>
+      <p className="text-sm text-muted-foreground mt-1">Scan the QR code to automatically send bills to customers without clicking "Send".</p>
     </div>
-  );
+    <div className="p-6">
+      <div className="flex flex-col items-center justify-center p-6 border rounded-xl bg-background text-center">
+        {!whatsappStatus || whatsappStatus.status === 'DISCONNECTED' ? (
+          <>
+            <p className="text-muted-foreground mb-4">Bot is currently disconnected.</p>
+            <Button onClick={handleStartWhatsapp} className="bg-green-600 hover:bg-green-700 text-white">Start WhatsApp Bot</Button>
+          </>
+        ) : whatsappStatus.status === 'INITIALIZING' ? (
+          <>
+            <Loader2 className="h-10 w-10 animate-spin text-green-600 mb-4" />
+            <p className="text-muted-foreground">Initializing WhatsApp Client... Please wait.</p>
+          </>
+        ) : whatsappStatus.status === 'NEEDS_QR' ? (
+          <>
+            <p className="font-bold text-lg mb-4">Scan this QR Code in WhatsApp App</p>
+            {whatsappStatus.qr ? (
+              <div className="p-4 bg-white rounded-lg border">
+                <img src={whatsappStatus.qr} alt="WhatsApp QR Code" className="w-64 h-64" />
+              </div>
+            ) : (
+              <Loader2 className="h-8 w-8 animate-spin" />
+            )}
+            <p className="text-sm text-muted-foreground mt-4">Open WhatsApp {'->'} Linked Devices {'->'} Link a Device</p>
+          </>
+        ) : whatsappStatus.status === 'AUTHENTICATED' || whatsappStatus.status === 'CONNECTED' ? (
+          <>
+            <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
+            <h3 className="text-xl font-bold text-green-600 mb-2">Connected & Ready!</h3>
+            <p className="text-muted-foreground mb-6">Your bot is active. Bills will be sent automatically.</p>
+            <Button onClick={handleLogoutWhatsapp} variant="outline" className="text-red-500 hover:text-red-600 hover:bg-red-50">Disconnect Bot</Button>
+          </>
+        ) : (
+          <p>Unknown Status: {whatsappStatus.status}</p>
+        )}
+      </div>
+    </div>
+  </div>
+</div>
+);
 }

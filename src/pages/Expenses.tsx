@@ -10,8 +10,7 @@ import {
   IndianRupee,
   FileText
 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, doc, deleteDoc, addDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Expense } from '../types';
 
@@ -33,21 +32,18 @@ export default function Expenses() {
   useEffect(() => {
     if (!shopData?.shopId) return;
 
-    const q = query(
-      collection(db, 'shops', shopData.shopId, 'expenses'),
-      orderBy('date', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const exp: Expense[] = [];
-      snapshot.forEach((doc) => {
-        exp.push({ id: doc.id, ...doc.data() } as Expense);
-      });
-      setExpenses(exp);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    const fetchExpenses = async () => {
+      try {
+        const data = await api.expenses.list();
+        setExpenses(data);
+      } catch (err) {
+        console.error('Failed to load expenses', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchExpenses();
   }, [shopData?.shopId]);
 
   const handleAddExpense = async (e: React.FormEvent) => {
@@ -56,15 +52,17 @@ export default function Expenses() {
     
     setIsAdding(true);
     try {
-      await addDoc(collection(db, 'shops', shopData.shopId, 'expenses'), {
-        shopId: shopData.shopId,
+      await api.expenses.create({
+        id: crypto.randomUUID(),
         category,
         amount: Number(amount),
         description,
         date: date,
-        addedBy: user.uid,
         createdAt: new Date().toISOString()
       });
+      
+      const data = await api.expenses.list();
+      setExpenses(data);
       
       // Reset form
       setAmount('');
@@ -82,11 +80,17 @@ export default function Expenses() {
   const handleDelete = async (id: string) => {
     if (!shopData?.shopId) return;
     if (confirm('Are you sure you want to delete this expense?')) {
-      await deleteDoc(doc(db, 'shops', shopData.shopId, 'expenses', id));
+      try {
+        await api.expenses.delete(id);
+        setExpenses(expenses.filter(e => e.id !== id));
+      } catch (error) {
+        console.error('Failed to delete expense', error);
+        alert('Failed to delete expense');
+      }
     }
   };
 
-  const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -225,7 +229,7 @@ export default function Expenses() {
                       {expense.description || '-'}
                     </td>
                     <td className="px-4 py-3 font-medium text-red-600 dark:text-red-400">
-                      ₹{expense.amount.toFixed(2)}
+                      ₹{Number(expense.amount || 0).toFixed(2)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleDelete(expense.id)}>

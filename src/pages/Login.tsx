@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -13,6 +12,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // Form State
   const [email, setEmail] = useState('');
@@ -29,7 +29,8 @@ export default function Login() {
 
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        const res = await api.auth.login({ email, password });
+        login(res.token, res.user);
         navigate('/');
       } else {
         // Sign Up Flow
@@ -37,53 +38,19 @@ export default function Login() {
           throw new Error('Please enter the Shop ID to join.');
         }
 
-        // Verify Shop ID if joining
-        if (roleChoice === 'cashier') {
-          const shopRef = doc(db, 'shops', joinShopId.trim());
-          const shopSnap = await getDoc(shopRef);
-          if (!shopSnap.exists()) {
-            throw new Error('Invalid Shop ID. Shop not found.');
-          }
-
-          // Check if cashier limit (3) is reached
-          const q = query(collection(db, 'users'), where('shopId', '==', joinShopId.trim()), where('role', '==', 'cashier'));
-          const querySnapshot = await getDocs(q);
-          if (querySnapshot.size >= 3) {
-            throw new Error('This shop has reached the maximum limit of 3 cashiers.');
-          }
-        }
-
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        let finalShopId = '';
-
-        if (roleChoice === 'admin') {
-          // Generate a random shop ID
-          finalShopId = `shop_${Date.now()}`;
-          // Create Shop Document
-          await setDoc(doc(db, 'shops', finalShopId), {
-            id: finalShopId,
-            name: shopName,
-            address: '',
-            phone: '',
-            gstNumber: '',
-            createdAt: new Date().toISOString()
-          });
-        } else {
-          finalShopId = joinShopId.trim();
-        }
-
-        // Create User Document
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          name: name,
+        const signupData = {
+          email,
+          password,
+          displayName: name,
+          shopName: roleChoice === 'admin' ? shopName : undefined,
+          ownerName: name, // assuming user is owner
+          phone: '',
           role: roleChoice,
-          shopId: finalShopId,
-          createdAt: new Date().toISOString()
-        });
+          shopId: roleChoice === 'cashier' ? joinShopId.trim() : undefined
+        };
 
+        const res = await api.auth.signup(signupData);
+        login(res.token, res.user);
         navigate('/');
       }
     } catch (err: any) {
@@ -230,18 +197,9 @@ export default function Login() {
                     <a 
                       href="#" 
                       className="text-sm font-medium text-primary hover:underline hover:text-primary/80 transition-colors"
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.preventDefault();
-                        if (!email) {
-                          alert('Please enter your email address first.');
-                          return;
-                        }
-                        try {
-                          await sendPasswordResetEmail(auth, email);
-                          alert(`Password reset email sent to ${email}. Please check your inbox.`);
-                        } catch (err: any) {
-                          alert(err.message || 'Failed to send reset email.');
-                        }
+                        alert('Password reset requires SMTP setup in the backend. Contact Admin.');
                       }}
                     >
                       Forgot password?

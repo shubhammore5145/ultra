@@ -2,16 +2,16 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
-import { auth } from '../lib/firebase';
+// Firebase removed
 import { LogOut, Store, Menu } from 'lucide-react';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
 
 export default function Layout() {
-  const { userData, shopData } = useAuth();
+  const { userData, shopData, logout } = useAuth();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const handleLogout = () => {
-    auth.signOut();
+    logout();
   };
 
   return (

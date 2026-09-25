@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Plus, Search, Loader2, Edit, Phone, MapPin, IndianRupee, MessageCircle, History, X, ShoppingCart } from 'lucide-react';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, getDocs, where } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Customer, Transaction } from '../types';
 
@@ -30,19 +29,19 @@ export default function Customers() {
   useEffect(() => {
     if (!shopData?.shopId) return;
 
-    const q = query(collection(db, 'shops', shopData.shopId, 'customers'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: Customer[] = [];
-      snapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() } as Customer);
-      });
-      // Sort alphabetically by name
-      data.sort((a, b) => a.name.localeCompare(b.name));
-      setCustomers(data);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    const fetchCustomers = async () => {
+      try {
+        const data = await api.customers.list();
+        data.sort((a: Customer, b: Customer) => a.name.localeCompare(b.name));
+        setCustomers(data);
+      } catch (err) {
+        console.error('Failed to load customers', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchCustomers();
   }, [shopData?.shopId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,13 +50,17 @@ export default function Customers() {
 
     try {
       if (editingId) {
-        const docRef = doc(db, 'shops', shopData.shopId, 'customers', editingId);
-        await updateDoc(docRef, formData);
+        await api.customers.update(editingId, formData);
+        setCustomers(customers.map(c => c.id === editingId ? { ...c, ...formData } : c));
       } else {
-        await addDoc(collection(db, 'shops', shopData.shopId, 'customers'), {
+        await api.customers.create({
+          id: crypto.randomUUID(),
           ...formData,
           createdAt: new Date().toISOString()
         });
+        // Reload customers
+        const data = await api.customers.list();
+        setCustomers(data);
       }
       setIsAdding(false);
       setEditingId(null);
@@ -81,7 +84,7 @@ export default function Customers() {
 
   const handleWhatsAppReminder = (customer: Customer) => {
     if (!shopData) return;
-    const text = `Hello ${customer.name},\n\nThis is a gentle reminder from *${shopData.shopName || shopData.name || 'our shop'}*. Your pending udhar balance is *₹${customer.balance.toFixed(2)}*.\n\nPlease clear the dues at your earliest convenience. Thank you!`;
+    const text = `Hello ${customer.name},\n\nThis is a gentle reminder from *${shopData.shopName || shopData.name || 'our shop'}*. Your pending udhar balance is *₹${Number(customer.balance || 0).toFixed(2)}*.\n\nPlease clear the dues at your earliest convenience. Thank you!`;
     const encodedText = encodeURIComponent(text);
     const url = `https://wa.me/91${customer.phone}?text=${encodedText}`;
     window.open(url, '_blank');
@@ -94,15 +97,8 @@ export default function Customers() {
     setHistorySales([]);
 
     try {
-      const q = query(
-        collection(db, 'shops', shopData.shopId, 'sales'),
-        where('customerId', '==', customer.id)
-      );
-      const snapshot = await getDocs(q);
-      const sales: Transaction[] = [];
-      snapshot.forEach(doc => {
-        sales.push({ id: doc.id, ...doc.data() } as Transaction);
-      });
+      const allSales = await api.transactions.list();
+      const sales = allSales.filter((s: Transaction) => s.customerId === customer.id);
       
       // Sort by date descending (newest first)
       sales.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -115,7 +111,7 @@ export default function Customers() {
   };
 
   const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (c.phone && c.phone.includes(searchTerm))
   );
 
@@ -214,6 +210,7 @@ export default function Customers() {
                   <th className="px-6 py-4 font-medium">Contact</th>
                   <th className="px-6 py-4 font-medium">Visits</th>
                   <th className="px-6 py-4 font-medium">Total Spent</th>
+                  <th className="px-6 py-4 font-medium text-purple-600">Loyalty Points</th>
                   <th className="px-6 py-4 font-medium">Udhar Balance</th>
                   <th className="px-6 py-4 font-medium text-right">Actions</th>
                 </tr>
@@ -242,7 +239,12 @@ export default function Customers() {
                     <td className="px-6 py-4">
                       <span className="font-medium text-muted-foreground flex items-center">
                         <IndianRupee className="h-3 w-3 mr-1" />
-                        {customer.totalSpent?.toFixed(2) || '0.00'}
+                        {Number(customer.totalSpent || 0).toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-bold text-purple-600 flex items-center bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded w-fit">
+                        ⭐ {customer.loyaltyPoints || 0}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -250,7 +252,7 @@ export default function Customers() {
                         customer.balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
                       }`}>
                         <IndianRupee className="h-3 w-3 mr-1" />
-                        {customer.balance?.toFixed(2) || '0.00'}
+                        {Number(customer.balance || 0).toFixed(2)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
@@ -313,7 +315,7 @@ export default function Customers() {
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-primary flex items-center justify-end">
-                            <IndianRupee className="h-3 w-3 mr-1" /> {sale.totalAmount.toFixed(2)}
+                            <IndianRupee className="h-3 w-3 mr-1" /> {Number(sale.totalAmount || 0).toFixed(2)}
                           </p>
                           <p className="text-xs text-muted-foreground uppercase">{sale.paymentMethod}</p>
                         </div>

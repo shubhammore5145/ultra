@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, onSnapshot, updateDoc, deleteField } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { api } from '../lib/api';
 import type { UserData, Shop } from '../types';
 
 interface AuthContextType {
-  user: User | null;
+  user: any; // We just store the decoded user representation
   userData: UserData | null;
   shopData: Shop | null;
   loading: boolean;
+  login: (token: string, user: UserData, shop?: Shop) => void;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,88 +16,56 @@ const AuthContext = createContext<AuthContextType>({
   userData: null,
   shopData: null,
   loading: true,
+  login: () => {},
+  logout: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [shopData, setShopData] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const login = (token: string, u: UserData, s?: Shop) => {
+    localStorage.setItem('auth_token', token);
+    setUser(u); // minimal user
+    setUserData(u);
+    if (s) setShopData(s);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('auth_token');
+    setUser(null);
+    setUserData(null);
+    setShopData(null);
+  };
+
   useEffect(() => {
-    let shopUnsubscribe: (() => void) | undefined;
-    let userUnsubscribe: (() => void) | undefined;
-
-    const authUnsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
+    const initAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (token) {
         try {
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          
-          if (userUnsubscribe) userUnsubscribe();
-          
-          userUnsubscribe = onSnapshot(userDocRef, (userDoc) => {
-            if (userDoc.exists()) {
-              const data = userDoc.data() as UserData;
-              setUserData(data);
-              
-              if (data.shopId) {
-                const shopDocRef = doc(db, 'shops', data.shopId);
-                if (shopUnsubscribe) shopUnsubscribe();
-                
-                shopUnsubscribe = onSnapshot(shopDocRef, async (shopDoc) => {
-                  if (shopDoc.exists()) {
-                    const sData = shopDoc.data() as Shop;
-                    
-                    if (sData.plan === 'pro' && sData.planExpiry) {
-                      if (new Date(sData.planExpiry) < new Date()) {
-                        try {
-                          await updateDoc(shopDocRef, {
-                            plan: 'free',
-                            planExpiry: deleteField()
-                          });
-                          sData.plan = 'free';
-                          sData.planExpiry = undefined;
-                        } catch (e) {
-                          console.error("Failed to downgrade expired plan:", e);
-                        }
-                      }
-                    }
-                    
-                    setShopData({ shopId: shopDoc.id, ...sData });
-                  }
-                  setLoading(false);
-                });
-              } else {
-                setLoading(false);
-              }
-            }
-            // If it doesn't exist yet (during signup), we just wait for the next snapshot.
-          });
+          const res = await api.auth.me();
+          setUser(res.user);
+          setUserData(res.user);
+          if (res.shop) {
+            setShopData(res.shop);
+          }
         } catch (error) {
-          console.error('Error fetching user data:', error);
-          setLoading(false);
+          console.error('Session expired or invalid:', error);
+          logout();
         }
-      } else {
-        setUserData(null);
-        setShopData(null);
-        if (shopUnsubscribe) shopUnsubscribe();
-        if (userUnsubscribe) userUnsubscribe();
-        setLoading(false);
       }
-    });
-
-    return () => {
-      authUnsubscribe();
-      if (shopUnsubscribe) shopUnsubscribe();
-      if (userUnsubscribe) userUnsubscribe();
+      setLoading(false);
     };
+
+    initAuth();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, shopData, loading }}>
+    <AuthContext.Provider value={{ user, userData, shopData, loading, login, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );

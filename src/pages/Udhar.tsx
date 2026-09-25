@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Search, Loader2, IndianRupee, History, TrendingUp, TrendingDown } from 'lucide-react';
-import { collection, query, onSnapshot, doc, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Customer } from '../types';
 
@@ -22,19 +21,19 @@ export default function Udhar() {
   useEffect(() => {
     if (!shopData?.shopId) return;
 
-    const q = query(collection(db, 'shops', shopData.shopId, 'customers'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: Customer[] = [];
-      snapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() } as Customer);
-      });
-      // Sort by highest balance first
-      data.sort((a, b) => (b.balance || 0) - (a.balance || 0));
-      setCustomers(data);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    const fetchCustomers = async () => {
+      try {
+        const data = await api.customers.list();
+        data.sort((a: Customer, b: Customer) => (b.balance || 0) - (a.balance || 0));
+        setCustomers(data);
+      } catch (err) {
+        console.error('Failed to load customers', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchCustomers();
   }, [shopData?.shopId]);
 
   const handleTransaction = async (e: React.FormEvent) => {
@@ -43,28 +42,19 @@ export default function Udhar() {
 
     setProcessing(true);
     try {
-      const batch = writeBatch(db);
-      
       const numAmount = Number(amount);
-      const newBalance = transactionType === 'credit' 
-        ? (selectedCustomer.balance || 0) + numAmount // added udhar
-        : (selectedCustomer.balance || 0) - numAmount; // received payment
 
-      // 1. Update customer balance
-      const customerRef = doc(db, 'shops', shopData.shopId, 'customers', selectedCustomer.id);
-      batch.update(customerRef, { balance: newBalance });
-
-      // 2. Log transaction
-      const transactionRef = doc(collection(db, 'shops', shopData.shopId, 'udhar_transactions'));
-      batch.set(transactionRef, {
+      await api.udhar.create({
+        id: crypto.randomUUID(),
         customerId: selectedCustomer.id,
         amount: numAmount,
         type: transactionType,
-        notes: notes || (transactionType === 'credit' ? 'Added Udhar' : 'Received Payment'),
-        createdAt: new Date().toISOString()
+        notes: notes || (transactionType === 'credit' ? 'Added Udhar' : 'Received Payment')
       });
-
-      await batch.commit();
+      
+      const data = await api.customers.list();
+      data.sort((a: Customer, b: Customer) => (b.balance || 0) - (a.balance || 0));
+      setCustomers(data);
 
       setAmount('');
       setNotes('');
@@ -79,11 +69,11 @@ export default function Udhar() {
   };
 
   const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (c.phone && c.phone.includes(searchTerm))
   );
 
-  const totalUdhar = customers.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
+  const totalUdhar = customers.reduce((sum, c) => sum + (Number(c.balance) > 0 ? Number(c.balance) : 0), 0);
 
   return (
     <div className="space-y-6">
@@ -106,7 +96,7 @@ export default function Udhar() {
             <div className="text-right">
               <p className="text-sm text-muted-foreground">Current Balance</p>
               <p className={`font-bold ${selectedCustomer.balance > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                ₹{selectedCustomer.balance?.toFixed(2) || '0.00'}
+                ₹{Number(selectedCustomer.balance || 0).toFixed(2)}
               </p>
             </div>
           </div>
@@ -194,7 +184,7 @@ export default function Udhar() {
                 </div>
                 <div className="text-right">
                   <p className={`font-bold ${customer.balance > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                    ₹{customer.balance?.toFixed(2) || '0.00'}
+                    ₹{Number(customer.balance || 0).toFixed(2)}
                   </p>
                   <p className="text-xs text-muted-foreground">Balance</p>
                 </div>

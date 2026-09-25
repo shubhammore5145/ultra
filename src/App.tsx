@@ -12,9 +12,11 @@ import Udhar from './pages/Udhar';
 import Purchases from './pages/Purchases';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
+import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
 import Upgrade from './pages/Upgrade';
 import Support from './pages/Support';
+import Receipt from './pages/Receipt';
 
 function App() {
   return (
@@ -22,6 +24,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/receipt/:id" element={<Receipt />} />
           
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
@@ -41,6 +44,7 @@ function App() {
               {/* Admin Only Routes */}
               <Route path="/" element={<Dashboard />} />
               <Route path="/purchases" element={<Purchases />} />
+              <Route path="/inventory" element={<Inventory />} />
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />

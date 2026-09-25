@@ -3,10 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ArrowLeft, Save, Loader2, RefreshCw, Camera } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, RefreshCw, Camera, Wand2, Sparkles, TrendingUp } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
-import { db } from '../lib/firebase';
-import { collection, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
 import { CameraScanner } from '../components/CameraScanner';
@@ -36,7 +35,8 @@ export default function ProductForm() {
     minStock: '5',
     sku: '',
     barcode: '',
-    expiryDate: ''
+    expiryDate: '',
+    imageUrl: ''
   });
 
   const barcodeRef = useRef<SVGSVGElement>(null);
@@ -45,10 +45,9 @@ export default function ProductForm() {
     if (isEditing && shopData?.shopId && id) {
       const fetchProduct = async () => {
         try {
-          const docRef = doc(db, 'shops', shopData.shopId, 'products', id);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data() as Product;
+          const products = await api.products.list();
+          const data = products.find((p: Product) => p.id === id);
+          if (data) {
             setFormData({
               name: data.name || '',
               category: data.category || '',
@@ -62,7 +61,8 @@ export default function ProductForm() {
               minStock: data.minStock?.toString() || '5',
               sku: data.sku || '',
               barcode: data.barcode || '',
-              expiryDate: data.expiryDate || ''
+              expiryDate: data.expiryDate || '',
+              imageUrl: data.imageUrl || ''
             });
           }
         } catch (err) {
@@ -101,6 +101,78 @@ export default function ProductForm() {
     setFormData((prev) => ({ ...prev, [id]: value }));
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        setError('Image must be less than 2MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const generateSmartSKU = () => {
+    if (!formData.name) return;
+    const cat = (formData.category || 'GEN').substring(0, 3).toUpperCase();
+    const brnd = (formData.brand || 'XXX').substring(0, 3).toUpperCase();
+    const nm = formData.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+    const random = Math.floor(100 + Math.random() * 900);
+    setFormData(prev => ({ ...prev, sku: `${cat}-${brnd}-${nm}-${random}` }));
+  };
+
+  const aiSuggestDetails = () => {
+    if (!formData.name) return;
+    const nameLower = formData.name.toLowerCase();
+    
+    let suggestedCategory = formData.category;
+    let suggestedBrand = formData.brand;
+    let suggestedUnit = formData.unit;
+
+    if (nameLower.includes('milk') || nameLower.includes('paneer') || nameLower.includes('curd')) {
+      suggestedCategory = 'Dairy';
+      suggestedUnit = nameLower.includes('milk') ? 'ltr' : 'kg';
+    } else if (nameLower.includes('rice') || nameLower.includes('daal') || nameLower.includes('dal')) {
+      suggestedCategory = 'Grains & Pulses';
+      suggestedUnit = 'kg';
+    } else if (nameLower.includes('soap') || nameLower.includes('shampoo')) {
+      suggestedCategory = 'Personal Care';
+      suggestedUnit = 'pcs';
+    } else if (nameLower.includes('chips') || nameLower.includes('biscuit')) {
+      suggestedCategory = 'Snacks';
+      suggestedUnit = 'pcs';
+    }
+
+    if (nameLower.includes('amul')) suggestedBrand = 'Amul';
+    else if (nameLower.includes('tata')) suggestedBrand = 'Tata';
+    else if (nameLower.includes('britannia')) suggestedBrand = 'Britannia';
+    else if (nameLower.includes('parle')) suggestedBrand = 'Parle';
+
+    setFormData(prev => ({
+      ...prev,
+      category: suggestedCategory || prev.category,
+      brand: suggestedBrand || prev.brand,
+      unit: suggestedUnit || prev.unit
+    }));
+  };
+
+  const calculateMargin = () => {
+    const pp = Number(formData.purchasePrice) || 0;
+    const sp = Number(formData.sellingPrice) || 0;
+    if (pp > 0 && sp > 0) {
+      const profit = sp - pp;
+      const margin = (profit / sp) * 100;
+      return { profit, margin };
+    }
+    return null;
+  };
+
+  const marginData = calculateMargin();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shopData?.shopId) {
@@ -126,14 +198,14 @@ export default function ProductForm() {
         sku: formData.sku,
         barcode: formData.barcode,
         expiryDate: formData.expiryDate || null,
+        imageUrl: formData.imageUrl || null,
       };
 
       if (isEditing && id) {
-        const docRef = doc(db, 'shops', shopData.shopId, 'products', id);
-        await updateDoc(docRef, productData);
+        await api.products.update(id, productData);
       } else {
-        const productsRef = collection(db, 'shops', shopData.shopId, 'products');
-        await addDoc(productsRef, {
+        await api.products.create({
+          id: crypto.randomUUID(),
           ...productData,
           createdAt: new Date().toISOString()
         });
@@ -185,11 +257,32 @@ export default function ProductForm() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Product Name *</Label>
-                <Input id="name" value={formData.name} onChange={handleChange} placeholder="e.g. Amul Milk 500ml" required />
+                <div className="flex gap-2">
+                  <Input id="name" value={formData.name} onChange={handleChange} placeholder="e.g. Amul Milk 500ml" required />
+                  <Button type="button" variant="outline" size="icon" onClick={aiSuggestDetails} title="AI Auto-fill Details">
+                    <Sparkles className="h-4 w-4 text-blue-500" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="category">Category *</Label>
-                <Input id="category" value={formData.category} onChange={handleChange} placeholder="e.g. Dairy" required />
+                <select 
+                  id="category" 
+                  value={formData.category} 
+                  onChange={(e: any) => handleChange(e)} 
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  required
+                >
+                  <option value="" disabled>Select Category</option>
+                  <option value="Dairy">Dairy & Milk</option>
+                  <option value="Snacks">Snacks & Biscuits</option>
+                  <option value="Beverages">Beverages & Drinks</option>
+                  <option value="Grains & Pulses">Grains & Pulses</option>
+                  <option value="Spices">Spices & Masalas</option>
+                  <option value="Personal Care">Personal Care</option>
+                  <option value="Home Care">Home Care</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="brand">Brand</Label>
@@ -197,7 +290,58 @@ export default function ProductForm() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="unit">Unit *</Label>
-                <Input id="unit" value={formData.unit} onChange={handleChange} placeholder="e.g. pcs, kg, ltr" required />
+                <select 
+                  id="unit" 
+                  value={formData.unit} 
+                  onChange={(e: any) => handleChange(e)} 
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  required
+                >
+                  <option value="pcs">Pieces (pcs)</option>
+                  <option value="kg">Kilogram (kg)</option>
+                  <option value="gm">Gram (gm)</option>
+                  <option value="ltr">Liter (ltr)</option>
+                  <option value="ml">Milliliter (ml)</option>
+                  <option value="pkt">Packet (pkt)</option>
+                  <option value="box">Box</option>
+                </select>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="imageUpload">Product Image</Label>
+                <div className="flex items-center gap-4">
+                  {formData.imageUrl && (
+                    <div className="h-16 w-16 rounded-md overflow-hidden border">
+                      <img src={formData.imageUrl} alt="Preview" className="h-full w-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input 
+                          id="imageUpload" 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleImageUpload} 
+                          className="cursor-pointer"
+                        />
+                      </div>
+                      <div className="relative">
+                        <Input 
+                          id="cameraUpload" 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment"
+                          onChange={handleImageUpload} 
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                        />
+                        <Button type="button" variant="outline" className="flex gap-2 relative z-0">
+                          <Camera className="h-4 w-4" /> Camera
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Upload or capture product photo (max 2MB)</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -213,6 +357,12 @@ export default function ProductForm() {
               <div className="space-y-2">
                 <Label htmlFor="sellingPrice">Selling Price (₹) *</Label>
                 <Input id="sellingPrice" value={formData.sellingPrice} onChange={handleChange} type="number" step="0.01" required />
+                {marginData && (
+                  <p className={`text-xs flex items-center ${marginData.profit > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    Profit: ₹{marginData.profit.toFixed(2)} ({marginData.margin.toFixed(1)}% margin)
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="mrp">MRP (₹)</Label>
@@ -239,7 +389,12 @@ export default function ProductForm() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="sku">SKU Code</Label>
-                <Input id="sku" value={formData.sku} onChange={handleChange} placeholder="Leave empty to auto-generate" />
+                <div className="flex gap-2">
+                  <Input id="sku" value={formData.sku} onChange={handleChange} placeholder="e.g. DAIRY-AMU-MILK-123" />
+                  <Button type="button" variant="outline" size="icon" onClick={generateSmartSKU} title="Auto-generate Smart SKU">
+                    <Wand2 className="h-4 w-4 text-purple-500" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="expiryDate">Expiry Date</Label>
@@ -254,15 +409,7 @@ export default function ProductForm() {
                       variant="outline" 
                       size="sm" 
                       className="h-7 px-3 text-xs" 
-                      onClick={() => {
-                        if (shopData?.plan === 'pro') {
-                          setShowScanner(true);
-                        } else {
-                          if (confirm("Barcode scanning is a PRO feature. Upgrade to unlock!")) {
-                            navigate('/upgrade');
-                          }
-                        }
-                      }}
+                      onClick={() => setShowScanner(true)}
                     >
                       <Camera className="mr-1 h-3 w-3" /> Scan Camera
                     </Button>

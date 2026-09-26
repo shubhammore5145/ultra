@@ -330,7 +330,9 @@ export default function POS() {
   const handleWhatsAppBill = async () => {
     if (!checkoutResult || !shopData) return;
     
-    const receiptLink = `${window.location.origin}/receipt/${checkoutResult.id}`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = isLocal ? 'https://tyler-rugs-algebra-reveal.trycloudflare.com' : window.location.origin;
+    const receiptLink = `${baseUrl}/receipt/${checkoutResult.id}`;
     
     let text = `*${shopData.name || 'Kirana Store'}*\n`;
     text += `Thank you for shopping with us!\n\n`;

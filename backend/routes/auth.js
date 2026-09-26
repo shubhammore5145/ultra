@@ -49,7 +49,9 @@ router.post('/signup', async (req, res) => {
     // Generate token
     const token = jwt.sign({ uid, shopId, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
     
-    res.json({ token, user: { uid, email, displayName, role: 'admin', shopId } });
+    const shop = { shopId, name: shopName || 'My Shop', ownerName: ownerName || displayName, phone: phone || '', email, plan: 'free' };
+    
+    res.json({ token, user: { uid, email, displayName, role: 'admin', shopId }, shop });
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ error: 'Server error during signup' });
@@ -78,7 +80,9 @@ router.post('/login', async (req, res) => {
     // Remove password before sending to client
     delete user.password;
     
-    res.json({ token, user });
+    const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
+    
+    res.json({ token, user, shop: shops[0] || null });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error during login' });

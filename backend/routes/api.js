@@ -53,8 +53,12 @@ router.use(authMiddleware);
 
 // --- PRODUCTS ---
 router.get('/products', async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM products WHERE shopId = ?', [req.user.shopId]);
-  res.json(rows);
+  try {
+    const [rows] = await pool.query('SELECT * FROM products WHERE shopId = ?', [req.user.shopId]);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post('/products', async (req, res) => {
@@ -110,8 +114,12 @@ router.delete('/products/:id', async (req, res) => {
 
 // --- CUSTOMERS ---
 router.get('/customers', async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ?', [req.user.shopId]);
-  res.json(rows);
+  try {
+    const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ?', [req.user.shopId]);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post('/customers', async (req, res) => {

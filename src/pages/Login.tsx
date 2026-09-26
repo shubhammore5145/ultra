@@ -30,7 +30,7 @@ export default function Login() {
     try {
       if (isLogin) {
         const res = await api.auth.login({ email, password });
-        login(res.token, res.user);
+        login(res.token, res.user, res.shop);
         navigate('/');
       } else {
         // Sign Up Flow
@@ -50,7 +50,7 @@ export default function Login() {
         };
 
         const res = await api.auth.signup(signupData);
-        login(res.token, res.user);
+        login(res.token, res.user, res.shop);
         navigate('/');
       }
     } catch (err: any) {

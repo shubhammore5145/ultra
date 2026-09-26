@@ -8,7 +8,8 @@
     "build": "vite build",
     "start": "node backend/server.js",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tunnel": ".\\cloudflared.exe tunnel --url http://localhost:5173"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

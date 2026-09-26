@@ -69,8 +69,17 @@ app.use('/api', apiRoutes);
 app.use(express.static(path.join(__dirname, '../dist')));
 
 // Catch-all route for React Router (must be after all API routes)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+app.use((req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  const indexPath = path.join(__dirname, '../dist/index.html');
+  const fs = require('fs');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(200).send('Backend API server is running on port ' + port);
+  }
 });
 
 // Start Server

@@ -1,6 +1,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
+const path = require('path');
 const whatsappBot = require('./whatsapp');
 require('dotenv').config();
 
@@ -63,6 +64,14 @@ app.post('/api/whatsapp/send', async (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
+
+// Serve frontend in production
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Catch-all route for React Router (must be after all API routes)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
+});
 
 // Start Server
 app.listen(port, () => {

@@ -20,6 +20,11 @@ export default function POS() {
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [discountType, setDiscountType] = useState<'flat' | 'percent'>('flat');
   const [discountValue, setDiscountValue] = useState('');
+  const [whatsappStatusBanner, setWhatsappStatusBanner] = useState<{
+    type: 'loading' | 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [floatingNotification, setFloatingNotification] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -287,6 +292,8 @@ export default function POS() {
         createdAt: new Date().toISOString()
       });
       
+      const phoneToSend = customerPhone.replace(/\D/g, '').slice(0, 10);
+
       // Save result for the success modal
       setCheckoutResult({
         id: txId,
@@ -294,10 +301,17 @@ export default function POS() {
         discountAmount,
         total,
         items: [...cart],
-        customerPhone: customerPhone.trim(),
+        customerPhone: phoneToSend,
         loyaltyPointsEarned: Math.floor(total / 100)
       });
       setPaymentVerified(false);
+
+      // Auto-send WhatsApp bill if customer phone is provided (10 digits)
+      if (phoneToSend.length === 10) {
+        sendWhatsAppBill(txId, total, phoneToSend);
+      } else {
+        setWhatsappStatusBanner(null);
+      }
 
       // Clear cart on success
       setCart([]);
@@ -327,31 +341,28 @@ export default function POS() {
     return true;
   });
 
-  const handleWhatsAppBill = async () => {
-    if (!checkoutResult || !shopData) return;
-    
+  const sendWhatsAppBill = async (txId: string, billTotal: number, phone: string) => {
+    if (!shopData || !phone) return;
+
+    setWhatsappStatusBanner({
+      type: 'loading',
+      message: `WhatsApp वर बिल पाठवत आहे... (+91 ${phone})`
+    });
+
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const baseUrl = isLocal ? 'https://tyler-rugs-algebra-reveal.trycloudflare.com' : window.location.origin;
-    const receiptLink = `${baseUrl}/receipt/${checkoutResult.id}`;
+    const receiptLink = `${baseUrl}/receipt/${txId}`;
     
     let text = `*${shopData.name || 'Kirana Store'}*\n`;
     text += `Thank you for shopping with us!\n\n`;
-    text += `Your bill for ₹${checkoutResult.total.toFixed(2)} is ready.\n\n`;
+    text += `Your bill for ₹${billTotal.toFixed(2)} is ready.\n\n`;
     text += `View or download your detailed invoice here:\n${receiptLink}`;
 
-    const phone = checkoutResult.customerPhone;
-    
-    // Check if auto bot is enabled
     try {
       const res = await fetch('/api/whatsapp/status');
       const data = await res.json();
       
       if (data.status === 'CONNECTED' || data.status === 'AUTHENTICATED') {
-        if (!phone) {
-          alert('No customer phone number available to send auto message.');
-          return;
-        }
-        
         const sendRes = await fetch('/api/whatsapp/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -359,19 +370,36 @@ export default function POS() {
         });
         
         if (sendRes.ok) {
-          alert('Bill sent automatically via WhatsApp Bot!');
+          const successMsg = `WhatsApp बिल यशस्वीरित्या +91 ${phone} वर पाठवले! ✅`;
+          setWhatsappStatusBanner({
+            type: 'success',
+            message: successMsg
+          });
+          setFloatingNotification(successMsg);
+          setTimeout(() => setFloatingNotification(''), 7000);
           return;
         }
       }
     } catch (e) {
-      console.log('Bot not available, falling back to manual wa.me link');
+      console.log('Bot auto-send failed, falling back to manual wa.me link', e);
     }
 
-    // Fallback to manual wa.me link
+    // Fallback: If bot is not connected or fails, open manual wa.me link
     const encodedText = encodeURIComponent(text);
-    const url = phone ? `https://wa.me/91${phone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
-    
+    const url = `https://wa.me/91${phone}?text=${encodedText}`;
     window.open(url, '_blank');
+    const fallbackMsg = `WhatsApp मेसेज लिंक उघडली (+91 ${phone}) 📱`;
+    setWhatsappStatusBanner({
+      type: 'success',
+      message: fallbackMsg
+    });
+    setFloatingNotification(fallbackMsg);
+    setTimeout(() => setFloatingNotification(''), 7000);
+  };
+
+  const handleWhatsAppBill = () => {
+    if (!checkoutResult) return;
+    sendWhatsAppBill(checkoutResult.id, checkoutResult.total, checkoutResult.customerPhone);
   };
 
   const handlePrintReceipt = () => {
@@ -416,6 +444,19 @@ export default function POS() {
 
   return (
     <div className="flex flex-col md:flex-row h-full gap-6 relative">
+      {/* Floating Notification for WhatsApp Bill */}
+      {floatingNotification && (
+        <div className="fixed top-5 right-5 z-[9999] max-w-sm w-full bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-400/40 animate-in slide-in-from-top-4 fade-in duration-300">
+          <CheckCircle2 className="h-6 w-6 text-white shrink-0" />
+          <div className="flex-1 text-sm font-semibold">
+            {floatingNotification}
+          </div>
+          <button onClick={() => setFloatingNotification('')} className="text-white/80 hover:text-white p-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Checkout Success Modal with UPI */}
       {checkoutResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4 no-print">
@@ -428,6 +469,24 @@ export default function POS() {
                 <p className="text-sm opacity-80 mt-1">Includes ₹{checkoutResult.discountAmount.toFixed(2)} savings!</p>
               )}
             </div>
+
+            {/* WhatsApp Status Banner in Modal */}
+            {whatsappStatusBanner && (
+              <div className={`mx-6 mt-4 p-3 rounded-xl border flex items-center gap-3 text-sm animate-in fade-in duration-300 ${
+                whatsappStatusBanner.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-200'
+              }`}>
+                {whatsappStatusBanner.type === 'loading' ? (
+                  <Loader2 className="h-5 w-5 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
+                ) : (
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                )}
+                <div className="flex-1 font-semibold text-xs leading-tight">
+                  {whatsappStatusBanner.message}
+                </div>
+              </div>
+            )}
 
             <div className="p-6 space-y-6">
               {shopData?.upiId ? (
@@ -793,15 +852,29 @@ export default function POS() {
         </div>
 
         <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
-          <div className="flex flex-col gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
-            <label className="text-xs font-medium text-muted-foreground">Customer Mobile No. (For WhatsApp Bill)</label>
-            <Input 
-              placeholder="e.g. 9876543210" 
-              type="tel"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              className="h-12 md:h-10 text-base md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-zinc-50"
-            />
+          <div className="flex flex-col gap-1.5 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Customer Mobile No. (For WhatsApp Bill)</label>
+              <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
+                {customerPhone.length}/10
+              </span>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400 select-none">
+                +91
+              </span>
+              <Input 
+                placeholder="10-digit mobile number" 
+                type="tel"
+                maxLength={10}
+                value={customerPhone}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setCustomerPhone(val);
+                }}
+                className="h-12 md:h-10 pl-12 text-base md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-zinc-50 font-mono tracking-wider"
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
@@ -883,6 +956,31 @@ export default function POS() {
                 <span className="font-bold text-2xl text-blue-700 dark:text-blue-400">₹{total.toFixed(2)}</span>
               </div>
               
+              <div className="flex flex-col gap-1 bg-muted/40 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Customer Mobile (WhatsApp Bill):</Label>
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'text-muted-foreground'}`}>
+                    {customerPhone.length}/10
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 select-none">
+                    +91
+                  </span>
+                  <Input 
+                    type="tel" 
+                    placeholder="10-digit number"
+                    maxLength={10}
+                    value={customerPhone} 
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setCustomerPhone(val);
+                    }}
+                    className="h-9 pl-9 font-mono text-sm bg-background border-zinc-200 dark:border-zinc-800"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-3 pt-2">
                 <div className="flex items-center gap-3">
                   <Label className="w-20 text-zinc-900 dark:text-zinc-100 font-medium">Cash:</Label>

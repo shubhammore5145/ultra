@@ -37,7 +37,7 @@ router.get('/public/receipt/:id', async (req, res) => {
       `SELECT t.*, s.name as shopName, s.phone as shopPhone, s.address as shopAddress, 
               c.name as customerName, c.phone as customerPhone 
        FROM transactions t 
-       JOIN shops s ON t.shopId = s.shopId 
+       LEFT JOIN shops s ON t.shopId = s.shopId 
        LEFT JOIN customers c ON t.customerId = c.id 
        WHERE t.id = ?`,
       [req.params.id]

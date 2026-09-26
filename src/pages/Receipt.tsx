@@ -23,7 +23,10 @@ export default function Receipt() {
             data.items = JSON.parse(data.items);
           } catch (e) {
             console.error('Failed to parse items json');
+            data.items = [];
           }
+        } else if (!Array.isArray(data.items)) {
+          data.items = [];
         }
         
         setReceipt(data);
@@ -98,7 +101,7 @@ export default function Receipt() {
             </div>
             <div className="flex justify-between">
               <span>Invoice No:</span>
-              <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">#{receipt.id.slice(-6).toUpperCase()}</span>
+              <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">#{String(receipt.id || '').slice(-6).toUpperCase()}</span>
             </div>
             {receipt.customerName && (
               <div className="flex justify-between">
@@ -108,7 +111,7 @@ export default function Receipt() {
             )}
             <div className="flex justify-between">
               <span>Payment:</span>
-              <span className="font-medium text-zinc-900 dark:text-zinc-100 capitalize">{receipt.paymentMethod}</span>
+              <span className="font-medium text-zinc-900 dark:text-zinc-100 capitalize">{receipt.paymentMethod || 'Cash'}</span>
             </div>
           </div>
 
@@ -124,14 +127,19 @@ export default function Receipt() {
                 </tr>
               </thead>
               <tbody className="text-zinc-700 dark:text-zinc-300">
-                {(receipt.items || []).map((item: any, idx: number) => (
-                  <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800/50 last:border-0">
-                    <td className="py-3 pr-2 font-medium">{item.name}</td>
-                    <td className="py-3 text-right">{item.qty}</td>
-                    <td className="py-3 text-right">₹{item.sellingPrice?.toFixed(2)}</td>
-                    <td className="py-3 text-right font-medium">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</td>
-                  </tr>
-                ))}
+                {(receipt.items || []).map((item: any, idx: number) => {
+                  const price = Number(item.sellingPrice ?? item.price ?? 0);
+                  const qty = Number(item.qty ?? 1);
+                  const total = Number(item.total ?? (price * qty));
+                  return (
+                    <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800/50 last:border-0">
+                      <td className="py-3 pr-2 font-medium">{item.name}</td>
+                      <td className="py-3 text-right">{qty}</td>
+                      <td className="py-3 text-right">₹{price.toFixed(2)}</td>
+                      <td className="py-3 text-right font-medium">₹{total.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -140,15 +148,15 @@ export default function Receipt() {
           <div className="bg-zinc-50 dark:bg-zinc-950/50 py-4 px-6 space-y-2 text-sm border-t border-zinc-200 dark:border-zinc-800">
             <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
               <span>Subtotal</span>
-              <span>₹{Number(receipt.subtotal || 0).toFixed(2)}</span>
+              <span>₹{Number(receipt.subtotal || receipt.totalAmount || 0).toFixed(2)}</span>
             </div>
-            {receipt.taxAmount > 0 && (
+            {Number(receipt.taxAmount || 0) > 0 && (
               <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
                 <span>Tax</span>
                 <span>+ ₹{Number(receipt.taxAmount).toFixed(2)}</span>
               </div>
             )}
-            {receipt.discountAmount > 0 && (
+            {Number(receipt.discountAmount || 0) > 0 && (
               <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
                 <span>Discount</span>
                 <span>- ₹{Number(receipt.discountAmount).toFixed(2)}</span>
@@ -156,7 +164,7 @@ export default function Receipt() {
             )}
             <div className="flex justify-between items-center pt-2 mt-2 border-t border-dashed border-zinc-300 dark:border-zinc-700 text-lg font-bold text-zinc-900 dark:text-zinc-100">
               <span>Total</span>
-              <span className="flex items-center"><IndianRupee className="h-4 w-4 mr-0.5" />{Number(receipt.totalAmount || 0).toFixed(2)}</span>
+              <span className="flex items-center"><IndianRupee className="h-4 w-4 mr-0.5" />{Number(receipt.totalAmount || receipt.total || 0).toFixed(2)}</span>
             </div>
           </div>
 

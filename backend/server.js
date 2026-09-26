@@ -8,6 +8,14 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Safety net: prevent WhatsApp/Puppeteer errors from crashing the server
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception (server kept running):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection (server kept running):', reason);
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));

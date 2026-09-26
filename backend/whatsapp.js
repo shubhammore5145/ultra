@@ -59,8 +59,10 @@ function initializeWhatsApp() {
   });
 
   client.initialize().catch(err => {
-    console.error('WhatsApp initialization error:', err);
-    clientStatus = 'ERROR';
+    console.error('WhatsApp initialization error:', err.message || err);
+    clientStatus = 'DISCONNECTED';
+    qrCodeDataUrl = null;
+    client = null;
   });
 }
 
@@ -94,9 +96,16 @@ async function sendMessage(phoneNumber, message) {
   }
 }
 
-function logout() {
+async function logout() {
   if (client) {
-    client.logout();
+    try {
+      await client.logout();
+    } catch (err) {
+      console.error('WhatsApp logout error (ignored):', err.message);
+    }
+    client = null;
+    clientStatus = 'DISCONNECTED';
+    qrCodeDataUrl = null;
   }
 }
 

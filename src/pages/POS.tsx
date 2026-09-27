@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera, Printer, Barcode, Smartphone } from 'lucide-react';
+import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera, Printer, Barcode, Smartphone, Sparkles, AlertCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
@@ -1205,85 +1205,262 @@ export default function POS() {
       </div>
 
       {showPaymentModal && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-card text-card-foreground p-6 rounded-2xl border shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold">Select Payment</h2>
-              <Button variant="ghost" size="icon" onClick={() => setShowPaymentModal(false)}>
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-3 sm:p-4">
+          <div className="bg-card text-card-foreground p-5 sm:p-6 rounded-3xl border shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-xl font-black text-foreground">पेमेंट पर्याय (Payment Option)</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">रोख, UPI किंवा उधारीचे वाटप करा</p>
+              </div>
+              <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowPaymentModal(false)}>
                 <X className="h-5 w-5" />
               </Button>
             </div>
             
-            <div className="space-y-4 mb-6">
-              <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
-                <span className="font-semibold text-blue-700 dark:text-blue-400">Total Bill:</span>
-                <span className="font-bold text-2xl text-blue-700 dark:text-blue-400">₹{total.toFixed(2)}</span>
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+              {/* Total Bill Banner & 1-Click Presets */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-2xl shadow-md space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-blue-100 uppercase tracking-wider block">एकूण बिल (Total Bill)</span>
+                  <span className="text-2xl font-black">₹{total.toFixed(2)}</span>
+                </div>
+                {/* 1-Click Quick Presets */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-white/20">
+                  <button
+                    type="button"
+                    onClick={() => setSplitAmounts({ cash: total, upi: 0, udhar: 0 })}
+                    className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
+                  >
+                    💵 सर्व Cash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitAmounts({ cash: 0, upi: total, udhar: 0 })}
+                    className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
+                  >
+                    📱 सर्व UPI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitAmounts({ cash: 0, upi: 0, udhar: total })}
+                    className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
+                  >
+                    📝 सर्व उधारी
+                  </button>
+                </div>
               </div>
               
-              <div className="flex flex-col gap-1 bg-muted/40 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+              {/* Customer Mobile for WhatsApp & Udhar */}
+              <div className="flex flex-col gap-1 bg-muted/40 p-3 rounded-2xl border border-border">
                 <div className="flex justify-between items-center">
-                  <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Customer Mobile (WhatsApp Bill):</Label>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'text-muted-foreground'}`}>
+                  <Label className="text-xs font-bold text-foreground">
+                    ग्राहक मोबाईल नंबर {splitAmounts.udhar > 0 ? <span className="text-red-500 font-extrabold">* (उधारीसाठी आवश्यक)</span> : '(WhatsApp बिलासाठी)'}
+                  </Label>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'text-muted-foreground'}`}>
                     {customerPhone.length}/10
                   </span>
                 </div>
-                <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 select-none">
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground select-none">
                     +91
                   </span>
                   <Input 
                     type="tel" 
-                    placeholder="10-digit number"
+                    placeholder="10-digit mobile number"
                     maxLength={10}
                     value={customerPhone} 
                     onChange={(e) => {
                       const val = cleanPhone(e.target.value);
                       setCustomerPhone(val);
                     }}
-                    className="h-9 pl-9 font-mono text-sm bg-background border-zinc-200 dark:border-zinc-800"
+                    className={`h-10 pl-10 font-mono text-sm bg-background ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
                   />
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center gap-3">
-                  <Label className="w-20 text-zinc-900 dark:text-zinc-100 font-medium">Cash:</Label>
-                  <Input 
-                    type="number" 
-                    value={splitAmounts.cash || ''} 
-                    onChange={(e) => setSplitAmounts(p => ({ ...p, cash: Number(e.target.value) || 0 }))}
-                    className="flex-1 font-bold text-lg bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100"
-                  />
+              {/* Auto remainder checkbox */}
+              <div className="flex items-center justify-between p-2.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300/60 dark:border-amber-800/60 rounded-xl text-xs">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="font-bold text-amber-950 dark:text-amber-200">
+                    कॅश दिल्यावर बाकी रक्कम आपोआप उधारीत टाका
+                  </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Label className="w-20 text-zinc-900 dark:text-zinc-100 font-medium">UPI:</Label>
-                  <Input 
-                    type="number" 
-                    value={splitAmounts.upi || ''} 
-                    onChange={(e) => setSplitAmounts(p => ({ ...p, upi: Number(e.target.value) || 0 }))}
-                    className="flex-1 font-bold text-lg bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100"
-                  />
+                <input
+                  type="checkbox"
+                  checked={autoRemainderToUdhar}
+                  onChange={(e) => setAutoRemainderToUdhar(e.target.checked)}
+                  className="h-4 w-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+              </div>
+
+              {/* Split Inputs */}
+              <div className="space-y-3">
+                {/* Cash Input */}
+                <div className="flex items-center gap-2">
+                  <Label className="w-16 font-bold text-sm text-foreground">Cash:</Label>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-bold">₹</span>
+                    <Input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="0.00"
+                      value={splitAmounts.cash || ''} 
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        if (autoRemainderToUdhar) {
+                          const rem = Math.max(0, Number((total - val - splitAmounts.upi).toFixed(2)));
+                          setSplitAmounts({ cash: val, upi: splitAmounts.upi, udhar: rem });
+                        } else {
+                          setSplitAmounts(p => ({ ...p, cash: val }));
+                        }
+                      }}
+                      className="pl-7 font-black text-lg h-11 bg-background"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-11 px-2.5 shrink-0"
+                    title="बाकी रक्कम रोख टाका"
+                    onClick={() => {
+                      const rem = Math.max(0, Number((total - splitAmounts.upi - splitAmounts.udhar).toFixed(2)));
+                      setSplitAmounts(p => ({ ...p, cash: rem }));
+                    }}
+                  >
+                    बाकी
+                  </Button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Label className="w-20 text-zinc-900 dark:text-zinc-100 font-medium">Udhar:</Label>
-                  <Input 
-                    type="number" 
-                    value={splitAmounts.udhar || ''} 
-                    onChange={(e) => setSplitAmounts(p => ({ ...p, udhar: Number(e.target.value) || 0 }))}
-                    className="flex-1 font-bold text-lg bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100"
-                  />
+
+                {/* UPI Input */}
+                <div className="flex items-center gap-2">
+                  <Label className="w-16 font-bold text-sm text-foreground">UPI:</Label>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-bold">₹</span>
+                    <Input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="0.00"
+                      value={splitAmounts.upi || ''} 
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        if (autoRemainderToUdhar) {
+                          const rem = Math.max(0, Number((total - splitAmounts.cash - val).toFixed(2)));
+                          setSplitAmounts({ cash: splitAmounts.cash, upi: val, udhar: rem });
+                        } else {
+                          setSplitAmounts(p => ({ ...p, upi: val }));
+                        }
+                      }}
+                      className="pl-7 font-black text-lg h-11 bg-background"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-11 px-2.5 shrink-0"
+                    title="बाकी रक्कम UPI टाका"
+                    onClick={() => {
+                      const rem = Math.max(0, Number((total - splitAmounts.cash - splitAmounts.udhar).toFixed(2)));
+                      setSplitAmounts(p => ({ ...p, upi: rem }));
+                    }}
+                  >
+                    बाकी
+                  </Button>
                 </div>
-                
+
+                {/* Udhar Input */}
+                <div className="flex items-center gap-2">
+                  <Label className="w-16 font-bold text-sm text-orange-600 dark:text-orange-400">उधारी:</Label>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-bold">₹</span>
+                    <Input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="0.00"
+                      value={splitAmounts.udhar || ''} 
+                      onChange={(e) => setSplitAmounts(p => ({ ...p, udhar: parseFloat(e.target.value) || 0 }))}
+                      className="pl-7 font-black text-lg h-11 bg-background border-orange-300 dark:border-orange-800 text-orange-600 dark:text-orange-400"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-11 px-2.5 shrink-0 border-orange-300 text-orange-600 hover:bg-orange-50 font-bold"
+                    title="बाकी सर्व रक्कम उधारीत टाका"
+                    onClick={() => {
+                      const rem = Math.max(0, Number((total - splitAmounts.cash - splitAmounts.upi).toFixed(2)));
+                      setSplitAmounts(p => ({ ...p, udhar: rem }));
+                    }}
+                  >
+                    + उधारी
+                  </Button>
+                </div>
+
+                {/* Remaining Amount Box if difference exists */}
+                {(() => {
+                  const currentSum = Number((splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar).toFixed(2));
+                  const diff = Number((total - currentSum).toFixed(2));
+                  if (Math.abs(diff) < 0.01) {
+                    return (
+                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>रक्कम बरोबर जुळली! ({splitAmounts.cash > 0 ? `₹${splitAmounts.cash} रोख ` : ''}{splitAmounts.upi > 0 ? `+ ₹${splitAmounts.upi} UPI ` : ''}{splitAmounts.udhar > 0 ? `+ ₹${splitAmounts.udhar} उधारी ` : ''}= ₹{total.toFixed(2)})</span>
+                      </div>
+                    );
+                  }
+                  if (diff > 0) {
+                    return (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-2 text-xs">
+                        <div className="flex justify-between items-center font-bold text-amber-950 dark:text-amber-200">
+                          <span>शिल्लक बाकी (Remaining):</span>
+                          <span className="text-base font-black text-red-600">₹{diff.toFixed(2)}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="flex-1 h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => setSplitAmounts(p => ({ ...p, udhar: Number((p.udhar + diff).toFixed(2)) }))}
+                          >
+                            + बाकी ₹{diff.toFixed(2)} उधारीत जोडा
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs font-bold border-amber-300"
+                            onClick={() => setSplitAmounts(p => ({ ...p, upi: Number((p.upi + diff).toFixed(2)) }))}
+                          >
+                            + UPI मध्ये
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded-xl text-xs font-bold text-red-600 text-center">
+                      जास्त रक्कम झाली आहे: एकूण बिलापेक्षा ₹{Math.abs(diff).toFixed(2)} जास्त टाकले आहेत.
+                    </div>
+                  );
+                })()}
+
+                {/* Udhar Customer Details */}
                 {splitAmounts.udhar > 0 && (
                   <div className="pt-2 border-t border-dashed mt-2 space-y-3">
-                    <p className="text-xs text-muted-foreground font-semibold">Udhar Customer Details</p>
+                    <p className="text-xs text-orange-600 dark:text-orange-400 font-bold uppercase tracking-wider">
+                      उधारी ग्राहक तपशील (Udhar Details)
+                    </p>
                     <div className="flex items-center gap-3">
                       <Label className="w-20 text-xs">Aadhar:</Label>
                       <Input 
-                        placeholder="Aadhar Number" 
+                        placeholder="Aadhar Number (Optional)" 
                         value={customerAadhar} 
                         onChange={(e) => setCustomerAadhar(e.target.value)}
-                        className="flex-1 text-sm"
+                        className="flex-1 text-sm h-9"
                       />
                     </div>
                     <div className="flex items-center gap-3">
@@ -1297,7 +1474,7 @@ export default function POS() {
                             </div>
                           </div>
                         ) : (
-                          <div className="relative h-10 flex-1 border rounded bg-muted/50 flex items-center justify-center text-xs text-muted-foreground cursor-pointer overflow-hidden">
+                          <div className="relative h-9 flex-1 border rounded-lg bg-muted/50 flex items-center justify-center text-xs text-muted-foreground cursor-pointer overflow-hidden">
                             <Camera className="h-4 w-4 mr-1" /> Take Photo
                             <input 
                               type="file" 
@@ -1321,73 +1498,40 @@ export default function POS() {
                 )}
                 
                 {splitAmounts.udhar > 0 && !customerPhone && (
-                  <p className="text-xs text-red-500 font-semibold text-center">Customer Phone is required for Udhar!</p>
-                )}
-                
-                {(splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar) !== total && (
-                  <p className="text-xs text-orange-500 font-semibold text-center">
-                    Warning: Split amounts (₹{splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar}) don't match Total (₹{total})!
+                  <p className="text-xs text-red-500 font-bold text-center bg-red-50 dark:bg-red-950/40 p-2 rounded-lg border border-red-200">
+                    ⚠️ उधारीसाठी ग्राहकाचा 10 अंकी मोबाईल नंबर आवश्यक आहे!
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            {/* Bottom Actions */}
+            <div className="pt-3 border-t mt-4 flex gap-2">
               <Button 
                 variant="outline" 
-                className="w-full h-12 font-bold px-1 text-sm border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  handleCheckout('cash');
-                }}
-                disabled={checkoutLoading}
+                className="w-1/3 h-12 font-bold text-sm"
+                onClick={() => setShowPaymentModal(false)}
               >
-                Full Cash
+                रद्द करा
               </Button>
               <Button 
-                className="w-full h-12 font-bold bg-green-600 hover:bg-green-700 text-white px-1 text-sm shadow-sm"
+                className="w-2/3 h-12 text-base font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-lg"
                 onClick={() => {
                   setShowPaymentModal(false);
-                  handleCheckout('upi');
-                }}
-                disabled={checkoutLoading}
-              >
-                Full UPI
-              </Button>
-              <Button 
-                className="w-full h-12 font-bold bg-orange-500 hover:bg-orange-600 text-white px-1 text-sm shadow-sm"
-                onClick={() => {
-                  if (!customerPhone) {
-                    alert("Customer phone is required for Udhar!");
-                    return;
-                  }
-                  setShowPaymentModal(false);
-                  handleCheckout('udhar');
-                }}
-                disabled={checkoutLoading || !customerPhone}
-              >
-                Full Udhar
-              </Button>
-              <Button 
-                className="col-span-3 w-full h-14 mt-2 text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-lg border-0"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  
-                  // Determine primary payment method for analytics
                   let mainMethod: 'cash' | 'upi' | 'udhar' | 'split' = 'split';
-                  if (splitAmounts.cash === total) mainMethod = 'cash';
-                  else if (splitAmounts.upi === total) mainMethod = 'upi';
-                  else if (splitAmounts.udhar === total) mainMethod = 'udhar';
+                  if (Math.abs(splitAmounts.cash - total) < 0.01) mainMethod = 'cash';
+                  else if (Math.abs(splitAmounts.upi - total) < 0.01) mainMethod = 'upi';
+                  else if (Math.abs(splitAmounts.udhar - total) < 0.01) mainMethod = 'udhar';
                   
                   handleCheckout(mainMethod, splitAmounts);
                 }}
                 disabled={
                   checkoutLoading || 
                   (splitAmounts.udhar > 0 && !customerPhone) || 
-                  ((splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar) !== total)
+                  Math.abs(Number((splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar).toFixed(2)) - total) >= 0.01
                 }
               >
-                Confirm Payment
+                {checkoutLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : `बिल पूर्ण करा (₹${total.toFixed(2)})`}
               </Button>
             </div>
           </div>

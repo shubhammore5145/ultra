@@ -202,18 +202,31 @@ export default function Settings() {
                 className="bg-background border-muted focus:ring-primary/50"
               />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Smartphone className="h-4 w-4 text-muted-foreground" /> Public Domain / Cloudflare URL (For WhatsApp Bill Link)
-              </label>
+            <div className="space-y-2 md:col-span-2 p-4 rounded-xl border border-primary/20 bg-primary/5">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold flex items-center gap-2 text-foreground">
+                  <Smartphone className="h-4 w-4 text-primary" /> Deployed Website URL (For Customer WhatsApp Receipts)
+                </label>
+                {window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setFormData(prev => ({ ...prev, publicUrl: window.location.origin }))}
+                  >
+                    Use Current Domain
+                  </Button>
+                )}
+              </div>
               <Input 
                 value={formData.publicUrl}
                 onChange={e => setFormData({...formData, publicUrl: e.target.value})}
-                placeholder="e.g. https://your-tunnel.trycloudflare.com or https://myshop.com"
-                className="bg-background border-muted focus:ring-primary/50"
+                placeholder="e.g. https://s-mart-ed1z.onrender.com"
+                className="bg-background border-muted font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                This URL will be included in the WhatsApp message so customers can open their digital receipts anywhere.
+                Enter your live deployed URL (e.g. <code>https://s-mart-ed1z.onrender.com</code>). Customers will receive this link on WhatsApp to view and download their PDF bills.
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">

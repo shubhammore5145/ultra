@@ -333,7 +333,7 @@ export default function POS() {
 
       // Auto-send WhatsApp bill if customer phone is provided (10 digits)
       if (phoneToSend.length === 10) {
-        sendWhatsAppBill(txId, total, phoneToSend);
+        sendWhatsAppBill(txId, total, phoneToSend, [...cart], discountAmount, paymentMethod);
       } else {
         setWhatsappStatusBanner(null);
       }
@@ -366,7 +366,14 @@ export default function POS() {
     return true;
   });
 
-  const sendWhatsAppBill = async (txId: string, billTotal: number, phone: string) => {
+  const sendWhatsAppBill = async (
+    txId: string, 
+    billTotal: number, 
+    phone: string, 
+    itemsList: CartItem[] = checkoutResult?.items || [], 
+    discount: number = checkoutResult?.discountAmount || 0,
+    paymentMode: string = 'Paid'
+  ) => {
     if (!shopData || !phone) return;
 
     setWhatsappStatusBanner({
@@ -374,14 +381,61 @@ export default function POS() {
       message: `WhatsApp वर बिल पाठवत आहे... (+91 ${phone})`
     });
 
-    const customPublicUrl = (shopData as any)?.publicUrl;
-    const baseUrl = customPublicUrl ? customPublicUrl.replace(/\/$/, '') : window.location.origin;
-    const receiptLink = `${baseUrl}/receipt/${txId}`;
+    const shopName = shopData.shopName || shopData.name || 'Kirana Store';
+    const shopPhone = shopData.phone ? `📞 ${shopData.phone}` : '';
+    const shopAddr = shopData.address ? `📍 ${shopData.address}` : '';
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // Determine public URL for digital receipt link
+    const customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
-    let text = `*${shopData.shopName || shopData.name || 'Kirana Store'}*\n`;
-    text += `Thank you for shopping with us!\n\n`;
-    text += `Your bill for ₹${billTotal.toFixed(2)} is ready.\n\n`;
-    text += `View or download your detailed invoice here:\n${receiptLink}`;
+    let receiptLink: string | null = null;
+    if (customPublicUrl) {
+      receiptLink = `${customPublicUrl}/receipt/${txId}`;
+    } else if (!isLocalhost) {
+      receiptLink = `${window.location.origin}/receipt/${txId}`;
+    }
+
+    // Build comprehensive, professional retail WhatsApp bill
+    let text = `🏪 *${shopName.toUpperCase()}*\n`;
+    const contactLine = [shopAddr, shopPhone].filter(Boolean).join(' | ');
+    if (contactLine) {
+      text += `${contactLine}\n`;
+    }
+    text += `📅 ${formattedDate}, ${formattedTime}\n`;
+    text += `🧾 *Bill No:* #${txId.slice(0, 8)}\n`;
+    text += `────────────────────\n`;
+
+    // Itemized list
+    if (itemsList && itemsList.length > 0) {
+      text += `🛒 *ITEMS PURCHASED:*\n`;
+      itemsList.forEach((item, index) => {
+        const itemTotal = (item.sellingPrice * item.quantity).toFixed(2);
+        const unit = item.unit ? ` (${item.unit})` : '';
+        text += `${index + 1}. *${item.name}${unit}*\n`;
+        text += `   ${item.quantity} x ₹${item.sellingPrice.toFixed(2)} = ₹${itemTotal}\n`;
+      });
+      text += `────────────────────\n`;
+    }
+
+    if (discount > 0) {
+      const subtotalVal = billTotal + discount;
+      text += `Subtotal: ₹${subtotalVal.toFixed(2)}\n`;
+      text += `Discount: -₹${discount.toFixed(2)}\n`;
+    }
+
+    text += `💰 *TOTAL AMOUNT: ₹${billTotal.toFixed(2)}*\n`;
+    text += `💳 *Payment Mode:* ${paymentMode}\n`;
+    text += `────────────────────\n`;
+
+    if (receiptLink) {
+      text += `\n📄 *Download Digital Receipt (PDF):*\n${receiptLink}\n\n`;
+    }
+
+    text += `🙏 *Thank you for shopping with us!*\nPlease visit again! 😊`;
 
     try {
       const res = await fetch('/api/whatsapp/status');
@@ -424,7 +478,14 @@ export default function POS() {
 
   const handleWhatsAppBill = () => {
     if (!checkoutResult) return;
-    sendWhatsAppBill(checkoutResult.id, checkoutResult.total, checkoutResult.customerPhone);
+    sendWhatsAppBill(
+      checkoutResult.id, 
+      checkoutResult.total, 
+      checkoutResult.customerPhone,
+      checkoutResult.items,
+      checkoutResult.discountAmount,
+      'Paid'
+    );
   };
 
   const handlePrintReceipt = () => {

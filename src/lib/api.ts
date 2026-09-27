@@ -18,12 +18,30 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     headers,
   });
 
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(data.error || 'API Request Failed');
+  let data: any = {};
+  const text = await response.text();
+  if (text && text.trim().length > 0) {
+    try {
+      data = JSON.parse(text);
+    } catch (_err) {
+      if (!response.ok) {
+        throw new Error(`Server Error (${response.status}): Backend returned non-JSON response.`);
+      }
+      throw new Error(`Invalid JSON received from server: ${text.slice(0, 100)}`);
+    }
+  } else {
+    // Empty response received
+    if (!response.ok) {
+      throw new Error(`Backend Error (${response.status}): No response from API server.`);
+    }
+    // If status is 200 with empty body (typical when static hosting returns empty on unmatched POST routes)
+    throw new Error('Backend API is not reachable on this domain. If running on Render, ensure you deployed as a "Web Service" with "npm start" so the Node.js backend is active.');
   }
-  
+
+  if (!response.ok) {
+    throw new Error(data.error || `API Request Failed with status ${response.status}`);
+  }
+
   return data;
 }
 

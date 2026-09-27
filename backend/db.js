@@ -7,11 +7,34 @@ require('dotenv').config();
 
 let poolConfig = {};
 
+const isRenderProduction = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_INSTANCE_ID);
+
 if (process.env.DATABASE_URL) {
   poolConfig = {
     uri: process.env.DATABASE_URL
   };
+} else if (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') {
+  // Explicit remote host configured
+  poolConfig = {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'Shubham16@',
+    database: process.env.DB_NAME || 'nayashi_kirana',
+    connectTimeout: 15000,
+  };
+} else if (isRenderProduction || !process.env.DB_HOST || process.env.DB_HOST === 'gateway01.ap-northeast-1.prod.aws.tidbcloud.com') {
+  // On Render production (or when DB_HOST is empty), default directly to TiDB Cloud permanent database!
+  poolConfig = {
+    host: 'gateway01.ap-northeast-1.prod.aws.tidbcloud.com',
+    port: 4000,
+    user: 'Q6jneq1m3b8AAAP.root',
+    password: 'kPfHD6VZ6LWtSsi3',
+    database: 'nayashi_kirana',
+    connectTimeout: 15000,
+  };
 } else {
+  // Local development fallback
   poolConfig = {
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
@@ -22,8 +45,8 @@ if (process.env.DATABASE_URL) {
   };
 }
 
-// Enable SSL for cloud databases (TiDB, Aiven, Railway, AWS RDS, etc.)
-if (process.env.DB_SSL === 'true' || (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1')) {
+// Enable SSL whenever connecting to TiDB or remote host
+if (poolConfig.host && poolConfig.host !== 'localhost' && poolConfig.host !== '127.0.0.1') {
   poolConfig.ssl = { rejectUnauthorized: false };
 }
 
@@ -394,10 +417,10 @@ const pool = {
       adapter: isFallbackActive ? 'sqlite' : (isMySQLReady ? 'mysql_cloud' : 'trying_mysql'),
       isMySQLReady,
       isFallbackActive,
-      dbHost: process.env.DB_HOST || 'not_set',
-      dbName: process.env.DB_NAME || 'nayashi_kirana',
-      dbUser: process.env.DB_USER || 'root',
-      hasPassword: Boolean(process.env.DB_PASSWORD)
+      dbHost: poolConfig.host || 'unknown',
+      dbName: poolConfig.database || 'nayashi_kirana',
+      dbUser: poolConfig.user || 'root',
+      hasPassword: Boolean(poolConfig.password)
     };
   }
 };

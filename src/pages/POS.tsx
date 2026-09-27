@@ -5,6 +5,7 @@ import { Label } from '../components/ui/label';
 import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera, Printer, Barcode, Smartphone } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
+import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product, CartItem } from '../types';
@@ -192,24 +193,48 @@ export default function POS() {
     }
   };
 
-  const handleParchiScan = () => {
+  const handleParchiScan = async (file: File) => {
     setIsParchiScanning(true);
-    // Simulate AI scanning delay
-    setTimeout(() => {
-      setIsParchiScanning(false);
-      
-      // Magically find 3 random loose items from the store
-      const looseItems = products.filter(p => !p.barcode || p.barcode.trim() === '');
-      const selected = looseItems.sort(() => 0.5 - Math.random()).slice(0, 3);
-      
-      if (selected.length > 0) {
-        selected.forEach(p => addToCart(p));
-        alert(`AI successfully read the Parchi and added ${selected.length} items to the bill!`);
-      } else {
-        alert('Could not find matching items from the Parchi in your inventory.');
+    setParchiText('AI reading handwriting from image...');
+    try {
+      const { data: { text } } = await Tesseract.recognize(file, 'eng');
+      setParchiText(text);
+
+      const lines = text.toLowerCase().split(/[\n,;]+/).map(l => l.trim()).filter(l => l.length > 1);
+      const matchedProducts: Product[] = [];
+
+      for (const line of lines) {
+        // Strip non-alphanumeric except space
+        const cleanLine = line.replace(/[^a-z0-9\s]/g, '').trim();
+        if (!cleanLine) continue;
+
+        const wordsInLine = cleanLine.split(/\s+/).filter(w => w.length > 2);
+        
+        // Find best match among products
+        const matched = products.find(p => {
+          const pName = (p.name || '').toLowerCase();
+          if (pName.includes(cleanLine) || cleanLine.includes(pName)) return true;
+          return wordsInLine.some(w => pName.includes(w));
+        });
+
+        if (matched && !matchedProducts.some(mp => mp.id === matched.id)) {
+          matchedProducts.push(matched);
+        }
       }
-      setShowParchiModal(false);
-    }, 3000);
+
+      if (matchedProducts.length > 0) {
+        matchedProducts.forEach(p => addToCart(p));
+        alert(`🎉 AI Parchi Match: Added ${matchedProducts.length} items to cart:\n${matchedProducts.map(m => `• ${m.name}`).join('\n')}`);
+        setShowParchiModal(false);
+      } else {
+        alert(`Extracted text:\n"${text.trim() || 'No clear text detected'}"\n\nNo matching products found in inventory. You can search or add products manually.`);
+      }
+    } catch (err) {
+      console.error('OCR Error:', err);
+      alert('Failed to process image. Please try again with clear handwriting.');
+    } finally {
+      setIsParchiScanning(false);
+    }
   };
 
   const updateQty = (id: string, delta: number) => {
@@ -349,11 +374,11 @@ export default function POS() {
       message: `WhatsApp वर बिल पाठवत आहे... (+91 ${phone})`
     });
 
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const baseUrl = isLocal ? 'https://tyler-rugs-algebra-reveal.trycloudflare.com' : window.location.origin;
+    const customPublicUrl = (shopData as any)?.publicUrl;
+    const baseUrl = customPublicUrl ? customPublicUrl.replace(/\/$/, '') : window.location.origin;
     const receiptLink = `${baseUrl}/receipt/${txId}`;
     
-    let text = `*${shopData.name || 'Kirana Store'}*\n`;
+    let text = `*${shopData.shopName || shopData.name || 'Kirana Store'}*\n`;
     text += `Thank you for shopping with us!\n\n`;
     text += `Your bill for ₹${billTotal.toFixed(2)} is ready.\n\n`;
     text += `View or download your detailed invoice here:\n${receiptLink}`;
@@ -773,12 +798,38 @@ export default function POS() {
                 ) : (
                   <>
                     <Camera className="h-12 w-12 text-muted-foreground mb-3" />
-                    <Button variant="outline" className="relative overflow-hidden w-full max-w-[200px]" onClick={handleParchiScan}>
-                      <span className="flex items-center justify-center">
-                        Take Photo
-                      </span>
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-3 text-center">Make sure the handwriting is clear</p>
+                    <div className="flex flex-col gap-2 w-full max-w-[240px]">
+                      <label className="cursor-pointer">
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment"
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleParchiScan(file);
+                          }}
+                        />
+                        <span className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
+                          <Camera className="h-4 w-4" /> Camera Capture
+                        </span>
+                      </label>
+                      <label className="cursor-pointer">
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleParchiScan(file);
+                          }}
+                        />
+                        <span className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg border border-border bg-card text-foreground font-medium text-sm hover:bg-muted transition-colors">
+                          📁 Upload Parchi Photo
+                        </span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3 text-center">Make sure the handwriting is clear and well-lit.</p>
                   </>
                 )}
               </div>

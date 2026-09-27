@@ -112,13 +112,49 @@ async function sendMessage(phoneNumber, message) {
   
   const chatId = `${formattedNumber}@c.us`;
   
-  try {
-    await client.sendMessage(chatId, message);
-    console.log(`WhatsApp message successfully sent to ${chatId}`);
-    return true;
-  } catch (error) {
-    console.error('Error sending WhatsApp message:', error);
-    throw error;
+  // Try sending with automatic recovery for detached frames
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await client.sendMessage(chatId, message);
+      console.log(`WhatsApp message successfully sent to ${chatId}`);
+      return true;
+    } catch (error) {
+      console.error(`Attempt ${attempt} error sending WhatsApp message:`, error.message);
+      
+      const isDetached = error.message && (
+        error.message.includes('detached Frame') || 
+        error.message.includes('Execution context was destroyed') ||
+        error.message.includes('Target closed')
+      );
+
+      if (isDetached && attempt < 3) {
+        console.log(`Attempting to recover detached frame (attempt ${attempt})...`);
+        try {
+          if (client.pupBrowser) {
+            const pages = await client.pupBrowser.pages();
+            const activePage = pages.find(p => !p.isClosed() && (p.url().includes('whatsapp') || p.url().includes('web'))) || pages[0];
+            if (activePage) {
+              client.pupPage = activePage;
+              if (attempt === 2) {
+                // On second failure, reload the page to get a fresh execution frame
+                console.log('Reloading WhatsApp Web page to reset frame...');
+                await client.pupPage.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+              }
+              await client.inject();
+              console.log('Re-injected client scripts into active frame. Retrying...');
+              await new Promise(r => setTimeout(r, 2000));
+              continue;
+            }
+          }
+        } catch (recoverErr) {
+          console.error('Frame recovery attempt failed:', recoverErr.message);
+        }
+      }
+
+      if (attempt === 3 || !isDetached) {
+        throw error;
+      }
+    }
   }
 }
 

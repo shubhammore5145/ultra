@@ -1,174 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @layer base {
   :root {
-    --background: 220 33% 98%;
-    --foreground: 222 47% 11%;
-
+    --background: 230 20% 97%;
+    --foreground: 224 71% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-
+    --card-foreground: 224 71% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-
-    --primary: 262 83% 58%; /* Vibrant Indigo/Violet */
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-
-    --accent: 262 83% 96%;
-    --accent-foreground: 262 83% 48%;
-
-    --destructive: 348 83% 58%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 262 83% 58%;
-
-    --radius: 0.75rem; /* Slightly larger border radius for modern feel */
+    --popover-foreground: 224 71% 10%;
+    --primary: 250 84% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 230 15% 94%;
+    --secondary-foreground: 224 71% 20%;
+    --muted: 230 15% 94%;
+    --muted-foreground: 230 10% 50%;
+    --accent: 250 84% 95%;
+    --accent-foreground: 250 84% 40%;
+    --destructive: 0 84% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 230 15% 88%;
+    --input: 230 15% 88%;
+    --ring: 250 84% 60%;
+    --radius: 0.75rem;
   }
-
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 262 83% 65%; /* Lighter indigo for dark mode */
-    --primary-foreground: 222 47% 11%;
-
-    --secondary: 217 32% 17%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217 32% 17%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 262 32% 17%;
-    --accent-foreground: 262 83% 75%;
-
-    --destructive: 348 83% 58%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217 32% 17%;
-    --input: 217 32% 17%;
-    --ring: 262 83% 65%;
+    --background: 226 30% 8%;
+    --foreground: 213 31% 95%;
+    --card: 226 30% 11%;
+    --card-foreground: 213 31% 95%;
+    --popover: 226 30% 11%;
+    --popover-foreground: 213 31% 95%;
+    --primary: 250 84% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 226 30% 15%;
+    --secondary-foreground: 213 31% 85%;
+    --muted: 226 30% 15%;
+    --muted-foreground: 230 10% 55%;
+    --accent: 250 50% 20%;
+    --accent-foreground: 250 84% 80%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 226 30% 18%;
+    --input: 226 30% 18%;
+    --ring: 250 84% 65%;
   }
 }
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
+  * { border-color: hsl(var(--border)); box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
+    font-family: 'Inter', system-ui, sans-serif;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    /* Prevent pull-to-refresh on mobile */
     overscroll-behavior-y: contain;
+    font-feature-settings: "cv11","ss01";
   }
-
-  /* Safe area for notch phones (iPhone X+) */
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  /* Smooth scrolling on mobile */
-  * {
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Prevent text selection on interactive elements */
-  button, a, nav {
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  /* Fix input zoom on iOS (font-size < 16px triggers zoom) */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  * { -webkit-overflow-scrolling: touch; }
+  button, a, nav { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   @media screen and (max-width: 768px) {
-    input, select, textarea {
-      font-size: 16px !important;
-    }
+    input, select, textarea { font-size: 16px !important; }
   }
 }
 
-/* Thermal Printer Styles */
-@media print {
-  /* Hide all non-receipt elements */
-  body * {
-    visibility: hidden;
-  }
-  
-  /* Reset margins for POS printer */
-  @page {
-    margin: 0;
-    size: 80mm auto;
-  }
-  
-  /* Make receipt visible and positioned correctly */
-  #receipt-template, #receipt-template * {
-    visibility: visible;
-  }
-  
-  #receipt-template {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 80mm;
-    padding: 2mm;
-    margin: 0;
-    font-family: monospace;
-    font-size: 12px;
-    line-height: 1.2;
-    color: #000;
-    background: #fff;
-  }
-}
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.animate-fadeInUp { animation: fadeInUp 0.35s ease-out forwards; }
+.animate-fadeIn { animation: fadeIn 0.25s ease-out forwards; }
+.animate-scaleIn { animation: scaleIn 0.25s ease-out forwards; }
+.animate-slideInRight { animation: slideInRight 0.28s ease-out forwards; }
+
+.stagger > * { animation: fadeInUp 0.35s ease-out forwards; opacity: 0; }
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger > *:nth-child(6) { animation-delay: 0.3s; }
+
+.stat-card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 1rem; padding: 1.25rem; box-shadow: 0 1px 3px 0 hsl(var(--foreground) / 0.04); transition: box-shadow 0.2s, transform 0.2s; }
+.stat-card:hover { box-shadow: 0 4px 16px 0 hsl(var(--primary) / 0.08); transform: translateY(-1px); }
+.stat-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+.stat-value { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.025em; color: hsl(var(--foreground)); margin-top: 0.25rem; line-height: 1.15; }
+
+.kirana-select { display: flex; height: 2.5rem; width: 100%; border-radius: 0.5rem; border: 1px solid hsl(var(--input)); background-color: hsl(var(--background)); padding: 0 2.5rem 0 0.75rem; font-size: 0.875rem; color: hsl(var(--foreground)); outline: none; transition: border-color 0.15s, box-shadow 0.15s; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1rem; }
+.kirana-select:focus { border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15); }
+
+.badge { display: inline-flex; align-items: center; border-radius: 9999px; padding: 0.15rem 0.6rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
+.badge-primary { background: hsl(var(--primary) / 0.12); color: hsl(var(--primary)); }
+.badge-success { background: rgb(16 185 129 / 0.12); color: rgb(5 150 105); }
+.badge-warning { background: rgb(245 158 11 / 0.12); color: rgb(180 110 0); }
+.badge-danger { background: rgb(239 68 68 / 0.12); color: rgb(185 28 28); }
+
+.kirana-table { width: 100%; font-size: 0.875rem; border-collapse: collapse; }
+.kirana-table thead { background: hsl(var(--muted) / 0.7); }
+.kirana-table thead th { padding: 0.75rem 1rem; text-align: left; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+.kirana-table tbody tr { border-bottom: 1px solid hsl(var(--border) / 0.7); transition: background 0.1s; }
+.kirana-table tbody tr:hover { background: hsl(var(--muted) / 0.5); }
+.kirana-table tbody td { padding: 0.75rem 1rem; }
+.kirana-table tbody tr:last-child { border-bottom: none; }
+
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+.page-title { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.025em; color: hsl(var(--foreground)); line-height: 1.15; }
+.page-subtitle { font-size: 0.875rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; }
+.kirana-card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 1rem; overflow: hidden; box-shadow: 0 1px 3px 0 hsl(var(--foreground) / 0.04); }
+
+.alert-success { background: rgb(16 185 129 / 0.1); border: 1px solid rgb(16 185 129 / 0.25); border-radius: 0.75rem; padding: 0.875rem 1rem; font-size: 0.875rem; color: rgb(4 120 87); display: flex; align-items: flex-start; gap: 0.6rem; }
+.alert-danger { background: rgb(239 68 68 / 0.1); border: 1px solid rgb(239 68 68 / 0.25); border-radius: 0.75rem; padding: 0.875rem 1rem; font-size: 0.875rem; color: rgb(185 28 28); display: flex; align-items: flex-start; gap: 0.6rem; }
+.alert-warning { background: rgb(245 158 11 / 0.1); border: 1px solid rgb(245 158 11 / 0.25); border-radius: 0.75rem; padding: 0.875rem 1rem; font-size: 0.875rem; color: rgb(146 64 14); display: flex; align-items: flex-start; gap: 0.6rem; }
+.alert-info { background: hsl(var(--primary) / 0.08); border: 1px solid hsl(var(--primary) / 0.2); border-radius: 0.75rem; padding: 0.875rem 1rem; font-size: 0.875rem; color: hsl(var(--primary)); display: flex; align-items: flex-start; gap: 0.6rem; }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 1rem; text-align: center; }
+.empty-state-icon { margin-bottom: 1rem; background: hsl(var(--muted)); border-radius: 1.25rem; padding: 1.25rem; color: hsl(var(--muted-foreground)); }
+.empty-state-title { font-size: 1rem; font-weight: 600; color: hsl(var(--foreground)); }
+.empty-state-desc { font-size: 0.875rem; color: hsl(var(--muted-foreground)); margin-top: 0.375rem; max-width: 22rem; }
+
+.gradient-text { background: linear-gradient(135deg, hsl(var(--primary)), #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.glass { background: hsl(var(--card) / 0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid hsl(var(--border) / 0.5); }
+
+.nav-item { display: flex; align-items: center; gap: 0.75rem; border-radius: 0.75rem; padding: 0.625rem 0.875rem; font-size: 0.875rem; font-weight: 500; transition: all 0.15s; cursor: pointer; text-decoration: none; }
+.nav-item-active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); box-shadow: 0 2px 8px hsl(var(--primary) / 0.35); }
+.nav-item-inactive { color: hsl(var(--muted-foreground)); }
+.nav-item-inactive:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 
 @media print {
-  @page {
-    size: 80mm auto; /* Thermal printer width */
-    margin: 0;
-  }
-  
-  body {
-    margin: 0;
-    padding: 0;
-    background: white;
-    font-family: monospace;
-    font-size: 12px;
-  }
-
-  /* Hide everything by default during print */
-  body * {
-    visibility: hidden;
-  }
-  
-  /* Make only the receipt visible */
-  #receipt-template, #receipt-template * {
-    visibility: visible;
-  }
-  
-  #receipt-template {
-    position: absolute !important;
-    left: 0;
-    top: 0;
-    width: 80mm;
-  }
-  
-  /* Reset some shadcn specific resets during print */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
+  body * { visibility: hidden; }
+  @page { margin: 0; size: 80mm auto; }
+  #receipt-template, #receipt-template * { visibility: visible; }
+  #receipt-template { position: fixed; left: 0; top: 0; width: 80mm; font-family: 'Courier New', monospace; font-size: 11px; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }

@@ -17,7 +17,8 @@ export default function Upgrade() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const isPro = shopData?.plan === 'pro';
+  const currentPlan = (shopData?.plan || '').toLowerCase();
+  const isPro = currentPlan === 'pro' || currentPlan === 'ultra_pro' || currentPlan.includes('pro');
 
   const handleUpgrade = async (days: number, amountInPaise: number, planName: string) => {
     if (!shopData?.shopId) return;
@@ -35,8 +36,13 @@ export default function Upgrade() {
           const expiryDate = new Date();
           expiryDate.setDate(expiryDate.getDate() + days);
 
-          await api.shops.upgradePlan(`PRO - ${planName}`);
-          alert(`🎉 Congratulations! Your shop is now on the PRO plan for ${planName}!`);
+          const normalizedPlan = planName.toLowerCase().includes('ultra') ? 'ultra_pro' : 'pro';
+          await api.shops.upgradePlan({
+            plan: normalizedPlan,
+            planExpiry: expiryDate.toISOString()
+          });
+
+          alert(`🎉 Congratulations! Your shop is now on the ${planName} plan!`);
           navigate('/');
         } catch (err) {
           console.error(err);

@@ -25,7 +25,14 @@ dist-ssr
 
 .env
 backend/.env
+.env*.local
 
+# WhatsApp Web Session & Cache
 backend/.wwebjs_auth/
 backend/.wwebjs_cache/
+.wwebjs_auth/
+.wwebjs_cache/
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+
 cloudflared.exe

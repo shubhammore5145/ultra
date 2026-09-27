@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut } from 'lucide-react';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 
 export default function Settings() {
-  const { shopData } = useAuth();
+  const { userData, shopData, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -17,10 +17,37 @@ export default function Settings() {
     phone: '',
     address: '',
     gstNumber: '',
-    upiId: ''
+    upiId: '',
+    publicUrl: ''
   });
 
+  const [staffList, setStaffList] = useState<any[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<any>(null);
+
+  const fetchStaff = async () => {
+    setLoadingStaff(true);
+    try {
+      const data = await api.staff.list();
+      setStaffList(data);
+    } catch (err) {
+      console.error('Failed to load staff list', err);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
+
+  const handleRemoveStaff = async (uid: string, name: string) => {
+    if (window.confirm(`Are you sure you want to remove ${name} from your shop?`)) {
+      try {
+        await api.staff.remove(uid);
+        alert(`${name} removed successfully.`);
+        fetchStaff();
+      } catch (err: any) {
+        alert(err.message || 'Failed to remove staff.');
+      }
+    }
+  };
 
   const fetchWhatsappStatus = async () => {
     try {
@@ -40,9 +67,11 @@ export default function Settings() {
         phone: shopData.phone || '',
         address: shopData.address || '',
         gstNumber: shopData.gstNumber || '',
-        upiId: shopData.upiId || ''
+        upiId: shopData.upiId || '',
+        publicUrl: (shopData as any).publicUrl || ''
       });
       setLoading(false);
+      fetchStaff();
       
       // Fetch status every 3 seconds
       fetchWhatsappStatus();
@@ -80,7 +109,8 @@ export default function Settings() {
         ownerName: formData.ownerName,
         phone: formData.phone,
         address: formData.address,
-        upiId: formData.upiId
+        upiId: formData.upiId,
+        publicUrl: formData.publicUrl.trim().replace(/\/$/, '') // remove trailing slash
       });
       alert("Settings updated successfully!");
     } catch (error) {
@@ -174,6 +204,20 @@ export default function Settings() {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-muted-foreground" /> Public Domain / Cloudflare URL (For WhatsApp Bill Link)
+              </label>
+              <Input 
+                value={formData.publicUrl}
+                onChange={e => setFormData({...formData, publicUrl: e.target.value})}
+                placeholder="e.g. https://your-tunnel.trycloudflare.com or https://myshop.com"
+                className="bg-background border-muted focus:ring-primary/50"
+              />
+              <p className="text-xs text-muted-foreground">
+                This URL will be included in the WhatsApp message so customers can open their digital receipts anywhere.
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" /> Shop Address
               </label>
               <Input 
@@ -193,28 +237,57 @@ export default function Settings() {
         </form>
       )}
 
-      {/* Staff Accounts Section (UI Demo for now) */}
+      {/* Staff Accounts Section (Live Real Staff Management) */}
       <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
         <div className="p-6 border-b bg-muted/30">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-primary" /> Staff Accounts & Security
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage who has access to your shop. Staff accounts cannot see reports or edit settings.</p>
+          <p className="text-sm text-muted-foreground mt-1">Manage who has access to your shop. Cashiers can only access billing and basic operations.</p>
         </div>
         <div className="p-6 space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-xl bg-background">
-              <div>
-                <p className="font-bold">{shopData?.ownerName || 'Admin'}</p>
-                <p className="text-sm text-muted-foreground">{shopData?.email}</p>
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Active Team Members</h3>
+            {loadingStaff ? (
+              <div className="flex justify-center p-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-              <span className="bg-primary/10 text-primary font-bold px-3 py-1 rounded-full text-xs uppercase tracking-widest">Admin</span>
-            </div>
+            ) : staffList.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No staff accounts found.</p>
+            ) : (
+              staffList.map((member) => (
+                <div key={member.uid} className="flex items-center justify-between p-4 border rounded-xl bg-background">
+                  <div>
+                    <p className="font-bold text-foreground">{member.displayName || member.email}</p>
+                    <p className="text-sm text-muted-foreground">{member.email}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider ${
+                      member.role === 'admin' 
+                        ? 'bg-primary/10 text-primary border border-primary/20' 
+                        : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                    }`}>
+                      {member.role || 'Staff'}
+                    </span>
+                    {member.role !== 'admin' && (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        onClick={() => handleRemoveStaff(member.uid, member.displayName || member.email)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           
           <div className="border-t pt-6">
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4">Invite Staff / Cashier</h3>
-            <p className="text-sm text-muted-foreground mb-4">Share your Shop ID with your cashier. They can use it to join your shop during sign-up.</p>
+            <p className="text-sm text-muted-foreground mb-4">Share your Shop ID with your cashier. They can select "Join Shop (Cashier)" during sign-up.</p>
             <div className="flex gap-3">
               <div className="flex-1 bg-muted rounded-lg px-4 py-3 font-mono text-sm text-foreground select-all border">
                 {shopData?.shopId || 'Loading...'}
@@ -235,7 +308,7 @@ export default function Settings() {
               <Button
                 type="button"
                 onClick={() => {
-                  const text = `Hello! Join my shop on KiranaPro. Sign up at the app and use this Shop ID to join: ${shopData?.shopId}`;
+                  const text = `Hello! Join my shop on KiranaPro. Sign up at the app and select 'Join Shop (Cashier)' with this Shop ID: ${shopData?.shopId}`;
                   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                 }}
                 className="bg-green-500 hover:bg-green-600 text-white"
@@ -290,6 +363,40 @@ export default function Settings() {
           <p>Unknown Status: {whatsappStatus.status}</p>
         )}
       </div>
+    </div>
+  </div>
+
+  {/* Account & Session Management */}
+  <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
+    <div className="p-6 border-b flex items-center justify-between">
+      <div>
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-primary" /> Account & Session
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">Manage your active login session and sign out.</p>
+      </div>
+    </div>
+    <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20">
+      <div>
+        <p className="font-bold text-base text-foreground">{userData?.displayName || 'User'}</p>
+        <p className="text-sm text-muted-foreground">
+          Logged in as: <span className="capitalize font-semibold text-primary">{userData?.role || 'Staff'}</span>
+        </p>
+        <p className="text-xs text-muted-foreground mt-1 font-mono">
+          Shop ID: <span className="bg-muted px-2 py-0.5 rounded border">{shopData?.shopId || 'N/A'}</span>
+        </p>
+      </div>
+      <Button
+        variant="destructive"
+        onClick={() => {
+          if (window.confirm('Are you sure you want to log out of KiranaPro?')) {
+            logout();
+          }
+        }}
+        className="bg-red-600 hover:bg-red-700 text-white font-semibold flex items-center gap-2 shadow-sm"
+      >
+        <LogOut className="h-4 w-4" /> Log Out of Account
+      </Button>
     </div>
   </div>
 </div>

@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 async function setupTables() {
   try {
@@ -23,6 +24,7 @@ async function setupTables() {
         address TEXT,
         gstNumber VARCHAR(50),
         upiId VARCHAR(255),
+        publicUrl VARCHAR(255),
         plan VARCHAR(20) DEFAULT 'free',
         planExpiry DATETIME,
         settings JSON
@@ -34,6 +36,7 @@ async function setupTables() {
       CREATE TABLE IF NOT EXISTS users (
         uid VARCHAR(255) PRIMARY KEY,
         email VARCHAR(255) NOT NULL,
+        password VARCHAR(255),
         displayName VARCHAR(255),
         role VARCHAR(20) DEFAULT 'staff',
         shopId VARCHAR(255),
@@ -59,6 +62,7 @@ async function setupTables() {
         sku VARCHAR(100),
         barcode VARCHAR(255),
         expiryDate DATE,
+        imageUrl LONGTEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (shopId) REFERENCES shops(shopId) ON DELETE CASCADE
       )
@@ -75,6 +79,7 @@ async function setupTables() {
         balance DECIMAL(10, 2) DEFAULT 0,
         visits INT DEFAULT 0,
         totalSpent DECIMAL(10, 2) DEFAULT 0,
+        loyaltyPoints INT DEFAULT 0,
         aadharNumber VARCHAR(20),
         photoUrl LONGTEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -130,7 +135,41 @@ async function setupTables() {
       )
     `);
 
-    console.log("All tables created successfully!");
+    // Suppliers Table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id VARCHAR(255) PRIMARY KEY,
+        shopId VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(20),
+        address TEXT,
+        gstNumber VARCHAR(50),
+        balance DECIMAL(10, 2) DEFAULT 0,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (shopId) REFERENCES shops(shopId) ON DELETE CASCADE
+      )
+    `);
+
+    // Purchases Table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS purchases (
+        id VARCHAR(255) PRIMARY KEY,
+        shopId VARCHAR(255) NOT NULL,
+        supplierId VARCHAR(255),
+        invoiceNumber VARCHAR(100),
+        date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        totalAmount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        paidAmount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        paymentStatus VARCHAR(20) DEFAULT 'paid',
+        items JSON,
+        notes TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (shopId) REFERENCES shops(shopId) ON DELETE CASCADE,
+        FOREIGN KEY (supplierId) REFERENCES suppliers(id) ON DELETE SET NULL
+      )
+    `);
+
+    console.log("All tables verified and created successfully!");
     process.exit(0);
   } catch (error) {
     console.error("Error creating tables:", error);

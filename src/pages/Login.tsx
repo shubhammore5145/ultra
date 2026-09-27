@@ -5,12 +5,23 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Store, Loader2, ArrowRight } from 'lucide-react';
+import { Store, Loader2, ArrowRight, Mail, CheckCircle2, X } from 'lucide-react';
+import { 
+  auth, 
+  googleProvider,
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail, 
+  signInWithPopup,
+  updateProfile 
+} from '../lib/firebase';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetSuccessMessage, setResetSuccessMessage] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -22,41 +33,132 @@ export default function Login() {
   const [roleChoice, setRoleChoice] = useState<'admin' | 'cashier'>('admin');
   const [joinShopId, setJoinShopId] = useState('');
 
+  // Forgot Password Modal State
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  const formatFirebaseError = (err: any) => {
+    const code = err.code || '';
+    if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+      return 'Invalid email or password.';
+    }
+    if (code === 'auth/email-already-in-use') {
+      return 'This email is already registered. Please sign in instead.';
+    }
+    if (code === 'auth/weak-password') {
+      return 'Password should be at least 6 characters.';
+    }
+    if (code === 'auth/invalid-email') {
+      return 'Please enter a valid email address.';
+    }
+    return err.message || 'Authentication failed. Please try again.';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setResetSuccessMessage('');
     setLoading(true);
 
     try {
       if (isLogin) {
-        const res = await api.auth.login({ email, password });
+        // 1. Firebase Authentication
+        const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+        const fbUser = userCredential.user;
+
+        // 2. Sync with MySQL Database
+        const res = await api.auth.firebaseSync({
+          uid: fbUser.uid,
+          email: fbUser.email,
+          displayName: fbUser.displayName || name || email.split('@')[0]
+        });
+
         login(res.token, res.user, res.shop);
-        navigate('/');
+        navigate(res.user?.role === 'cashier' ? '/pos' : '/');
       } else {
         // Sign Up Flow
         if (roleChoice === 'cashier' && !joinShopId.trim()) {
           throw new Error('Please enter the Shop ID to join.');
         }
 
-        const signupData = {
-          email,
-          password,
-          displayName: name,
-          shopName: roleChoice === 'admin' ? shopName : undefined,
-          ownerName: name, // assuming user is owner
-          phone: '',
-          role: roleChoice,
-          shopId: roleChoice === 'cashier' ? joinShopId.trim() : undefined
-        };
+        // 1. Firebase Create Account
+        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const fbUser = userCredential.user;
 
-        const res = await api.auth.signup(signupData);
+        if (name) {
+          try {
+            await updateProfile(fbUser, { displayName: name });
+          } catch (_e) {}
+        }
+
+        // 2. Sync & Store in MySQL Database
+        const res = await api.auth.firebaseSync({
+          uid: fbUser.uid,
+          email: fbUser.email,
+          displayName: name || email.split('@')[0],
+          role: roleChoice,
+          shopId: roleChoice === 'cashier' ? joinShopId.trim() : undefined,
+          shopName: roleChoice === 'admin' ? (shopName || 'My Kirana Store') : undefined,
+          ownerName: name
+        });
+
         login(res.token, res.user, res.shop);
-        navigate('/');
+        navigate(res.user?.role === 'cashier' ? '/pos' : '/');
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      console.error('Auth error:', err);
+      setError(formatFirebaseError(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser = result.user;
+
+      const res = await api.auth.firebaseSync({
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+        shopName: `${fbUser.displayName || 'My'}'s Shop`,
+        ownerName: fbUser.displayName || 'Owner'
+      });
+
+      login(res.token, res.user, res.shop);
+      navigate(res.user?.role === 'cashier' ? '/pos' : '/');
+    } catch (err: any) {
+      console.error('Google sign in error:', err);
+      setError(formatFirebaseError(err));
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail.trim()) {
+      setResetError('Please enter your registered email address.');
+      return;
+    }
+
+    setResetLoading(true);
+    setResetError('');
+    try {
+      await sendPasswordResetEmail(auth, resetEmail.trim());
+      setShowForgotModal(false);
+      setResetSuccessMessage(`Password reset link sent to ${resetEmail}! Please check your email inbox and spam folder.`);
+      setResetEmail('');
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      setResetError(formatFirebaseError(err));
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -79,7 +181,7 @@ export default function Login() {
             Manage your shop with modern precision.
           </h1>
           <p className="text-lg text-white/80 font-medium">
-            Everything you need for billing, inventory, and customer management in one powerful platform designed specifically for Kirana stores.
+            Everything you need for billing, inventory, stock-in, and customer udhar in one powerful platform powered by Firebase Auth & MySQL.
           </p>
         </div>
 
@@ -94,7 +196,6 @@ export default function Login() {
 
       {/* Right side - Auth Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 relative overflow-hidden">
-        {/* Subtle background glow effect for right side */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
 
         <div className="w-full max-w-md space-y-8 relative z-10 p-8 sm:p-10 bg-card/50 backdrop-blur-xl border border-border/50 shadow-2xl rounded-3xl">
@@ -108,19 +209,64 @@ export default function Login() {
             </p>
           </div>
 
-          <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-            {error && (
-              <div className="rounded-lg bg-destructive/15 p-4 text-sm text-destructive border border-destructive/20 font-medium">
-                {error}
-              </div>
+          {resetSuccessMessage && (
+            <div className="rounded-xl bg-emerald-500/10 p-4 text-sm text-emerald-600 border border-emerald-500/30 font-medium flex items-start gap-2">
+              <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
+              <span>{resetSuccessMessage}</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg bg-destructive/15 p-4 text-sm text-destructive border border-destructive/20 font-medium">
+              {error}
+            </div>
+          )}
+
+          {/* Google 1-Click Login Button */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-12 font-semibold flex items-center justify-center gap-3 border-border hover:bg-muted transition-colors shadow-sm"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading || loading}
+          >
+            {googleLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <svg className="h-5 w-5" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                />
+              </svg>
             )}
-            
+            <span>Continue with Google</span>
+          </Button>
+
+          <div className="relative flex items-center justify-center">
+            <div className="border-t border-border w-full"></div>
+            <span className="bg-card px-3 text-xs uppercase text-muted-foreground font-semibold absolute">or email</span>
+          </div>
+
+          <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-4">
               {!isLogin && (
                 <>
                   <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-muted rounded-lg">
                     <Button 
-                      type="button"
+                      type="button" 
                       variant={roleChoice === 'admin' ? 'default' : 'ghost'} 
                       className="text-xs sm:text-sm font-semibold"
                       onClick={() => setRoleChoice('admin')}
@@ -128,7 +274,7 @@ export default function Login() {
                       Create Shop (Admin)
                     </Button>
                     <Button 
-                      type="button"
+                      type="button" 
                       variant={roleChoice === 'cashier' ? 'default' : 'ghost'} 
                       className="text-xs sm:text-sm font-semibold"
                       onClick={() => setRoleChoice('cashier')}
@@ -194,16 +340,17 @@ export default function Login() {
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password" className="text-foreground font-medium">Password</Label>
                   {isLogin && (
-                    <a 
-                      href="#" 
+                    <button 
+                      type="button" 
                       className="text-sm font-medium text-primary hover:underline hover:text-primary/80 transition-colors"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        alert('Password reset requires SMTP setup in the backend. Contact Admin.');
+                      onClick={() => {
+                        setResetEmail(email);
+                        setResetError('');
+                        setShowForgotModal(true);
                       }}
                     >
                       Forgot password?
-                    </a>
+                    </button>
                   )}
                 </div>
                 <Input
@@ -218,11 +365,11 @@ export default function Login() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-12 text-base font-semibold shadow-md bg-primary text-primary-foreground hover:bg-primary/90" disabled={loading}>
+            <Button type="submit" className="w-full h-12 text-base font-semibold shadow-md bg-primary text-primary-foreground hover:bg-primary/90" disabled={loading || googleLoading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  {isLogin ? 'Signing in...' : 'Creating account...'}
+                  {isLogin ? 'Signing in with Firebase...' : 'Creating Firebase Account...'}
                 </>
               ) : (
                 <>
@@ -250,6 +397,57 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* FORGOT PASSWORD MODAL */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-md p-6 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-2 border-b">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <Mail className="h-5 w-5 text-primary" /> Reset Password
+              </h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowForgotModal(false)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              Enter your email address and Firebase will instantly send a secure password reset link to your inbox.
+            </p>
+
+            {resetError && (
+              <div className="rounded-lg bg-destructive/15 p-3 text-xs text-destructive border border-destructive/20 font-medium">
+                {resetError}
+              </div>
+            )}
+
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="resetEmail">Your Registered Email</Label>
+                <Input
+                  id="resetEmail"
+                  type="email"
+                  required
+                  placeholder="name@example.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button type="button" variant="outline" onClick={() => setShowForgotModal(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={resetLoading}>
+                  {resetLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Send Reset Link
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

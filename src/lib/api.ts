@@ -31,6 +31,7 @@ export const api = {
   auth: {
     login: (credentials: any) => fetchAPI('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
     signup: (data: any) => fetchAPI('/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
+    firebaseSync: (data: any) => fetchAPI('/auth/firebase-sync', { method: 'POST', body: JSON.stringify(data) }),
     me: () => fetchAPI('/auth/me', { method: 'GET' })
   },
   products: {
@@ -42,7 +43,22 @@ export const api = {
   customers: {
     list: () => fetchAPI('/customers', { method: 'GET' }),
     create: (data: any) => fetchAPI('/customers', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => fetchAPI(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+    update: (id: string, data: any) => fetchAPI(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    getLedger: (id: string) => fetchAPI(`/customers/${id}/ledger`, { method: 'GET' })
+  },
+  staff: {
+    list: () => fetchAPI('/staff', { method: 'GET' }),
+    remove: (uid: string) => fetchAPI(`/staff/${uid}`, { method: 'DELETE' })
+  },
+  suppliers: {
+    list: () => fetchAPI('/suppliers', { method: 'GET' }),
+    create: (data: any) => fetchAPI('/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => fetchAPI(`/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchAPI(`/suppliers/${id}`, { method: 'DELETE' })
+  },
+  purchases: {
+    list: () => fetchAPI('/purchases', { method: 'GET' }),
+    create: (data: any) => fetchAPI('/purchases', { method: 'POST', body: JSON.stringify(data) })
   },
   transactions: {
     list: () => fetchAPI('/transactions', { method: 'GET' }),
@@ -59,6 +75,6 @@ export const api = {
   },
   shops: {
     update: (data: any) => fetchAPI('/shops', { method: 'PUT', body: JSON.stringify(data) }),
-    upgradePlan: (plan: string) => fetchAPI('/shops/plan', { method: 'PUT', body: JSON.stringify({ plan }) })
+    upgradePlan: (data: { plan: string; planExpiry?: string }) => fetchAPI('/shops/plan', { method: 'PUT', body: JSON.stringify(data) })
   }
 };

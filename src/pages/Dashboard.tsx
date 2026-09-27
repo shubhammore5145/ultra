@@ -1,31 +1,14 @@
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { 
   IndianRupee, ShoppingCart, TrendingUp, Users, Wallet,
-  AlertTriangle, BrainCircuit, TrendingDown, PackageMinus, Download, Sparkles
+  AlertTriangle, Download, Sparkles
 } from 'lucide-react';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
-import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product, Transaction, Expense, Customer } from '../types';
 
-const dummyData = [
-  { name: 'Mon', sales: 4000 },
-  { name: 'Tue', sales: 3000 },
-  { name: 'Wed', sales: 2000 },
-  { name: 'Thu', sales: 2780 },
-  { name: 'Fri', sales: 1890 },
-  { name: 'Sat', sales: 2390 },
-  { name: 'Sun', sales: 3490 },
-];
-
 export default function Dashboard() {
   const { shopData } = useAuth();
-  const navigate = useNavigate();
   
   const [todaysSales, setTodaysSales] = useState(0);
   const [todaysExpenses, setTodaysExpenses] = useState(0);
@@ -161,141 +144,163 @@ export default function Dashboard() {
   const aiInsights = getAIInsights();
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-        <Button id="export-btn" onClick={handleExportCSV} className="bg-red-600 hover:bg-red-700 text-white font-bold shadow-md transition-all">
-          <Download className="mr-2 h-4 w-4" /> Export Monthly Report
-        </Button>
+    <div className="space-y-6 animate-fadeInUp">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Today's store overview at a glance</p>
+        </div>
+        <button
+          id="export-btn"
+          onClick={handleExportCSV}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/25 hover:bg-primary/90 transition-colors"
+        >
+          <Download className="h-4 w-4" /> Export Report
+        </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today's Sales</CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{todaysSales.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">Today's revenue</p>
-          </CardContent>
-        </Card>
+      {/* Stats Grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 stagger">
+        <div className="stat-card">
+          <div className="flex items-center justify-between mb-3">
+            <span className="stat-label">Today's Sales</span>
+            <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+              <IndianRupee className="h-4 w-4 text-indigo-500" />
+            </div>
+          </div>
+          <div className="stat-value text-indigo-600">₹{todaysSales.toFixed(2)}</div>
+          <p className="text-xs text-muted-foreground mt-1">Total revenue today</p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today's Expenses</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-500">₹{todaysExpenses.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">Today's expenses</p>
-          </CardContent>
-        </Card>
+        <div className="stat-card">
+          <div className="flex items-center justify-between mb-3">
+            <span className="stat-label">Today's Expenses</span>
+            <div className="h-8 w-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+              <Wallet className="h-4 w-4 text-red-500" />
+            </div>
+          </div>
+          <div className="stat-value text-red-500">₹{todaysExpenses.toFixed(2)}</div>
+          <p className="text-xs text-muted-foreground mt-1">Costs incurred today</p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-primary">Net Profit (Today)</CardTitle>
-            <Wallet className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">₹{(todaysSales - todaysExpenses).toFixed(2)}</div>
-            <p className="text-xs text-primary/80">Sales - Expenses</p>
-          </CardContent>
-        </Card>
+        <div className="stat-card border-l-4 border-l-emerald-500">
+          <div className="flex items-center justify-between mb-3">
+            <span className="stat-label">Net Profit</span>
+            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-emerald-500" />
+            </div>
+          </div>
+          <div className={`stat-value ${todaysSales - todaysExpenses >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            ₹{(todaysSales - todaysExpenses).toFixed(2)}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Sales minus Expenses</p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today's Orders</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{todaysOrders}</div>
-            <p className="text-xs text-muted-foreground">Bills generated today</p>
-          </CardContent>
-        </Card>
+        <div className="stat-card">
+          <div className="flex items-center justify-between mb-3">
+            <span className="stat-label">Today's Orders</span>
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <ShoppingCart className="h-4 w-4 text-primary" />
+            </div>
+          </div>
+          <div className="stat-value">{todaysOrders}</div>
+          <p className="text-xs text-muted-foreground mt-1">Bills generated</p>
+        </div>
       </div>
 
+      {/* AI & Udhar Row */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="md:col-span-1 border-primary/20 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-primary">
-              <Sparkles className="h-5 w-5" /> AI Smart Assistant
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-orange-500" /> Restock Urgently
+        <div className="kirana-card">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> AI Smart Assistant
+            </h2>
+          </div>
+          <div className="p-5 space-y-5">
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-orange-500" /> Restock Urgently
               </h4>
               {aiInsights.restockItems.length > 0 ? (
-                <ul className="text-sm space-y-1 text-muted-foreground">
+                <ul className="space-y-1">
                   {aiInsights.restockItems.map(p => (
-                    <li key={p.id}>• {p.name} ({p.stock} left)</li>
+                    <li key={p.id} className="flex items-center gap-2 text-sm">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-500 flex-shrink-0" />
+                      <span className="text-foreground">{p.name}</span>
+                      <span className="ml-auto text-xs badge badge-danger">{p.stock} left</span>
+                    </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">Stock looks good!</p>
+                <p className="text-sm text-emerald-600">✓ Stock levels look good!</p>
               )}
             </div>
-            
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-500" /> Top Value Items
+
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Top Value Items
               </h4>
               {aiInsights.trendingItems.length > 0 ? (
-                <ul className="text-sm space-y-1 text-muted-foreground">
+                <ul className="space-y-1">
                   {aiInsights.trendingItems.map(p => (
-                    <li key={p.id}>• {p.name} - ₹{Number(p.sellingPrice || 0).toFixed(2)}</li>
+                    <li key={p.id} className="flex items-center gap-2 text-sm">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                      <span className="text-foreground">{p.name}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">₹{Number(p.sellingPrice || 0).toFixed(0)}</span>
+                    </li>
                   ))}
                 </ul>
               ) : (
                 <p className="text-sm text-muted-foreground">Add products to see insights.</p>
               )}
             </div>
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-500" /> Expiring Soon
-              </h4>
-              {aiInsights.expiringItems.length > 0 ? (
-                <ul className="text-sm space-y-1 text-muted-foreground">
+
+            {aiInsights.expiringItems.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-red-500" /> Expiring Soon
+                </h4>
+                <ul className="space-y-1">
                   {aiInsights.expiringItems.map(p => (
-                    <li key={p.id} className="text-red-500">
-                      • {p.name} (Exp: {new Date(p.expiryDate!).toLocaleDateString()})
+                    <li key={p.id} className="flex items-center gap-2 text-sm">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                      <span className="text-foreground">{p.name}</span>
+                      <span className="ml-auto badge badge-danger">{new Date(p.expiryDate!).toLocaleDateString('en-IN')}</span>
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No items expiring soon.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            )}
+          </div>
+        </div>
 
-        <Card className="md:col-span-1 border-red-500/20 bg-red-500/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <Users className="h-5 w-5" /> Udhar Overview
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Pending Udhar</p>
-                <p className="text-3xl font-bold text-red-600 dark:text-red-400">₹{totalUdhar.toFixed(2)}</p>
+        <div className="kirana-card">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4 text-rose-500" /> Udhar Overview
+            </h2>
+          </div>
+          <div className="p-5 space-y-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Total Pending Udhar</p>
+              <p className="text-3xl font-bold text-rose-500">₹{totalUdhar.toFixed(2)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-muted/50 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">Customers in Udhar</p>
+                <p className="text-xl font-bold text-foreground">{udharCustomersCount}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-background rounded-lg p-3 border">
-                  <p className="text-xs text-muted-foreground">Customers in Udhar</p>
-                  <p className="text-lg font-bold">{udharCustomersCount}</p>
-                </div>
-                <div className="bg-background rounded-lg p-3 border">
-                  <p className="text-xs text-muted-foreground">New Customers</p>
-                  <p className="text-lg font-bold text-green-600">+{newCustomersToday}</p>
-                </div>
+              <div className="rounded-xl bg-muted/50 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">New Today</p>
+                <p className="text-xl font-bold text-emerald-600">+{newCustomersToday}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="rounded-xl bg-muted/50 border border-border p-3">
+              <p className="text-xs text-muted-foreground mb-0.5">Total Customers</p>
+              <p className="text-xl font-bold text-foreground">{totalCustomers}</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

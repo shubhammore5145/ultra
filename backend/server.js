@@ -3,7 +3,8 @@ const mysql = require('mysql2');
 const cors = require('cors');
 const path = require('path');
 const whatsappBot = require('./whatsapp');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config(); // fallback to root .env if any
 
 const app = express();
 const port = process.env.PORT || 5000;

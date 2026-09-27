@@ -170,8 +170,8 @@ export default function Login() {
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=2000&auto=format&fit=crop')] bg-cover bg-center mix-blend-overlay opacity-30 z-0"></div>
         
         <div className="relative z-10 flex items-center gap-3">
-          <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-2xl">
-            <Store className="h-8 w-8 text-white" />
+          <div className="rounded-2xl bg-white/20 p-2 backdrop-blur-md shadow-2xl overflow-hidden border border-white/20">
+            <img src="/favicon.svg" alt="KiranaPro Logo" className="h-10 w-10 rounded-xl object-contain shadow-md" />
           </div>
           <span className="text-3xl font-extrabold text-white tracking-tight">KiranaPro</span>
         </div>

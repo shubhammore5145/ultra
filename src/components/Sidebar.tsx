@@ -31,8 +31,8 @@ export function Sidebar() {
     <div className="flex h-full w-60 flex-col border-r border-border bg-card">
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-md shadow-primary/30">
-          <Store className="h-5 w-5" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden shadow-md shadow-primary/30">
+          <img src="/favicon.svg" alt="KiranaPro" className="h-full w-full object-cover" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground leading-tight">{shopData?.name || 'KiranaPro'}</p>
@@ -133,8 +133,8 @@ export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: 
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary text-white flex items-center justify-center">
-              <Store className="h-4 w-4" />
+            <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm">
+              <img src="/favicon.svg" alt="KiranaPro" className="h-full w-full object-cover" />
             </div>
             <div>
               <p className="text-sm font-bold text-foreground">{shopData?.name || 'KiranaPro'}</p>

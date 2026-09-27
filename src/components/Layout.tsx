@@ -33,8 +33,8 @@ export default function Layout() {
 
             {/* Logo (mobile only) */}
             <div className="flex md:hidden items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-primary text-white flex items-center justify-center">
-                <Store className="h-3.5 w-3.5" />
+              <div className="h-7 w-7 rounded-lg overflow-hidden flex items-center justify-center shadow-sm">
+                <img src="/favicon.svg" alt="Logo" className="h-full w-full object-cover" />
               </div>
               <span className="text-base font-bold text-foreground truncate max-w-[140px]">
                 {shopData?.name || 'KiranaPro'}

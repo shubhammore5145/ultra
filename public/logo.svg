@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="45%" stop-color="#6D28D9"/>
+      <stop offset="100%" stop-color="#4C1D95"/>
+    </linearGradient>
+
+    <!-- Accent Green Gradient for fresh grocery / leaf / verified -->
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- Rupee / Gold Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+
+    <!-- Soft Drop Shadow for Depth -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#1e1035" flood-opacity="0.35"/>
+    </filter>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- App Icon Base: Squircle Background -->
+  <rect width="512" height="512" rx="120" fill="url(#primaryGrad)"/>
+
+  <!-- Subtle Inner Border Highlight -->
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="none" stroke="white" stroke-width="4" stroke-opacity="0.18"/>
+
+  <!-- Main Retail Storefront + Shopping Cart Group -->
+  <g filter="url(#shadow)">
+    <!-- Storefront Canopy Awning (Roof) -->
+    <path d="M120 188 L392 188 C406 188 416 176 412 163 L396 116 C393 106 384 100 374 100 L138 100 C128 100 119 106 116 116 L100 163 C96 176 106 188 120 188 Z" fill="#FFFFFF"/>
+    
+    <!-- Canopy Stripes (Vibrant Green & Purple) -->
+    <path d="M152 100 L140 188 M204 100 L200 188 M256 100 L256 188 M308 100 L312 188 M360 100 L372 188" stroke="url(#primaryGrad)" stroke-width="12" stroke-linecap="round" stroke-opacity="0.3"/>
+
+    <!-- Canopy Wave Trim -->
+    <path d="M100 184 Q128 206 156 184 Q184 206 212 184 Q240 206 268 184 Q296 206 324 184 Q352 206 380 184 Q400 200 412 184" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>
+
+    <!-- Shopping Cart Basket Body -->
+    <path d="M140 236 L372 236 C384 236 394 245 392 257 L374 340 C372 350 363 358 353 358 L168 358 C158 358 149 350 147 340 L132 232 Z" fill="#FFFFFF" fill-opacity="0.95"/>
+
+    <!-- Cart Handle -->
+    <path d="M108 236 L134 236" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round"/>
+
+    <!-- Shopping Cart Grid Pattern -->
+    <path d="M154 286 L384 286 M164 322 L368 322" stroke="url(#primaryGrad)" stroke-width="8" stroke-linecap="round" stroke-opacity="0.25"/>
+    <path d="M198 236 L192 358 M256 236 L256 358 M314 236 L320 358" stroke="url(#primaryGrad)" stroke-width="8" stroke-linecap="round" stroke-opacity="0.25"/>
+
+    <!-- Indian Rupee Badge Center of Cart (Symbolizes Kirana Billing & Profit) -->
+    <circle cx="256" cy="296" r="42" fill="url(#goldGrad)" filter="url(#glow)"/>
+    <text x="256" y="312" font-family="system-ui, -apple-system, sans-serif" font-size="46" font-weight="900" fill="#78350F" text-anchor="middle">₹</text>
+
+    <!-- Cart Bottom Chassis Bar -->
+    <path d="M152 380 L350 380" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+
+    <!-- Left Wheel -->
+    <circle cx="188" cy="414" r="24" fill="#FFFFFF"/>
+    <circle cx="188" cy="414" r="12" fill="url(#primaryGrad)"/>
+
+    <!-- Right Wheel -->
+    <circle cx="332" cy="414" r="24" fill="#FFFFFF"/>
+    <circle cx="332" cy="414" r="12" fill="url(#primaryGrad)"/>
+
+    <!-- Sparkle / Modern Star Accent (Top Right) -->
+    <path d="M394 76 Q394 98 416 98 Q394 98 394 120 Q394 98 372 98 Q394 98 394 76 Z" fill="url(#goldGrad)"/>
+    <circle cx="430" cy="64" r="8" fill="url(#accentGrad)"/>
+  </g>
+</svg>

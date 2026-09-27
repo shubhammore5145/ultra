@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { 
   Search, Loader2, IndianRupee, History, TrendingUp, TrendingDown, 
-  MessageCircle, BookOpen, X, Printer, Phone, Calendar, ArrowUpRight, ArrowDownLeft
+  MessageCircle, BookOpen, X, Printer, Phone, Calendar, ArrowUpRight, ArrowDownLeft,
+  CheckCircle2, Send, AlertTriangle, Smartphone
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,6 +33,18 @@ export default function Udhar() {
   const [notes, setNotes] = useState('');
   const [transactionType, setTransactionType] = useState<'credit' | 'payment'>('payment');
   const [processing, setProcessing] = useState(false);
+
+  // Bulk WhatsApp Reminder State
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<{
+    sent: number;
+    failed: number;
+    total: number;
+    completed?: boolean;
+    error?: string;
+  } | null>(null);
+  const [botConnected, setBotConnected] = useState<boolean | null>(null);
 
   // Ledger / Statement Modal State
   const [ledgerCustomer, setLedgerCustomer] = useState<Customer | null>(null);
@@ -99,15 +113,82 @@ export default function Udhar() {
     }
   };
 
-  const handleWhatsAppReminder = (customer: Customer) => {
+  const handleWhatsAppReminder = async (customer: Customer) => {
     if (!customer.phone) {
-      alert('Customer has no phone number.');
+      alert('ग्राहकाचा फोन नंबर उपलब्ध नाही.');
       return;
     }
-    const shopName = shopData?.shopName || shopData?.name || 'our shop';
-    const text = `Hello ${customer.name},\n\nThis is a gentle reminder from *${shopName}*. Your pending udhar balance is *₹${Number(customer.balance || 0).toFixed(2)}*.\n\nPlease clear the dues at your earliest convenience. Thank you!`;
+    const cleanPh = customer.phone.replace(/\D/g, '').slice(-10);
+    const shopName = shopData?.shopName || shopData?.name || 'आमच्या दुकानातून';
+    const text = `🙏 *नमस्ते ${customer.name} जी,*\n\n*${shopName}* कडून नम्र आठवण:\nआपल्याकडे उधारी बाकी: *₹${Number(customer.balance || 0).toFixed(2)}* आहे.\n\nकृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.\n\nधन्यवाद! 💐`;
+
+    // Try direct WhatsApp Bot sending first
+    try {
+      const statusRes = await api.whatsapp.status();
+      if (statusRes.status === 'CONNECTED' || statusRes.status === 'AUTHENTICATED') {
+        await api.whatsapp.send(cleanPh, text);
+        alert(`✅ ${customer.name} यांना WhatsApp उधारी आठवण मेसेज पाठवला!`);
+        return;
+      }
+    } catch (e) {
+      console.warn('Bot not available, falling back to manual wa.me');
+    }
+
+    // Fallback to wa.me
     const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/91${customer.phone.replace(/\D/g, '').slice(-10)}?text=${encoded}`, '_blank');
+    window.open(`https://wa.me/91${cleanPh}?text=${encoded}`, '_blank');
+  };
+
+  const pendingCustomers = customers.filter(c => Number(c.balance || 0) > 0);
+
+  const handleOpenBulkModal = async () => {
+    setShowBulkModal(true);
+    setBulkStatus(null);
+    try {
+      const res = await api.whatsapp.status();
+      setBotConnected(res.status === 'CONNECTED' || res.status === 'AUTHENTICATED');
+    } catch (e) {
+      setBotConnected(false);
+    }
+  };
+
+  const handleStartBulkReminder = async () => {
+    if (pendingCustomers.length === 0) return;
+    setBulkSending(true);
+    setBulkStatus({ sent: 0, failed: 0, total: pendingCustomers.length });
+
+    try {
+      const shopName = shopData?.shopName || shopData?.name || 'आमच्या दुकानातून';
+      const res = await api.whatsapp.sendBulkReminder(pendingCustomers, shopName);
+      if (res.results) {
+        setBulkStatus({
+          sent: res.results.sent,
+          failed: res.results.failed,
+          total: res.results.total,
+          completed: true
+        });
+        await fetchCustomers();
+      } else {
+        setBulkStatus({
+          sent: 0,
+          failed: pendingCustomers.length,
+          total: pendingCustomers.length,
+          completed: true,
+          error: res.error || 'मेसेज पाठवता आला नाही.'
+        });
+      }
+    } catch (err: any) {
+      console.error('Bulk send error', err);
+      setBulkStatus({
+        sent: 0,
+        failed: pendingCustomers.length,
+        total: pendingCustomers.length,
+        completed: true,
+        error: err.message || 'Error occurred while sending'
+      });
+    } finally {
+      setBulkSending(false);
+    }
   };
 
   const filteredCustomers = customers.filter(c => 
@@ -129,12 +210,33 @@ export default function Udhar() {
             Track customer balances, send WhatsApp reminders, and view passbook statements.
           </p>
         </div>
-        <div className="bg-orange-500/10 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300 px-5 py-3 rounded-2xl border border-orange-500/20 shadow-sm flex items-center gap-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Market Udhar</p>
-            <p className="text-3xl font-black flex items-center text-orange-600 dark:text-orange-400 mt-0.5">
-              <IndianRupee className="h-6 w-6 mr-1" /> {totalUdhar.toFixed(2)}
-            </p>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Bulk WhatsApp Reminder Button */}
+          <Button
+            onClick={handleOpenBulkModal}
+            disabled={pendingCustomers.length === 0}
+            className="h-14 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2.5 transition-all active:scale-95 disabled:opacity-50"
+          >
+            <MessageCircle className="h-5 w-5 fill-white/20" />
+            <div className="text-left leading-tight">
+              <div className="text-[10px] uppercase tracking-wider text-emerald-200 font-extrabold">Auto Reminder</div>
+              <div className="text-sm font-black flex items-center gap-1.5">
+                सर्व ग्राहकांना WhatsApp पाठवा
+                <span className="bg-emerald-800 text-white text-[11px] px-2 py-0.5 rounded-full font-black">
+                  {pendingCustomers.length}
+                </span>
+              </div>
+            </div>
+          </Button>
+
+          <div className="bg-orange-500/10 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300 px-5 py-3 rounded-2xl border border-orange-500/20 shadow-sm flex items-center gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Market Udhar</p>
+              <p className="text-3xl font-black flex items-center text-orange-600 dark:text-orange-400 mt-0.5">
+                <IndianRupee className="h-6 w-6 mr-1" /> {totalUdhar.toFixed(2)}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -381,6 +483,157 @@ export default function Udhar() {
             <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-sm font-semibold">
               <span>Closing Pending Balance:</span>
               <span className="text-red-500 font-extrabold text-base">₹{Number(ledgerCustomer.balance || 0).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk WhatsApp Reminder Modal */}
+      {showBulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground rounded-3xl border shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-6 text-white relative">
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="h-6 w-6" />
+                    <h2 className="text-xl font-black">सर्व ग्राहकांना WhatsApp आठवण मेसेज</h2>
+                  </div>
+                  <p className="text-xs text-emerald-100 font-medium">
+                    ज्यांची उधारी बाकी आहे अशा सर्व ग्राहकांना एका क्लिकवर आपोआप मेसेज पाठवा.
+                  </p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-white hover:bg-white/20 rounded-full"
+                  onClick={() => setShowBulkModal(false)}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-4">
+              {/* Bot Connection Status */}
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs font-semibold ${
+                botConnected 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300' 
+                  : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${botConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  <span>
+                    {botConnected 
+                      ? 'WhatsApp Bot चालू आहे 🟢 (थेट मेसेज जाईल)' 
+                      : 'WhatsApp Bot ऑफलाइन आहे (Settings मध्ये QR स्कॅन करा)'}
+                  </span>
+                </div>
+                {!botConnected && (
+                  <Link to="/settings" className="underline font-bold text-amber-900 dark:text-amber-200">
+                    Connect Bot →
+                  </Link>
+                )}
+              </div>
+
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-muted/40 p-3.5 rounded-2xl border text-center">
+                  <p className="text-xs text-muted-foreground font-semibold">एकूण थकबाकीदार ग्राहक</p>
+                  <p className="text-2xl font-black text-foreground mt-0.5">{pendingCustomers.length}</p>
+                </div>
+                <div className="bg-muted/40 p-3.5 rounded-2xl border text-center">
+                  <p className="text-xs text-muted-foreground font-semibold">एकूण बाकी रक्कम</p>
+                  <p className="text-2xl font-black text-orange-600 dark:text-orange-400 mt-0.5">₹{totalUdhar.toFixed(2)}</p>
+                </div>
+              </div>
+
+              {/* Message Preview */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">मेसेज असा दिसेल (Message Preview):</label>
+                <div className="bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-3.5 text-xs text-foreground font-mono whitespace-pre-wrap leading-relaxed">
+{`🙏 *नमस्ते [ग्राहकाचे नाव] जी,*
+
+*${shopData?.shopName || shopData?.name || 'आमच्या दुकानातून'}* कडून नम्र आठवण:
+आपल्याकडे उधारी बाकी: *₹[शिल्लक रक्कम]* शिल्लक आहे.
+
+कृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.
+
+धन्यवाद! 💐`}
+                </div>
+              </div>
+
+              {/* Customer List */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  मेसेज जाणारे ग्राहक ({pendingCustomers.length}):
+                </label>
+                <div className="max-h-40 overflow-y-auto border rounded-2xl divide-y text-xs">
+                  {pendingCustomers.map((c) => (
+                    <div key={c.id} className="p-2.5 flex items-center justify-between hover:bg-muted/30">
+                      <div>
+                        <p className="font-bold text-foreground">{c.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{c.phone ? `+91 ${c.phone}` : '⚠️ फोन नंबर नाही'}</p>
+                      </div>
+                      <span className="font-black text-red-600">₹{Number(c.balance || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sending / Status feedback */}
+              {bulkStatus && (
+                <div className={`p-4 rounded-2xl border text-xs space-y-2 animate-in fade-in duration-200 ${
+                  bulkStatus.completed 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-200' 
+                    : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 text-blue-800 dark:text-blue-200'
+                }`}>
+                  <div className="flex items-center gap-2 font-bold">
+                    {bulkStatus.completed ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <Loader2 className="h-5 w-5 text-blue-600 animate-spin shrink-0" />
+                    )}
+                    <span>
+                      {bulkStatus.completed 
+                        ? `पूर्ण झाले! एकूण ${bulkStatus.sent} ग्राहकांना WhatsApp मेसेज यशस्वीरित्या पाठवले.`
+                        : `मेसेज पाठवत आहे... कृपया थांबा.`}
+                    </span>
+                  </div>
+                  {bulkStatus.failed > 0 && (
+                    <p className="text-amber-700 dark:text-amber-300 font-semibold">
+                      ⚠️ {bulkStatus.failed} ग्राहकांना फोन नंबर नसल्यामुळे मेसेज पाठवता आला नाही.
+                    </p>
+                  )}
+                  {bulkStatus.error && (
+                    <p className="text-red-600 font-bold">{bulkStatus.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="p-4 border-t bg-muted/20 flex gap-2 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowBulkModal(false)}
+                disabled={bulkSending}
+              >
+                रद्द करा (Close)
+              </Button>
+              <Button
+                onClick={handleStartBulkReminder}
+                disabled={bulkSending || pendingCustomers.length === 0}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 shadow-md"
+              >
+                {bulkSending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> पाठवत आहे...</>
+                ) : (
+                  <><Send className="h-4 w-4 mr-2" /> 🚀 आताच सर्वांना मेसेज पाठवा</>
+                )}
+              </Button>
             </div>
           </div>
         </div>

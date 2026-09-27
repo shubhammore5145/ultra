@@ -94,5 +94,12 @@ export const api = {
   shops: {
     update: (data: any) => fetchAPI('/shops', { method: 'PUT', body: JSON.stringify(data) }),
     upgradePlan: (data: { plan: string; planExpiry?: string }) => fetchAPI('/shops/plan', { method: 'PUT', body: JSON.stringify(data) })
+  },
+  whatsapp: {
+    status: () => fetchAPI('/whatsapp/status', { method: 'GET' }),
+    start: () => fetchAPI('/whatsapp/start', { method: 'POST' }),
+    logout: () => fetchAPI('/whatsapp/logout', { method: 'POST' }),
+    send: (phone: string, message: string) => fetchAPI('/whatsapp/send', { method: 'POST', body: JSON.stringify({ phone, message }) }),
+    sendBulkReminder: (customers: any[], shopName?: string) => fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName }) })
   }
 };

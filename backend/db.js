@@ -194,6 +194,10 @@ function getSQLiteDb() {
       );
     `);
 
+    // Run non-destructive column migrations for SQLite
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN shortCode TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isLoose INTEGER DEFAULT 0;'); } catch (e) {}
+
     console.log('⚡ Embedded SQLite database ready at:', dbPath);
     return sqliteDb;
   } catch (err) {
@@ -276,6 +280,11 @@ const pool = {
       if (!mysqlPool) throw new Error('MySQL pool not initialized');
       const conn = await mysqlPool.getConnection();
       console.log(`Connected to MySQL database [${process.env.DB_NAME || 'nayashi_kirana'}] on [${process.env.DB_HOST || 'localhost'}]`);
+      
+      // Auto-migrate products columns if needed
+      try { await conn.query('ALTER TABLE products ADD COLUMN shortCode VARCHAR(100)'); } catch (e) {}
+      try { await conn.query('ALTER TABLE products ADD COLUMN isLoose TINYINT(1) DEFAULT 0'); } catch (e) {}
+
       conn.release();
       isMySQLReady = true;
       return true;

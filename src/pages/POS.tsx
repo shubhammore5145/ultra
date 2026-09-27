@@ -127,17 +127,28 @@ export default function POS() {
     });
   }, []);
 
-  const handleBarcodeScan = useCallback((barcode: string) => {
+  const handleBarcodeScan = useCallback((code: string) => {
     // If the quick add modal is open, don't trigger another scan
     if (quickAddBarcode) return;
 
-    const product = products.find(p => p.barcode === barcode);
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+
+    // Check exact match on shortCode, barcode, or sku
+    const product = products.find(p => 
+      (p.barcode && p.barcode.trim().toLowerCase() === lower) ||
+      ((p as any).shortCode && String((p as any).shortCode).trim().toLowerCase() === lower) ||
+      (p.sku && p.sku.trim().toLowerCase() === lower)
+    );
+
     if (product) {
       addToCart(product);
       setShowPhysicalScannerReady(false);
+      setSearchTerm('');
     } else {
       // Open Quick Add Modal
-      setQuickAddBarcode(barcode);
+      setQuickAddBarcode(code);
       setQuickAddName('');
       setQuickAddPrice('');
       setShowPhysicalScannerReady(false);
@@ -383,16 +394,26 @@ export default function POS() {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (p.barcode || '').includes(searchTerm) ||
-                          (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.trim().toLowerCase();
+    const matchesSearch = !term ||
+                          (p.name || '').toLowerCase().includes(term) || 
+                          (p.barcode || '').toLowerCase().includes(term) ||
+                          (p.sku || '').toLowerCase().includes(term) ||
+                          ((p as any).shortCode && String((p as any).shortCode).toLowerCase() === term);
     
     if (!matchesSearch) return false;
 
-    if (activeTab === 'barcoded') return !!p.barcode && p.barcode.trim() !== '';
-    if (activeTab === 'loose') return !p.barcode || p.barcode.trim() === '';
+    if (activeTab === 'barcoded') return !(p as any).isLoose && !!p.barcode && p.barcode.trim() !== '';
+    if (activeTab === 'loose') return (p as any).isLoose || !p.barcode || p.barcode.trim() === '' || !!(p as any).shortCode;
     return true;
   });
+
+  // Loose Items for quick buttons strip (साखर, शेंगदाणे, तांदूळ इ.)
+  const looseQuickItems = products.filter(p => 
+    Boolean((p as any).isLoose) || 
+    Boolean((p as any).shortCode) || 
+    (!p.barcode || p.barcode.trim() === '')
+  );
 
   const sendWhatsAppBill = async (
     txId: string, 
@@ -754,10 +775,37 @@ export default function POS() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input 
             ref={searchInputRef}
-            placeholder="Search products, scan barcode, or use voice..." 
-            className="pl-10 pr-12 h-14 text-lg shadow-sm rounded-xl"
+            placeholder="वस्तू शोधा, नंबर दाबा (उदा. 1, 2) किंवा बारकोड स्कॅन करा..." 
+            className="pl-10 pr-12 h-14 text-base md:text-lg shadow-sm rounded-xl font-medium"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const term = searchTerm.trim().toLowerCase();
+                if (!term) return;
+
+                // 1. Exact match on shortCode, barcode, or sku
+                const exactMatch = products.find(p => 
+                  ((p as any).shortCode && String((p as any).shortCode).trim().toLowerCase() === term) ||
+                  (p.barcode && p.barcode.trim().toLowerCase() === term) ||
+                  (p.sku && p.sku.trim().toLowerCase() === term)
+                );
+
+                if (exactMatch) {
+                  addToCart(exactMatch);
+                  setSearchTerm('');
+                  e.preventDefault();
+                  return;
+                }
+
+                // 2. Fallback to first filtered product
+                if (filteredProducts.length > 0) {
+                  addToCart(filteredProducts[0]);
+                  setSearchTerm('');
+                  e.preventDefault();
+                }
+              }
+            }}
             autoFocus
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -807,10 +855,11 @@ export default function POS() {
             </Button>
             <Button 
               variant={activeTab === 'loose' ? 'default' : 'outline'} 
-              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm"
+              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm flex items-center gap-1.5"
               onClick={() => setActiveTab('loose')}
             >
-              Loose Items
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              Loose Items (खुली वस्तू)
             </Button>
             <Button 
               variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
@@ -836,6 +885,43 @@ export default function POS() {
           </div>
         </div>
 
+        {/* Quick Loose Items Strip (उदा. साखर, शेंगदाणे, तांदूळ - जलद बटणे व कोड) */}
+        {looseQuickItems.length > 0 && (
+          <div className="bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/50 dark:border-amber-800/50 rounded-2xl p-3 -mt-1 shadow-xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200">
+                <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>⚡ जलद वस्तू पट्टी (Loose / Quick Items):</span>
+                <span className="text-[11px] font-normal text-muted-foreground hidden md:inline">
+                  (नंबर दाबून Enter करा किंवा थेट बटणावर क्लिक करा)
+                </span>
+              </div>
+              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-200/60 dark:bg-amber-900/60 px-2 py-0.5 rounded-full">
+                {looseQuickItems.length} वस्तू
+              </span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {looseQuickItems.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => addToCart(item)}
+                  className="shrink-0 flex items-center gap-2 bg-white dark:bg-card hover:bg-amber-50 dark:hover:bg-amber-950/50 border border-amber-200 dark:border-amber-800/80 hover:border-amber-400 rounded-xl px-3 py-1.5 shadow-xs transition-all active:scale-95 group text-left"
+                  title={`क्लिक करा किंवा नंबर ${(item as any).shortCode || item.barcode || ''} दाबून Enter करा`}
+                >
+                  {((item as any).shortCode || item.barcode) && (
+                    <span className="bg-amber-500 text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-xs group-hover:scale-105 transition-transform">
+                      {(item as any).shortCode || item.barcode}
+                    </span>
+                  )}
+                  <span className="text-xs font-bold text-foreground truncate max-w-[120px]">{item.name}</span>
+                  <span className="text-xs font-extrabold text-primary shrink-0">₹{item.sellingPrice}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-4">
           {loading ? (
             <div className="col-span-full flex justify-center py-12">
@@ -844,12 +930,21 @@ export default function POS() {
           ) : filteredProducts.map(product => (
             <div 
               key={product.id} 
-              className="border rounded-xl p-4 cursor-pointer hover:border-primary hover:shadow-md transition-all bg-card text-card-foreground"
+              className="border rounded-xl p-4 cursor-pointer hover:border-primary hover:shadow-md transition-all bg-card text-card-foreground group"
               onClick={() => addToCart(product)}
             >
-              <div className="h-24 bg-white rounded-lg mb-3 flex items-center justify-center text-muted-foreground text-xs uppercase tracking-widest font-bold overflow-hidden border">
+              <div className="relative h-24 bg-white rounded-lg mb-3 flex items-center justify-center text-muted-foreground text-xs uppercase tracking-widest font-bold overflow-hidden border">
+                {(product as any).shortCode ? (
+                  <span className="absolute top-1.5 left-1.5 z-10 bg-amber-500 text-white font-black text-[10px] px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5">
+                    ⚡ [{(product as any).shortCode}]
+                  </span>
+                ) : (product as any).isLoose ? (
+                  <span className="absolute top-1.5 left-1.5 z-10 bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300">
+                    Loose
+                  </span>
+                ) : null}
                 {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1" />
+                  <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1 group-hover:scale-105 transition-transform" />
                 ) : (
                   <div className="h-full w-full bg-muted/50 flex items-center justify-center">
                     {product.category || 'Product'}
@@ -859,7 +954,7 @@ export default function POS() {
               <h3 className="font-medium text-sm line-clamp-2 leading-tight">{product.name}</h3>
               <div className="flex items-center justify-between mt-2">
                 <p className="font-bold text-primary">₹{product.sellingPrice}</p>
-                <p className="text-xs text-muted-foreground">Stk: {product.stock}</p>
+                <p className="text-xs text-muted-foreground">Stk: {product.stock} {product.unit || ''}</p>
               </div>
             </div>
           ))}

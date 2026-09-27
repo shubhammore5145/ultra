@@ -74,6 +74,56 @@ app.post('/api/whatsapp/send', async (req, res) => {
   }
 });
 
+// Bulk WhatsApp Reminder for Udhar Customers
+app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
+  const { customers, shopName } = req.body;
+  if (!customers || !Array.isArray(customers) || customers.length === 0) {
+    return res.status(400).json({ error: 'Customers array is required' });
+  }
+
+  const botStatus = whatsappBot.getStatus();
+  if (botStatus.status !== 'CONNECTED' && botStatus.status !== 'AUTHENTICATED') {
+    return res.status(400).json({ 
+      error: 'WhatsApp Bot कनेक्ट नाहीये. कृपया Settings मध्ये जाऊन WhatsApp QR कोड स्कॅन करा.',
+      notConnected: true 
+    });
+  }
+
+  const results = {
+    total: customers.length,
+    sent: 0,
+    failed: 0,
+    details: []
+  };
+
+  const currentShopName = shopName || 'आमच्या दुकानातून';
+
+  for (const c of customers) {
+    const rawBalance = Number(c.balance || 0);
+    if (!c.phone || rawBalance <= 0) {
+      results.failed++;
+      results.details.push({ name: c.name, phone: c.phone, status: 'skipped', reason: 'No phone or zero balance' });
+      continue;
+    }
+
+    const message = `🙏 *नमस्ते ${c.name} जी,*\n\n*${currentShopName}* कडून नम्र आठवण:\nआपल्याकडे उधारी बाकी: *₹${rawBalance.toFixed(2)}* आहे.\n\nकृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.\n\nधन्यवाद! 💐`;
+
+    try {
+      await whatsappBot.sendMessage(c.phone, message);
+      results.sent++;
+      results.details.push({ name: c.name, phone: c.phone, status: 'sent' });
+      // 800ms delay between messages to prevent spam detection
+      await new Promise(r => setTimeout(r, 800));
+    } catch (err) {
+      console.error(`WhatsApp bulk reminder error for ${c.name} (${c.phone}):`, err.message);
+      results.failed++;
+      results.details.push({ name: c.name, phone: c.phone, status: 'failed', error: err.message });
+    }
+  }
+
+  res.json({ success: true, results });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
 

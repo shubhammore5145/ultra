@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ArrowLeft, Save, Loader2, RefreshCw, Camera, Wand2, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, RefreshCw, Camera, Wand2, Sparkles, TrendingUp, Layers, Hash } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +35,8 @@ export default function ProductForm() {
     minStock: '5',
     sku: '',
     barcode: '',
+    shortCode: '',
+    isLoose: false,
     expiryDate: '',
     imageUrl: ''
   });
@@ -61,6 +63,8 @@ export default function ProductForm() {
               minStock: data.minStock?.toString() || '5',
               sku: data.sku || '',
               barcode: data.barcode || '',
+              shortCode: data.shortCode || '',
+              isLoose: Boolean(data.isLoose) || (!data.barcode && !!data.shortCode),
               expiryDate: data.expiryDate || '',
               imageUrl: data.imageUrl || ''
             });
@@ -173,6 +177,23 @@ export default function ProductForm() {
 
   const marginData = calculateMargin();
 
+  const handleAutoShortCode = async () => {
+    try {
+      const products = await api.products.list();
+      const existingCodes = products
+        .map((p: any) => parseInt(p.shortCode || p.barcode, 10))
+        .filter((n: number) => !isNaN(n) && n > 0 && n < 10000);
+      const nextCode = existingCodes.length > 0 ? (Math.max(...existingCodes) + 1).toString() : '1';
+      setFormData(prev => ({ 
+        ...prev, 
+        shortCode: nextCode,
+        barcode: prev.barcode || nextCode
+      }));
+    } catch (e) {
+      setFormData(prev => ({ ...prev, shortCode: '1', barcode: prev.barcode || '1' }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shopData?.shopId) {
@@ -184,6 +205,7 @@ export default function ProductForm() {
     setError('');
 
     try {
+      const finalBarcode = formData.barcode.trim() || (formData.isLoose && formData.shortCode ? formData.shortCode.trim() : '');
       const productData = {
         name: formData.name,
         category: formData.category,
@@ -193,10 +215,12 @@ export default function ProductForm() {
         sellingPrice: parseFloat(formData.sellingPrice) || 0,
         mrp: parseFloat(formData.mrp) || 0,
         gst: parseFloat(formData.gst) || 0,
-        stock: parseInt(formData.stock, 10) || 0,
-        minStock: parseInt(formData.minStock, 10) || 0,
+        stock: parseFloat(formData.stock) || 0,
+        minStock: parseFloat(formData.minStock) || 0,
         sku: formData.sku,
-        barcode: formData.barcode,
+        barcode: finalBarcode,
+        shortCode: formData.shortCode?.trim() || null,
+        isLoose: formData.isLoose ? 1 : 0,
         expiryDate: formData.expiryDate || null,
         imageUrl: formData.imageUrl || null,
       };
@@ -346,6 +370,92 @@ export default function ProductForm() {
             </div>
           </div>
 
+          {/* Loose / Non-Barcode Item Section */}
+          <div className={`rounded-xl border p-6 shadow-sm md:col-span-2 transition-all duration-200 ${
+            formData.isLoose 
+              ? 'bg-amber-500/10 border-amber-500/40 dark:bg-amber-950/20 dark:border-amber-700/50' 
+              : 'bg-card'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${formData.isLoose ? 'bg-amber-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                  <Layers className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold flex items-center gap-2">
+                    खुली / विना-बारकोड वस्तू (Loose / Non-Barcode Item)
+                    {formData.isLoose && <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">Active</span>}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    उदा. साखर, शेंगदाणे, तांदूळ, तूरडाळ, गहू, पोहे ज्यावर बारकोड नसतो.
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={formData.isLoose} 
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFormData(prev => ({
+                      ...prev,
+                      isLoose: checked,
+                      unit: checked && prev.unit === 'pcs' ? 'kg' : prev.unit
+                    }));
+                    if (checked && !formData.shortCode) {
+                      handleAutoShortCode();
+                    }
+                  }} 
+                  className="sr-only peer"
+                />
+                <div className="w-12 h-6 bg-gray-300 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {formData.isLoose && (
+              <div className="mt-4 pt-4 border-t border-amber-500/20 grid gap-4 md:grid-cols-2 animate-in fade-in duration-200">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="shortCode" className="font-bold flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
+                      <Hash className="h-4 w-4 text-amber-600" /> शॉर्टकट नंबर / POS कोड (उदा. 1, 2, 3...) *
+                    </Label>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-7 text-xs border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+                      onClick={handleAutoShortCode}
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" /> ऑटो नंबर द्या
+                    </Button>
+                  </div>
+                  <Input 
+                    id="shortCode" 
+                    value={formData.shortCode} 
+                    onChange={handleChange} 
+                    placeholder="उदा. 1, 2, 3, 101..." 
+                    className="font-black text-xl bg-white dark:bg-card border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100" 
+                  />
+                  <p className="text-xs text-amber-800 dark:text-amber-300/80 leading-relaxed">
+                    💡 <strong>फास्ट बिलिंग:</strong> POS मध्ये फक्त <strong>"{formData.shortCode || '1'}"</strong> दाबून Enter मारल्यास ही वस्तू लगेच बिलात ॲड होईल!
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-white/60 dark:bg-black/20 p-4 border border-amber-500/20 text-xs space-y-2 flex flex-col justify-center">
+                  <p className="font-bold text-amber-900 dark:text-amber-200">
+                    🏪 किराणा दुकानासाठी विशेष सोय:
+                  </p>
+                  <p className="text-muted-foreground">
+                    • बारकोड नसलेले धान्य, डाळी, साखर यांसारख्या वस्तूंना लहान नंबर (उदा. 1, 2, 3) देऊन जलद बिलिंग करता येते.
+                  </p>
+                  <p className="text-muted-foreground">
+                    • बिलिंग स्क्रीनवर या वस्तूंची स्वतंत्र जलद पट्टी (Quick Buttons) दिसेल.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Pricing & Stock */}
           <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm md:col-span-2">
             <h2 className="text-lg font-semibold">Pricing & Inventory</h2>
@@ -422,8 +532,13 @@ export default function ProductForm() {
                   id="barcode" 
                   value={formData.barcode}
                   onChange={handleChange}
-                  placeholder="Scan or enter barcode" 
+                  placeholder={formData.isLoose ? `Optional (शॉर्ट कोड "${formData.shortCode || '1'}" वापरला जाईल)` : "Scan or enter barcode"} 
                 />
+                {formData.isLoose && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                    ℹ️ विना-बारकोड वस्तूसाठी बारकोड रिकामा ठेवला तरी चालेल — शॉर्टकट नंबर <strong>{formData.shortCode || '1'}</strong> आपोआप काम करेल.
+                  </p>
+                )}
               </div>
               {formData.barcode && (
                 <div id="barcode-label-area" className="md:col-span-2 flex flex-col items-center justify-center p-4 border rounded-lg bg-white mt-2">

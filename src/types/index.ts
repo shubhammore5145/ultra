@@ -42,6 +42,8 @@ export interface Product {
   minStock: number;
   sku: string;
   barcode: string;
+  shortCode?: string;
+  isLoose?: boolean | number;
   expiryDate?: string;
   imageUrl?: string;
   createdAt: string;

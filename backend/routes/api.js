@@ -52,17 +52,25 @@ router.get('/products', async (req, res) => {
 });
 
 router.post('/products', async (req, res) => {
-  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl } = req.body;
-  await pool.query(
-    'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, req.user.shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl || null]
-  );
+  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0]
+    );
+  } catch (err) {
+    console.warn('Fallback product insert:', err.message);
+    await pool.query(
+      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode || null, imageUrl || null]
+    );
+  }
   res.json({ success: true });
 });
 
 router.put('/products/:id', async (req, res) => {
   try {
-    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl } = req.body;
+    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose } = req.body;
     
     // Fetch existing product to fill missing fields
     const [existingRows] = await pool.query('SELECT * FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
@@ -70,26 +78,52 @@ router.put('/products/:id', async (req, res) => {
     
     const p = existingRows[0];
     
-    await pool.query(
-      'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=? WHERE id=? AND shopId=?',
-      [
-        name ?? p.name, 
-        category ?? p.category, 
-        brand ?? p.brand, 
-        unit ?? p.unit, 
-        purchasePrice ?? p.purchasePrice, 
-        sellingPrice ?? p.sellingPrice, 
-        mrp ?? p.mrp, 
-        gst ?? p.gst, 
-        stock ?? p.stock, 
-        minStock ?? p.minStock, 
-        sku ?? p.sku, 
-        barcode ?? p.barcode, 
-        imageUrl ?? p.imageUrl, 
-        req.params.id, 
-        req.user.shopId
-      ]
-    );
+    try {
+      await pool.query(
+        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=? WHERE id=? AND shopId=?',
+        [
+          name ?? p.name, 
+          category ?? p.category, 
+          brand ?? p.brand, 
+          unit ?? p.unit, 
+          purchasePrice ?? p.purchasePrice, 
+          sellingPrice ?? p.sellingPrice, 
+          mrp ?? p.mrp, 
+          gst ?? p.gst, 
+          stock ?? p.stock, 
+          minStock ?? p.minStock, 
+          sku ?? p.sku, 
+          barcode ?? p.barcode, 
+          imageUrl ?? p.imageUrl, 
+          shortCode !== undefined ? shortCode : (p.shortCode || null),
+          isLoose !== undefined ? (isLoose ? 1 : 0) : (p.isLoose ? 1 : 0),
+          req.params.id, 
+          req.user.shopId
+        ]
+      );
+    } catch (err) {
+      console.warn('Fallback product update:', err.message);
+      await pool.query(
+        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=? WHERE id=? AND shopId=?',
+        [
+          name ?? p.name, 
+          category ?? p.category, 
+          brand ?? p.brand, 
+          unit ?? p.unit, 
+          purchasePrice ?? p.purchasePrice, 
+          sellingPrice ?? p.sellingPrice, 
+          mrp ?? p.mrp, 
+          gst ?? p.gst, 
+          stock ?? p.stock, 
+          minStock ?? p.minStock, 
+          sku ?? p.sku, 
+          barcode ?? p.barcode, 
+          imageUrl ?? p.imageUrl, 
+          req.params.id, 
+          req.user.shopId
+        ]
+      );
+    }
     res.json({ success: true });
   } catch (error) {
     console.error('Update Product Error:', error);

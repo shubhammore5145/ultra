@@ -430,12 +430,23 @@ export default function Products() {
                           </div>
                         )}
                         <div>
-                          <div className="font-bold text-foreground">
-                            {product.name}
+                          <div className="font-bold text-foreground flex items-center gap-1.5 flex-wrap">
+                            <span>{product.name}</span>
+                            {(product as any).isLoose ? (
+                              <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700">
+                                खुली वस्तू
+                              </span>
+                            ) : null}
+                            {(product as any).shortCode ? (
+                              <span className="bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 text-[10px] font-black px-1.5 py-0.5 rounded border border-purple-300 dark:border-purple-700">
+                                ⚡ Code: {(product as any).shortCode}
+                              </span>
+                            ) : null}
                           </div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                          <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
                             {product.brand && <span>Brand: {product.brand}</span>}
                             {product.barcode && <span>• Bar: {product.barcode}</span>}
+                            {(product as any).shortCode && <span>• POS Code: {(product as any).shortCode}</span>}
                             {product.sku && <span>• SKU: {product.sku}</span>}
                           </div>
                         </div>

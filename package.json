@@ -7,9 +7,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "postinstall": "cd backend && npm install",
+    "postinstall": "cd backend && npm install && node ../scripts/install-chrome.cjs",
     "dev": "vite --host",
-    "build": "vite build",
+    "build": "vite build && node scripts/install-chrome.cjs",
+    "render-build": "bash ./render-build.sh",
     "start": "node backend/server.js",
     "lint": "oxlint",
     "preview": "vite preview",

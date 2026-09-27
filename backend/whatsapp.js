@@ -20,6 +20,100 @@ function formatPhoneNumber(phone) {
   return clean;
 }
 
+function findBinaryRecursively(dir, binaryName) {
+  const fs = require('fs');
+  if (!fs.existsSync(dir)) return null;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findBinaryRecursively(fullPath, binaryName);
+        if (found) return found;
+      } else if (entry.name === binaryName) {
+        return fullPath;
+      }
+    }
+  } catch (e) {
+    // Ignore read errors
+  }
+  return null;
+}
+
+function getChromeExecutablePath() {
+  const fs = require('fs');
+  
+  // 1. Explicit env variable
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  const binaryName = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+
+  // 2. Linux standard system paths
+  if (process.platform === 'linux') {
+    const systemPaths = [
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/google-chrome'
+    ];
+    for (const p of systemPaths) {
+      if (fs.existsSync(p)) {
+        console.log('Found system Chromium at:', p);
+        return p;
+      }
+    }
+  }
+
+  // 3. Project & Render cache directories
+  const candidateCacheDirs = [
+    path.join(__dirname, '..', '.cache', 'puppeteer', 'chrome'),
+    path.join(__dirname, '.cache', 'puppeteer', 'chrome'),
+    '/opt/render/.cache/puppeteer/chrome',
+    '/opt/render/project/src/.cache/puppeteer/chrome'
+  ];
+
+  for (const cacheDir of candidateCacheDirs) {
+    if (fs.existsSync(cacheDir)) {
+      const found = findBinaryRecursively(cacheDir, binaryName);
+      if (found) {
+        console.log('Found Chrome in Puppeteer cache:', found);
+        return found;
+      }
+    }
+  }
+
+  // 4. If on Linux/Render and still not found, try to auto-install
+  if (process.platform === 'linux' || process.env.RENDER) {
+    console.log('Chrome not found on Linux/Render. Running npx puppeteer browsers install chrome...');
+    try {
+      const { execSync } = require('child_process');
+      execSync('npx puppeteer browsers install chrome', {
+        cwd: __dirname,
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          PUPPETEER_CACHE_DIR: path.join(__dirname, '..', '.cache', 'puppeteer')
+        }
+      });
+      for (const cacheDir of candidateCacheDirs) {
+        if (fs.existsSync(cacheDir)) {
+          const found = findBinaryRecursively(cacheDir, binaryName);
+          if (found) {
+            console.log('Successfully installed and resolved Chrome:', found);
+            return found;
+          }
+        }
+      }
+    } catch (installErr) {
+      console.error('Failed to auto-install Chrome:', installErr.message);
+    }
+  }
+
+  return undefined;
+}
+
 function initializeWhatsApp() {
   if (client) {
     console.log('WhatsApp client already initialized, current status:', clientStatus);
@@ -32,23 +126,9 @@ function initializeWhatsApp() {
   clientInfo = null;
   console.log('Initializing WhatsApp Web Client with Puppeteer...');
 
-  // Detect Linux Chromium paths if on Linux/Render
-  let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-  if (!executablePath && process.platform === 'linux') {
-    const fs = require('fs');
-    const possiblePaths = [
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/google-chrome'
-    ];
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        executablePath = p;
-        console.log('Found system Chromium at:', executablePath);
-        break;
-      }
-    }
+  let executablePath = getChromeExecutablePath();
+  if (executablePath) {
+    console.log('Using Chrome executable:', executablePath);
   }
 
   // LocalAuth persists the authenticated session in .wwebjs_auth

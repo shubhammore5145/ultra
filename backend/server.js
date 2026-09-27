@@ -42,7 +42,11 @@ app.get('/api/ping', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', uptime: process.uptime() });
+  res.json({ 
+    status: 'healthy', 
+    uptime: process.uptime(),
+    db: require('./db').getStatus()
+  });
 });
 
 // --- WhatsApp Bot Routes ---

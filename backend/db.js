@@ -387,6 +387,18 @@ const pool = {
       }
       throw err;
     }
+  },
+
+  getStatus() {
+    return {
+      adapter: isFallbackActive ? 'sqlite' : (isMySQLReady ? 'mysql_cloud' : 'trying_mysql'),
+      isMySQLReady,
+      isFallbackActive,
+      dbHost: process.env.DB_HOST || 'not_set',
+      dbName: process.env.DB_NAME || 'nayashi_kirana',
+      dbUser: process.env.DB_USER || 'root',
+      hasPassword: Boolean(process.env.DB_PASSWORD)
+    };
   }
 };
 

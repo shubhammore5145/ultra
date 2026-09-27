@@ -48,9 +48,22 @@ function getChromeExecutablePath() {
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
-  const binaryName = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+  // 2. Windows standard browser paths
+  if (process.platform === 'win32') {
+    const winPaths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+    ];
+    for (const p of winPaths) {
+      if (fs.existsSync(p)) {
+        console.log('Found Windows browser at:', p);
+        return p;
+      }
+    }
+  }
 
-  // 2. Linux standard system paths
+  // 3. Linux standard system paths
   if (process.platform === 'linux') {
     const systemPaths = [
       '/usr/bin/chromium',
@@ -66,10 +79,12 @@ function getChromeExecutablePath() {
     }
   }
 
-  // 3. Project & Render cache directories
+  // 4. Project, User Home & Render cache directories
+  const os = require('os');
   const candidateCacheDirs = [
     path.join(__dirname, '..', '.cache', 'puppeteer', 'chrome'),
     path.join(__dirname, '.cache', 'puppeteer', 'chrome'),
+    path.join(os.homedir(), '.cache', 'puppeteer', 'chrome'),
     '/opt/render/.cache/puppeteer/chrome',
     '/opt/render/project/src/.cache/puppeteer/chrome'
   ];

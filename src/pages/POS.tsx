@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { Search, Plus, Minus, Trash, Users, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, QrCode, Mic, Camera, Printer, Barcode, Smartphone, Sparkles, AlertCircle } from 'lucide-react';
+import { Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, Barcode, Smartphone, Sparkles } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
@@ -73,7 +73,6 @@ export default function POS() {
   // Parchi Scanner State
   const [showParchiModal, setShowParchiModal] = useState(false);
   const [isParchiScanning, setIsParchiScanning] = useState(false);
-  const [parchiText, setParchiText] = useState('');
 
   // Checkout Success State
   const [checkoutResult, setCheckoutResult] = useState<{ 

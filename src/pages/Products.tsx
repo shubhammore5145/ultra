@@ -13,10 +13,7 @@ import {
   Barcode,
   Loader2,
   Save,
-  Camera,
-  FileSpreadsheet,
-  CheckCircle2,
-  X
+  FileSpreadsheet
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';

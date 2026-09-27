@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Printer, AlertTriangle, Loader2, Plus, 
-  Building2, Receipt, Search, Trash, CheckCircle2, IndianRupee, 
-  Calendar, Phone, MapPin, Hash, PackagePlus, Eye, X
+  Building2, Receipt, Search, Trash, CheckCircle2, 
+  Phone, MapPin, PackagePlus, Eye, X
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';

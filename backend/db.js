@@ -29,6 +29,10 @@ if (process.env.DB_SSL === 'true' || (process.env.DB_HOST && process.env.DB_HOST
 
 poolConfig.waitForConnections = true;
 poolConfig.connectionLimit = 10;
+poolConfig.maxIdle = 10;
+poolConfig.idleTimeout = 60000;
+poolConfig.enableKeepAlive = true;
+poolConfig.keepAliveInitialDelay = 10000;
 poolConfig.queueLimit = 0;
 
 let mysqlPool = null;
@@ -305,6 +309,19 @@ const pool = {
       try {
         return await mysqlPool.query(sql, params);
       } catch (err) {
+        if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST') {
+          try {
+            return await mysqlPool.query(sql, params);
+          } catch (retryErr) {
+            console.warn(`MySQL retry query failed (${retryErr.code || retryErr.message}).`);
+            if (retryErr.code === 'ECONNREFUSED' || retryErr.code === 'ETIMEDOUT') {
+              isFallbackActive = true;
+              isMySQLReady = false;
+              return runSQLiteQuery(sql, params);
+            }
+            throw retryErr;
+          }
+        }
         if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'PROTOCOL_CONNECTION_LOST') {
           console.warn(`MySQL connection dropped (${err.code}). Auto-switching to embedded SQLite.`);
           isFallbackActive = true;
@@ -322,6 +339,11 @@ const pool = {
       isMySQLReady = true;
       return res;
     } catch (err) {
+      if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST') {
+        try {
+          return await mysqlPool.query(sql, params);
+        } catch (e) {}
+      }
       if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND' || (err.message && err.message.includes('ECONNREFUSED'))) {
         console.warn(`MySQL connection failed (${err.code || err.message}). Auto-switching to embedded SQLite.`);
         isFallbackActive = true;

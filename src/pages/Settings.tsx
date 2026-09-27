@@ -25,6 +25,7 @@ export default function Settings() {
   const [staffList, setStaffList] = useState<any[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<any>(null);
+  const [startingWhatsapp, setStartingWhatsapp] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -85,11 +86,21 @@ export default function Settings() {
   }, [shopData]);
 
   const handleStartWhatsapp = async () => {
+    setStartingWhatsapp(true);
     try {
-      await fetch('/api/whatsapp/start', { method: 'POST' });
-      fetchWhatsappStatus();
-    } catch (err) {
-      alert('Failed to start WhatsApp bot.');
+      const res = await fetch('/api/whatsapp/start', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to start bot');
+      }
+      for (let i = 0; i < 4; i++) {
+        await new Promise(r => setTimeout(r, 1200));
+        await fetchWhatsappStatus();
+      }
+    } catch (err: any) {
+      alert('Failed to start WhatsApp bot: ' + (err.message || 'Error'));
+    } finally {
+      setStartingWhatsapp(false);
     }
   };
 
@@ -377,10 +388,34 @@ export default function Settings() {
     <div className="p-6">
       <div className="flex flex-col items-center justify-center p-6 border rounded-xl bg-background text-center">
         {!whatsappStatus || whatsappStatus.status === 'DISCONNECTED' ? (
-          <>
-            <p className="text-muted-foreground mb-4">Bot is currently disconnected.</p>
-            <Button onClick={handleStartWhatsapp} className="bg-green-600 hover:bg-green-700 text-white">Start WhatsApp Bot</Button>
-          </>
+          <div className="space-y-4 max-w-md mx-auto">
+            <p className="text-muted-foreground">Bot is currently disconnected.</p>
+            {whatsappStatus?.error && (
+              <div className="bg-red-50 dark:bg-red-950/40 p-3 rounded-lg border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 font-mono text-left">
+                <p className="font-bold mb-1">Bot Error:</p>
+                <p className="break-words">{whatsappStatus.error}</p>
+                {whatsappStatus.error.toLowerCase().includes('chrome') && (
+                  <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 font-sans">
+                    💡 टीप: Render मोफत क्लाउड सर्व्हरवर Chromium ब्राऊझर इन्स्टॉल नसतो. ऑटो व्हॉट्सअॅप बॉट तुमच्या दुकानाच्या कॉम्प्युटरवर (Localhost) १००% ॲक्टिव्ह आहे.
+                  </p>
+                )}
+              </div>
+            )}
+            <Button 
+              onClick={handleStartWhatsapp} 
+              disabled={startingWhatsapp}
+              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 mx-auto"
+            >
+              {startingWhatsapp ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Starting WhatsApp Bot...
+                </>
+              ) : (
+                'Start WhatsApp Bot'
+              )}
+            </Button>
+          </div>
         ) : whatsappStatus.status === 'INITIALIZING' ? (
           <>
             <Loader2 className="h-10 w-10 animate-spin text-green-600 mb-4" />

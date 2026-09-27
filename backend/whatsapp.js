@@ -6,6 +6,7 @@ let client = null;
 let qrCodeDataUrl = null;
 let clientStatus = 'DISCONNECTED';
 let clientInfo = null;
+let lastError = null;
 
 function formatPhoneNumber(phone) {
   let clean = String(phone || '').replace(/\D/g, '');
@@ -26,10 +27,30 @@ function initializeWhatsApp() {
   }
 
   clientStatus = 'INITIALIZING';
+  lastError = null;
   qrCodeDataUrl = null;
   clientInfo = null;
   console.log('Initializing WhatsApp Web Client with Puppeteer...');
-  
+
+  // Detect Linux Chromium paths if on Linux/Render
+  let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+  if (!executablePath && process.platform === 'linux') {
+    const fs = require('fs');
+    const possiblePaths = [
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/google-chrome'
+    ];
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        executablePath = p;
+        console.log('Found system Chromium at:', executablePath);
+        break;
+      }
+    }
+  }
+
   // LocalAuth persists the authenticated session in .wwebjs_auth
   client = new Client({
     authStrategy: new LocalAuth({
@@ -37,6 +58,7 @@ function initializeWhatsApp() {
     }),
     puppeteer: {
       headless: true,
+      executablePath: executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -51,6 +73,7 @@ function initializeWhatsApp() {
 
   client.on('qr', async (qr) => {
     clientStatus = 'NEEDS_QR';
+    lastError = null;
     try {
       qrCodeDataUrl = await qrcode.toDataURL(qr);
       console.log('WhatsApp QR Code generated successfully. Ready to scan.');
@@ -67,6 +90,7 @@ function initializeWhatsApp() {
     console.log('WhatsApp Client is ready & connected!');
     clientStatus = 'CONNECTED';
     qrCodeDataUrl = null;
+    lastError = null;
     try {
       if (client.info) {
         clientInfo = {
@@ -84,10 +108,12 @@ function initializeWhatsApp() {
   client.on('authenticated', () => {
     console.log('WhatsApp Authenticated!');
     clientStatus = 'AUTHENTICATED';
+    lastError = null;
   });
 
   client.on('auth_failure', async (msg) => {
     console.error('WhatsApp Authentication failure:', msg);
+    lastError = 'Authentication failure: ' + msg;
     clientStatus = 'DISCONNECTED';
     qrCodeDataUrl = null;
     clientInfo = null;
@@ -99,6 +125,7 @@ function initializeWhatsApp() {
 
   client.on('disconnected', async (reason) => {
     console.log('WhatsApp Disconnected:', reason);
+    lastError = 'Disconnected: ' + (reason || 'Session closed');
     clientStatus = 'DISCONNECTED';
     qrCodeDataUrl = null;
     clientInfo = null;
@@ -109,7 +136,8 @@ function initializeWhatsApp() {
   });
 
   client.initialize().catch(async (err) => {
-    console.error('WhatsApp initialization error:', err.message || err);
+    lastError = err.message || String(err);
+    console.error('WhatsApp initialization error:', lastError);
     clientStatus = 'DISCONNECTED';
     qrCodeDataUrl = null;
     clientInfo = null;
@@ -124,7 +152,8 @@ function getStatus() {
   return {
     status: clientStatus,
     qr: qrCodeDataUrl,
-    info: clientInfo
+    info: clientInfo,
+    error: lastError
   };
 }
 

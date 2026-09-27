@@ -142,30 +142,59 @@ router.post('/firebase-sync', async (req, res) => {
       return res.status(400).json({ error: 'Firebase UID and email are required' });
     }
 
-    // Check if user already exists in MySQL (by uid or email)
-    const [existingUsers] = await pool.query('SELECT * FROM users WHERE uid = ? OR email = ?', [uid, email]);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanDisplayName = displayName || cleanEmail.split('@')[0];
 
-    if (existingUsers.length > 0) {
-      const user = existingUsers[0];
-      // If the UID in MySQL is different (e.g. from previous local signup), update it to Firebase UID
-      if (user.uid !== uid) {
-        await pool.query('UPDATE users SET uid = ? WHERE email = ?', [uid, email]);
-        user.uid = uid;
+    // 1. Check if user already exists by exact Firebase UID
+    let [users] = await pool.query('SELECT * FROM users WHERE uid = ?', [uid]);
+
+    // 2. If not found by UID, check by normalized email
+    if (users.length === 0) {
+      const [byEmail] = await pool.query('SELECT * FROM users WHERE LOWER(email) = ?', [cleanEmail]);
+      if (byEmail.length > 0) {
+        users = byEmail;
+        // User has an older ID; attempt safe update of primary key
+        try {
+          await pool.query('UPDATE users SET uid = ? WHERE uid = ?', [uid, byEmail[0].uid]);
+          users[0].uid = uid;
+        } catch (e) {
+          console.warn('Could not update user UID to Firebase UID:', e.message);
+        }
       }
+    }
+
+    // Existing user found
+    if (users.length > 0) {
+      const user = users[0];
+      let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
       
+      // If user is admin but shop is missing, create a default shop
+      if (shops.length === 0 && user.role === 'admin') {
+        const fallbackShopId = user.shopId || generateId();
+        await pool.query(
+          'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
+          [fallbackShopId, shopName || 'My Kirana Store', ownerName || cleanDisplayName, cleanEmail, 'free']
+        );
+        if (!user.shopId) {
+          await pool.query('UPDATE users SET shopId = ? WHERE uid = ?', [fallbackShopId, user.uid]);
+          user.shopId = fallbackShopId;
+        }
+        [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [fallbackShopId]);
+      }
+
       const token = jwt.sign({ uid: user.uid, shopId: user.shopId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-      const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
       delete user.password;
       return res.json({ token, user, shop: shops[0] || null });
     }
 
-    // New User in MySQL:
+    // 3. Brand New User in MySQL:
     if (role === 'cashier' || joinShopId) {
       // Cashier flow: Join existing shop
-      if (!joinShopId) {
+      const targetShopId = (joinShopId || '').trim();
+      if (!targetShopId) {
         return res.status(400).json({ error: 'Shop ID is required to join as cashier.' });
       }
-      const [existingShop] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [joinShopId]);
+      const [existingShop] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [targetShopId]);
       if (existingShop.length === 0) {
         return res.status(404).json({ error: 'Shop not found with provided Shop ID.' });
       }
@@ -173,39 +202,59 @@ router.post('/firebase-sync', async (req, res) => {
       const targetShop = existingShop[0];
       await pool.query(
         'INSERT INTO users (uid, email, displayName, role, shopId) VALUES (?, ?, ?, ?, ?)',
-        [uid, email, displayName || email.split('@')[0], 'cashier', targetShop.shopId]
+        [uid, cleanEmail, cleanDisplayName, 'cashier', targetShop.shopId]
       );
 
       const token = jwt.sign({ uid, shopId: targetShop.shopId, role: 'cashier' }, JWT_SECRET, { expiresIn: '7d' });
       return res.json({
         token,
-        user: { uid, email, displayName: displayName || email.split('@')[0], role: 'cashier', shopId: targetShop.shopId },
+        user: { uid, email: cleanEmail, displayName: cleanDisplayName, role: 'cashier', shopId: targetShop.shopId },
         shop: targetShop
       });
     } else {
-      // Admin flow: Create new Shop
+      // Admin flow: Create new Shop and Admin User
       const newShopId = generateId();
       await pool.query(
         'INSERT INTO shops (shopId, name, ownerName, phone, email, plan) VALUES (?, ?, ?, ?, ?, ?)',
-        [newShopId, shopName || 'My Kirana Store', ownerName || displayName || 'Shop Owner', phone || '', email, 'free']
+        [newShopId, shopName || 'My Kirana Store', ownerName || cleanDisplayName, phone || '', cleanEmail, 'free']
       );
 
       await pool.query(
         'INSERT INTO users (uid, email, displayName, role, shopId) VALUES (?, ?, ?, ?, ?)',
-        [uid, email, displayName || email.split('@')[0], 'admin', newShopId]
+        [uid, cleanEmail, cleanDisplayName, 'admin', newShopId]
       );
 
       const token = jwt.sign({ uid, shopId: newShopId, role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
-      const shop = { shopId: newShopId, name: shopName || 'My Kirana Store', ownerName: ownerName || displayName, phone: phone || '', email, plan: 'free' };
+      const shop = { 
+        shopId: newShopId, 
+        name: shopName || 'My Kirana Store', 
+        ownerName: ownerName || cleanDisplayName, 
+        phone: phone || '', 
+        email: cleanEmail, 
+        plan: 'free' 
+      };
+
       return res.json({
         token,
-        user: { uid, email, displayName: displayName || email.split('@')[0], role: 'admin', shopId: newShopId },
+        user: { uid, email: cleanEmail, displayName: cleanDisplayName, role: 'admin', shopId: newShopId },
         shop
       });
     }
   } catch (error) {
-    console.error('Firebase sync error:', error);
-    res.status(500).json({ error: error.message || 'Server error during Firebase sync' });
+    console.error('Firebase sync error:', {
+      message: error?.message,
+      code: error?.code,
+      sqlMessage: error?.sqlMessage
+    });
+    
+    let msg = error?.sqlMessage || error?.message || 'Server error during Firebase sync';
+    if (error?.code === 'ECONNREFUSED') {
+      msg = 'Database connection failed (ECONNREFUSED). Please verify MySQL database server is running.';
+    } else if (error?.code === 'ER_ACCESS_DENIED_ERROR') {
+      msg = 'Database access denied. Please verify DB_USER and DB_PASSWORD credentials in .env.';
+    }
+    
+    res.status(500).json({ error: msg });
   }
 });
 

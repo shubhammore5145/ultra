@@ -52,21 +52,22 @@ export default function Udhar() {
   const [loadingLedger, setLoadingLedger] = useState(false);
 
   const fetchCustomers = async () => {
+    setLoading(true);
     try {
       const data = await api.customers.list();
-      data.sort((a: Customer, b: Customer) => (b.balance || 0) - (a.balance || 0));
-      setCustomers(data);
+      const safeData = Array.isArray(data) ? [...data] : [];
+      safeData.sort((a: Customer, b: Customer) => (b.balance || 0) - (a.balance || 0));
+      setCustomers(safeData);
     } catch (err) {
       console.error('Failed to load customers', err);
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (shopData?.shopId) {
-      fetchCustomers();
-    }
+    fetchCustomers();
   }, [shopData?.shopId]);
 
   const handleTransaction = async (e: React.FormEvent) => {

@@ -14,18 +14,19 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!shopData?.shopId) return;
-
     const fetchData = async () => {
+      setLoading(true);
       try {
         const [salesData, productsData] = await Promise.all([
           api.transactions.list(),
           api.products.list()
         ]);
-        setSales(salesData);
-        setProducts(productsData);
+        setSales(Array.isArray(salesData) ? salesData : []);
+        setProducts(Array.isArray(productsData) ? productsData : []);
       } catch (err) {
         console.error('Failed to load report data', err);
+        setSales([]);
+        setProducts([]);
       } finally {
         setLoading(false);
       }

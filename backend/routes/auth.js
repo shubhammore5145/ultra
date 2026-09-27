@@ -94,9 +94,22 @@ router.post('/login', async (req, res) => {
     // Remove password before sending to client
     delete user.password;
     
-    const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
+    let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
+    let shop = shops[0] || null;
+    if (!shop && user.shopId) {
+      try {
+        await pool.query(
+          'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
+          [user.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'ultra_pro']
+        );
+        const [createdShops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
+        shop = createdShops[0] || null;
+      } catch (err) {
+        console.warn('Fallback shop auto-creation in login:', err.message);
+      }
+    }
     
-    res.json({ token, user, shop: shops[0] || null });
+    res.json({ token, user, shop });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error during login' });
@@ -115,9 +128,23 @@ router.get('/me', async (req, res) => {
     const [users] = await pool.query('SELECT uid, email, displayName, role, shopId FROM users WHERE uid = ?', [decoded.uid]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     
-    const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [decoded.shopId]);
+    const user = users[0];
+    let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [decoded.shopId]);
+    let shop = shops[0] || null;
+    if (!shop && decoded.shopId) {
+      try {
+        await pool.query(
+          'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
+          [decoded.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'ultra_pro']
+        );
+        const [createdShops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [decoded.shopId]);
+        shop = createdShops[0] || null;
+      } catch (err) {
+        console.warn('Fallback shop auto-creation in /me:', err.message);
+      }
+    }
     
-    res.json({ user: users[0], shop: shops[0] || null });
+    res.json({ user, shop });
   } catch (error) {
     console.error('Auth error:', error);
     res.status(401).json({ error: 'Invalid token' });

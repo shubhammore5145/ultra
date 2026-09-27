@@ -29,11 +29,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [shopData, setShopData] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Helper to ensure shopData is always available if shop or user has shopId
+  const resolveShop = (u: any, s?: any): Shop | null => {
+    if (s && s.shopId) return s;
+    const fallbackId = s?.shopId || u?.shopId;
+    if (!fallbackId) return null;
+    return {
+      shopId: fallbackId,
+      name: s?.name || (u?.displayName ? `${u.displayName} चे किराणा` : 'माझे किराणा स्टोअर'),
+      ownerName: s?.ownerName || u?.displayName || 'दुकानदार',
+      phone: s?.phone || '',
+      email: s?.email || u?.email || '',
+      address: s?.address || '',
+      plan: s?.plan || 'ultra_pro',
+      createdAt: s?.createdAt || new Date().toISOString()
+    } as any;
+  };
+
   const login = (token: string, u: UserData, s?: Shop) => {
     localStorage.setItem('auth_token', token);
     setUser(u); // minimal user
     setUserData(u);
-    if (s) setShopData(s);
+    const resolvedShop = resolveShop(u, s);
+    if (resolvedShop) setShopData(resolvedShop);
   };
 
   const logout = () => {
@@ -54,8 +72,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const res = await api.auth.me();
           setUser(res.user);
           setUserData(res.user);
-          if (res.shop) {
-            setShopData(res.shop);
+          const resolvedShop = resolveShop(res.user, res.shop);
+          if (resolvedShop) {
+            setShopData(resolvedShop);
           }
         } catch (error) {
           console.error('Session expired or invalid:', error);

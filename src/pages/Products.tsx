@@ -13,7 +13,8 @@ import {
   Barcode,
   Loader2,
   Save,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,32 +47,40 @@ export default function Products() {
   const navigate = useNavigate();
 
   const fetchProducts = async () => {
+    setLoading(true);
     try {
       const data = await api.products.list();
-      setProducts(data);
+      if (Array.isArray(data)) {
+        setProducts(data);
+      } else {
+        console.warn('api.products.list() did not return an array:', data);
+        setProducts([]);
+      }
     } catch (err) {
       console.error('Failed to load products', err);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (shopData?.shopId) {
-      fetchProducts();
-    }
+    fetchProducts();
   }, [shopData?.shopId]);
 
   // Extract unique categories
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach(p => {
-      if (p.category) set.add(p.category);
-    });
+    if (Array.isArray(products)) {
+      products.forEach(p => {
+        if (p.category) set.add(p.category);
+      });
+    }
     return Array.from(set).sort();
   }, [products]);
 
   const filteredProducts = useMemo(() => {
+    if (!Array.isArray(products)) return [];
     return products.filter(p => {
       const matchesSearch = 
         (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -91,11 +100,10 @@ export default function Products() {
   }, [filteredProducts, currentPage, itemsPerPage]);
 
   const handleDelete = async (id: string) => {
-    if (!shopData?.shopId) return;
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
         await api.products.delete(id);
-        setProducts(products.filter(p => p.id !== id));
+        setProducts(prev => prev.filter(p => p.id !== id));
       } catch (error) {
         console.error('Failed to delete product', error);
         alert('Failed to delete product');
@@ -325,6 +333,16 @@ export default function Products() {
               >
                 <Edit className="mr-1.5 h-4 w-4" /> Bulk Edit
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchProducts()} 
+                disabled={loading}
+                className="text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+                title="Reload products from server"
+              >
+                <RefreshCw className={`mr-1.5 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Reload
+              </Button>
               <Button size="sm" onClick={() => navigate('/products/new')} className="font-bold">
                 <Plus className="mr-1.5 h-4 w-4" /> Add Product
               </Button>
@@ -408,8 +426,18 @@ export default function Products() {
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                     <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                    <p className="font-semibold text-base">No products found</p>
-                    <p className="text-xs mt-1">Try adjusting your search or category filter.</p>
+                    <p className="font-semibold text-base text-foreground">कोणतीही उत्पादने सापडली नाहीत (No products found)</p>
+                    <p className="text-xs mt-1 max-w-sm mx-auto">
+                      {searchTerm ? 'Try adjusting your search query or clear category filters.' : 'दुकानदार बंधू, तुमच्या दुकानात अद्याप वस्तू जोडल्या गेलेल्या नाहीत. खालील बटणावर क्लिक करून वस्तू जोडा किंवा रीलोड करा.'}
+                    </p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => fetchProducts()} disabled={loading}>
+                        <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+                      </Button>
+                      <Button size="sm" onClick={() => navigate('/products/new')} className="font-bold">
+                        <Plus className="mr-1.5 h-3.5 w-3.5" /> + Add Product
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : (

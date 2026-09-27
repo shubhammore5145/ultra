@@ -37,7 +37,6 @@ export default function Dashboard() {
   }, []);
 
   const fetchDashboardData = useCallback(async (isSilent = false) => {
-    if (!shopData?.shopId) return;
     if (!isSilent) setLoading(true);
     else setIsRefreshing(true);
 
@@ -59,12 +58,17 @@ export default function Dashboard() {
         return d >= twentyFourHoursAgo && d <= now;
       };
       
-      const [products, transactions, expenses, customers] = await Promise.all([
+      const [rawProducts, rawTransactions, rawExpenses, rawCustomers] = await Promise.all([
         api.products.list(),
         api.transactions.list(),
         api.expenses.list(),
         api.customers.list()
       ]);
+
+      const products: Product[] = Array.isArray(rawProducts) ? rawProducts : [];
+      const transactions: Transaction[] = Array.isArray(rawTransactions) ? rawTransactions : [];
+      const expenses: Expense[] = Array.isArray(rawExpenses) ? rawExpenses : [];
+      const customers: Customer[] = Array.isArray(rawCustomers) ? rawCustomers : [];
 
       // Products & Low Stock
       setAllProducts(products);

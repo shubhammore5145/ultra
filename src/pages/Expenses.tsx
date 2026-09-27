@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Plus, Trash2, Loader2, Wallet, Calendar, IndianRupee, FileText, TrendingDown } from 'lucide-react';
@@ -29,10 +29,13 @@ export default function Expenses() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
-    if (!shopData?.shopId) return;
+    setLoading(true);
     api.expenses.list()
-      .then(setExpenses)
-      .catch(console.error)
+      .then(data => setExpenses(Array.isArray(data) ? data : []))
+      .catch(err => {
+        console.error('Failed to load expenses', err);
+        setExpenses([]);
+      })
       .finally(() => setLoading(false));
   }, [shopData?.shopId]);
 

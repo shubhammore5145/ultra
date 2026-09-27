@@ -27,15 +27,16 @@ export default function Customers() {
   });
 
   useEffect(() => {
-    if (!shopData?.shopId) return;
-
     const fetchCustomers = async () => {
+      setLoading(true);
       try {
         const data = await api.customers.list();
-        data.sort((a: Customer, b: Customer) => a.name.localeCompare(b.name));
-        setCustomers(data);
+        const safeData = Array.isArray(data) ? [...data] : [];
+        safeData.sort((a: Customer, b: Customer) => a.name.localeCompare(b.name));
+        setCustomers(safeData);
       } catch (err) {
         console.error('Failed to load customers', err);
+        setCustomers([]);
       } finally {
         setLoading(false);
       }

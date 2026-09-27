@@ -99,14 +99,18 @@ export default function POS() {
 
   // Fetch live products for fast POS search
   useEffect(() => {
-    if (!shopData?.shopId) return;
-
     const fetchProducts = async () => {
+      setLoading(true);
       try {
         const prods = await api.products.list();
-        setProducts(prods);
+        if (Array.isArray(prods)) {
+          setProducts(prods);
+        } else {
+          setProducts([]);
+        }
       } catch (err) {
-        console.error('Failed to load products', err);
+        console.error('Failed to load products in POS', err);
+        setProducts([]);
       } finally {
         setLoading(false);
       }

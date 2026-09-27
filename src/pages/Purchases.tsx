@@ -93,23 +93,26 @@ export default function Purchases() {
         api.suppliers.list(),
         api.purchases.list()
       ]);
-      setProducts(prods);
-      setSuppliers(supps);
-      setPurchases(purchs);
+      const safeProds = Array.isArray(prods) ? prods : [];
+      setProducts(safeProds);
+      setSuppliers(Array.isArray(supps) ? supps : []);
+      setPurchases(Array.isArray(purchs) ? purchs : []);
       
-      const lowStock = prods.filter((p: Product) => (p.stock || 0) <= (p.minStock || 0));
+      const lowStock = safeProds.filter((p: Product) => (p.stock || 0) <= (p.minStock || 0));
       setLowStockProducts(lowStock);
     } catch (err) {
       console.error('Failed to load purchases data', err);
+      setProducts([]);
+      setSuppliers([]);
+      setPurchases([]);
+      setLowStockProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (shopData?.shopId) {
-      loadAllData();
-    }
+    loadAllData();
   }, [shopData?.shopId]);
 
   // Handle Product select in Bill form

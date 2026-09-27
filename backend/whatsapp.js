@@ -1,369 +1,162 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  makeInMemoryStore
+} = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
 const path = require('path');
+const fs = require('fs');
+const qrcode = require('qrcode');
 
-let client = null;
+// ─── State ────────────────────────────────────────────────────────────────────
+let sock = null;
 let qrCodeDataUrl = null;
-let clientStatus = 'DISCONNECTED';
+let clientStatus = 'DISCONNECTED'; // DISCONNECTED | INITIALIZING | NEEDS_QR | CONNECTED
 let clientInfo = null;
 let lastError = null;
+let reconnectTimer = null;
 
+const AUTH_DIR = path.join(__dirname, '.baileys_auth');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatPhoneNumber(phone) {
   let clean = String(phone || '').replace(/\D/g, '');
-  if (clean.length === 10) {
-    clean = '91' + clean;
-  } else if (clean.length === 11 && clean.startsWith('0')) {
-    clean = '91' + clean.slice(1);
-  } else if (clean.length > 10 && clean.startsWith('91')) {
-    // Already standard 91 format
-  }
+  if (clean.length === 10) clean = '91' + clean;
+  else if (clean.length === 11 && clean.startsWith('0')) clean = '91' + clean.slice(1);
   return clean;
 }
 
-function findBinaryRecursively(dir, binaryName) {
-  const fs = require('fs');
-  if (!fs.existsSync(dir)) return null;
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const found = findBinaryRecursively(fullPath, binaryName);
-        if (found) return found;
-      } else if (entry.name === binaryName) {
-        return fullPath;
-      }
-    }
-  } catch (e) {
-    // Ignore read errors
-  }
-  return null;
-}
+// ─── Core: connect ────────────────────────────────────────────────────────────
+async function connect() {
+  // Clear any pending reconnect
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
-function getChromeExecutablePath() {
-  const fs = require('fs');
-  
-  // 1. Explicit env variable
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
+  if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-  // 2. Windows standard browser paths
-  if (process.platform === 'win32') {
-    const winPaths = [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
-    ];
-    for (const p of winPaths) {
-      if (fs.existsSync(p)) {
-        console.log('Found Windows browser at:', p);
-        return p;
-      }
-    }
-  }
-
-  // 3. Linux standard system paths
-  if (process.platform === 'linux') {
-    const systemPaths = [
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/google-chrome'
-    ];
-    for (const p of systemPaths) {
-      if (fs.existsSync(p)) {
-        console.log('Found system Chromium at:', p);
-        return p;
-      }
-    }
-  }
-
-  // 4. Project, User Home & Render cache directories
-  const os = require('os');
-  const candidateCacheDirs = [
-    path.join(__dirname, '..', '.cache', 'puppeteer', 'chrome'),
-    path.join(__dirname, '.cache', 'puppeteer', 'chrome'),
-    path.join(os.homedir(), '.cache', 'puppeteer', 'chrome'),
-    '/opt/render/.cache/puppeteer/chrome',
-    '/opt/render/project/src/.cache/puppeteer/chrome'
-  ];
-
-  for (const cacheDir of candidateCacheDirs) {
-    if (fs.existsSync(cacheDir)) {
-      const found = findBinaryRecursively(cacheDir, binaryName);
-      if (found) {
-        console.log('Found Chrome in Puppeteer cache:', found);
-        return found;
-      }
-    }
-  }
-
-  // 4. If on Linux/Render and still not found, try to auto-install
-  if (process.platform === 'linux' || process.env.RENDER) {
-    console.log('Chrome not found on Linux/Render. Running npx puppeteer browsers install chrome...');
-    try {
-      const { execSync } = require('child_process');
-      execSync('npx puppeteer browsers install chrome', {
-        cwd: __dirname,
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          PUPPETEER_CACHE_DIR: path.join(__dirname, '..', '.cache', 'puppeteer')
-        }
-      });
-      for (const cacheDir of candidateCacheDirs) {
-        if (fs.existsSync(cacheDir)) {
-          const found = findBinaryRecursively(cacheDir, binaryName);
-          if (found) {
-            console.log('Successfully installed and resolved Chrome:', found);
-            return found;
-          }
-        }
-      }
-    } catch (installErr) {
-      console.error('Failed to auto-install Chrome:', installErr.message);
-    }
-  }
-
-  return undefined;
-}
-
-function initializeWhatsApp() {
-  if (client) {
-    console.log('WhatsApp client already initialized, current status:', clientStatus);
-    return;
-  }
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version } = await fetchLatestBaileysVersion();
 
   clientStatus = 'INITIALIZING';
   lastError = null;
   qrCodeDataUrl = null;
   clientInfo = null;
-  console.log('Initializing WhatsApp Web Client with Puppeteer...');
 
-  let executablePath = getChromeExecutablePath();
-  if (executablePath) {
-    console.log('Using Chrome executable:', executablePath);
-  }
+  console.log('Connecting to WhatsApp via Baileys v' + version.join('.'));
 
-  // LocalAuth persists the authenticated session in .wwebjs_auth
-  client = new Client({
-    authStrategy: new LocalAuth({
-      dataPath: path.join(__dirname, '.wwebjs_auth')
-    }),
-    puppeteer: {
-      headless: true,
-      executablePath: executablePath,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu'
-      ]
-    }
+  sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: false,  // We handle QR ourselves
+    browser: ['KiranaPro', 'Chrome', '1.0.0'],
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 30000,
+    retryRequestDelayMs: 2000,
   });
 
-  client.on('qr', async (qr) => {
-    clientStatus = 'NEEDS_QR';
-    lastError = null;
-    try {
-      qrCodeDataUrl = await qrcode.toDataURL(qr);
-      console.log('WhatsApp QR Code generated successfully. Ready to scan.');
-    } catch (err) {
-      console.error('Failed to generate QR Code data URL:', err);
-    }
-  });
+  // Save credentials whenever updated
+  sock.ev.on('creds.update', saveCreds);
 
-  client.on('loading_screen', (percent, message) => {
-    console.log(`WhatsApp loading: ${percent}% - ${message}`);
-  });
+  // ── Connection events ──────────────────────────────────────────────────────
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-  client.on('ready', () => {
-    console.log('WhatsApp Client is ready & connected!');
-    clientStatus = 'CONNECTED';
-    qrCodeDataUrl = null;
-    lastError = null;
-    try {
-      if (client.info) {
-        clientInfo = {
-          wid: client.info.wid?._serialized || null,
-          phone: client.info.wid?.user || null,
-          pushname: client.info.pushname || null
-        };
-        console.log(`WhatsApp Bot connected as: +${clientInfo.phone} (${clientInfo.pushname || 'User'})`);
+    if (qr) {
+      clientStatus = 'NEEDS_QR';
+      try {
+        qrCodeDataUrl = await qrcode.toDataURL(qr);
+        console.log('WhatsApp QR generated — scan in app.');
+      } catch (e) {
+        console.error('QR generation error:', e.message);
       }
-    } catch (infoErr) {
-      console.warn('Could not read client.info:', infoErr.message);
+    }
+
+    if (connection === 'open') {
+      clientStatus = 'CONNECTED';
+      qrCodeDataUrl = null;
+      lastError = null;
+      const me = sock.user;
+      clientInfo = {
+        phone: me?.id?.split(':')[0] || me?.id?.split('@')[0],
+        pushname: me?.name || me?.notify || 'Unknown'
+      };
+      console.log('WhatsApp Connected as:', clientInfo.pushname, '+' + clientInfo.phone);
+    }
+
+    if (connection === 'close') {
+      const statusCode = (lastDisconnect?.error instanceof Boom)
+        ? lastDisconnect.error.output?.statusCode
+        : null;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      console.log('WhatsApp disconnected. StatusCode:', statusCode, '| Reconnect:', shouldReconnect);
+      clientStatus = 'DISCONNECTED';
+      clientInfo = null;
+      qrCodeDataUrl = null;
+      sock = null;
+
+      if (shouldReconnect) {
+        lastError = null;
+        console.log('Auto-reconnecting in 5s...');
+        reconnectTimer = setTimeout(() => connect(), 5000);
+      } else {
+        // Logged out: clear saved session
+        lastError = 'Session logged out. Please scan QR again.';
+        try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
+        console.log('Session cleared. Start bot again to scan QR.');
+      }
     }
   });
+}
 
-  client.on('authenticated', () => {
-    console.log('WhatsApp Authenticated!');
-    clientStatus = 'AUTHENTICATED';
-    lastError = null;
-  });
-
-  client.on('auth_failure', async (msg) => {
-    console.error('WhatsApp Authentication failure:', msg);
-    lastError = 'Authentication failure: ' + msg;
-    clientStatus = 'DISCONNECTED';
-    qrCodeDataUrl = null;
-    clientInfo = null;
-    try {
-      if (client) await client.destroy();
-    } catch (e) {}
-    client = null;
-  });
-
-  client.on('disconnected', async (reason) => {
-    console.log('WhatsApp Disconnected:', reason);
-    lastError = 'Disconnected: ' + (reason || 'Session closed');
-    clientStatus = 'DISCONNECTED';
-    qrCodeDataUrl = null;
-    clientInfo = null;
-    try {
-      if (client) await client.destroy();
-    } catch (e) {}
-    client = null;
-  });
-
-  client.initialize().catch(async (err) => {
+// ─── Public API ───────────────────────────────────────────────────────────────
+function initializeWhatsApp() {
+  if (clientStatus === 'CONNECTED' || clientStatus === 'INITIALIZING') {
+    console.log('WhatsApp already running. Status:', clientStatus);
+    return;
+  }
+  connect().catch(err => {
     lastError = err.message || String(err);
-    console.error('WhatsApp initialization error:', lastError);
     clientStatus = 'DISCONNECTED';
-    qrCodeDataUrl = null;
-    clientInfo = null;
-    try {
-      if (client) await client.destroy();
-    } catch (e) {}
-    client = null;
+    console.error('WhatsApp connect error:', lastError);
   });
 }
 
 function getStatus() {
-  return {
-    status: clientStatus,
-    qr: qrCodeDataUrl,
-    info: clientInfo,
-    error: lastError
-  };
+  return { status: clientStatus, qr: qrCodeDataUrl, info: clientInfo, error: lastError };
 }
 
 async function sendMessage(phoneNumber, message) {
-  if (!client || (clientStatus !== 'CONNECTED' && clientStatus !== 'AUTHENTICATED')) {
-    throw new Error('WhatsApp bot is not connected. Current status: ' + clientStatus);
+  if (!sock || clientStatus !== 'CONNECTED') {
+    throw new Error('WhatsApp bot is not connected. Status: ' + clientStatus);
   }
-  
-  const cleanNumber = formatPhoneNumber(phoneNumber);
-  if (cleanNumber.length < 10) {
-    throw new Error('Invalid phone number format: ' + phoneNumber);
-  }
-  
-  let targetChatId = `${cleanNumber}@c.us`;
+  const clean = formatPhoneNumber(phoneNumber);
+  if (clean.length < 10) throw new Error('Invalid phone number: ' + phoneNumber);
 
-  // Pre-validate number and resolve LID / serialized Wid
+  const jid = clean + '@s.whatsapp.net';
   try {
-    const numberId = await client.getNumberId(cleanNumber);
-    if (numberId && numberId._serialized) {
-      targetChatId = numberId._serialized;
-      console.log(`Resolved WhatsApp target: ${targetChatId}`);
-    } else if (numberId === null) {
-      console.warn(`Number +${cleanNumber} is not registered on WhatsApp`);
-      throw new Error(`The phone number +${cleanNumber} is not registered on WhatsApp.`);
-    }
-  } catch (idErr) {
-    if (idErr.message && idErr.message.includes('not registered on WhatsApp')) {
-      throw idErr;
-    }
-    console.warn('getNumberId warning (attempting direct send):', idErr.message);
-  }
-  
-  // Try sending with automatic recovery for detached frames and LID issues
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await client.sendMessage(targetChatId, message);
-      console.log(`WhatsApp message successfully sent to ${targetChatId}`);
-      return true;
-    } catch (error) {
-      console.error(`Attempt ${attempt} error sending WhatsApp message:`, error.message);
-      
-      const isLidError = error.message && error.message.includes('No LID for user');
-      const isDetached = error.message && (
-        error.message.includes('detached Frame') || 
-        error.message.includes('Execution context was destroyed') ||
-        error.message.includes('Target closed')
-      );
-
-      // If No LID, try opening/resolving the chat model first
-      if (isLidError) {
-        try {
-          console.log(`Attempting chat lookup fallback for ${targetChatId}...`);
-          const chat = await client.getChatById(targetChatId);
-          if (chat) {
-            await chat.sendMessage(message);
-            console.log(`WhatsApp message successfully sent via chat object to ${targetChatId}`);
-            return true;
-          }
-        } catch (chatErr) {
-          console.error('Chat object fallback failed:', chatErr.message);
-        }
-      }
-
-      if (isDetached && attempt < 3) {
-        console.log(`Attempting to recover detached frame (attempt ${attempt})...`);
-        try {
-          if (client.pupBrowser) {
-            const pages = await client.pupBrowser.pages();
-            const activePage = pages.find(p => !p.isClosed() && (p.url().includes('whatsapp') || p.url().includes('web'))) || pages[0];
-            if (activePage) {
-              client.pupPage = activePage;
-              if (attempt === 2) {
-                console.log('Reloading WhatsApp Web page to reset frame...');
-                await client.pupPage.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-              }
-              await client.inject();
-              console.log('Re-injected client scripts into active frame. Retrying...');
-              await new Promise(r => setTimeout(r, 2000));
-              continue;
-            }
-          }
-        } catch (recoverErr) {
-          console.error('Frame recovery attempt failed:', recoverErr.message);
-        }
-      }
-
-      if (attempt === 3 || (!isDetached && !isLidError)) {
-        throw error;
-      }
-    }
+    await sock.sendMessage(jid, { text: message });
+    console.log('WhatsApp message sent to', jid);
+  } catch (err) {
+    // Try without country code as fallback (already has 91)
+    throw new Error('Failed to send: ' + err.message);
   }
 }
 
 async function logout() {
-  if (client) {
-    try {
-      await client.logout();
-    } catch (err) {
-      console.error('WhatsApp logout error (ignored):', err.message);
-    }
-    try {
-      await client.destroy();
-    } catch (e) {}
-    client = null;
-    clientStatus = 'DISCONNECTED';
-    qrCodeDataUrl = null;
-    clientInfo = null;
-    console.log('WhatsApp client successfully destroyed and logged out.');
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (sock) {
+    try { await sock.logout(); } catch (e) {}
+    sock = null;
   }
+  clientStatus = 'DISCONNECTED';
+  qrCodeDataUrl = null;
+  clientInfo = null;
+  lastError = null;
+  try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
+  console.log('WhatsApp logged out and session cleared.');
 }
 
-module.exports = {
-  initializeWhatsApp,
-  getStatus,
-  sendMessage,
-  logout,
-  formatPhoneNumber
-};
+module.exports = { initializeWhatsApp, getStatus, sendMessage, logout };

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   IndianRupee, ShoppingCart, TrendingUp, Users, Wallet,
-  AlertTriangle, Download, Sparkles
+  AlertTriangle, Download, Sparkles, RefreshCw
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,8 @@ export default function Dashboard() {
   const [todaysSales, setTodaysSales] = useState(0);
   const [todaysExpenses, setTodaysExpenses] = useState(0);
   const [todaysOrders, setTodaysOrders] = useState(0);
+  const [last24hSales, setLast24hSales] = useState(0);
+  const [last24hOrders, setLast24hOrders] = useState(0);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [totalUdhar, setTotalUdhar] = useState(0);
   const [udharCustomersCount, setUdharCustomersCount] = useState(0);
@@ -20,81 +22,116 @@ export default function Dashboard() {
   const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const parseDate = useCallback((dateVal: any): Date | null => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return dateVal;
+    let str = String(dateVal).trim();
+    // Normalize naive SQLite/MySQL UTC datetime string (e.g. '2026-09-27 19:46:50') to ISO UTC with 'Z'
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.includes('Z') && !str.includes('+')) {
+      str = str.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  }, []);
+
+  const fetchDashboardData = useCallback(async (isSilent = false) => {
+    if (!shopData?.shopId) return;
+    if (!isSilent) setLoading(true);
+    else setIsRefreshing(true);
+
+    try {
+      const now = new Date();
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      const isToday = (dateVal: any) => {
+        const d = parseDate(dateVal);
+        if (!d) return false;
+        return d.getFullYear() === now.getFullYear() &&
+               d.getMonth() === now.getMonth() &&
+               d.getDate() === now.getDate();
+      };
+
+      const isRecent24h = (dateVal: any) => {
+        const d = parseDate(dateVal);
+        if (!d) return false;
+        return d >= twentyFourHoursAgo && d <= now;
+      };
+      
+      const [products, transactions, expenses, customers] = await Promise.all([
+        api.products.list(),
+        api.transactions.list(),
+        api.expenses.list(),
+        api.customers.list()
+      ]);
+
+      // Products & Low Stock
+      setAllProducts(products);
+      const lowStock = products.filter((p: Product) => p.stock <= (p.minStock || 5));
+      setLowStockItems(lowStock.sort((a: Product, b: Product) => a.stock - b.stock));
+
+      // Sales & Orders
+      let salesTotal = 0;
+      let orderCount = 0;
+      let recentSales = 0;
+      let recentOrders = 0;
+
+      transactions.forEach((t: Transaction) => {
+        const amount = Number(t.totalAmount) || 0;
+        if (isToday(t.createdAt)) {
+          salesTotal += amount;
+          orderCount++;
+        }
+        if (isRecent24h(t.createdAt)) {
+          recentSales += amount;
+          recentOrders++;
+        }
+      });
+
+      setTodaysSales(salesTotal);
+      setTodaysOrders(orderCount);
+      setLast24hSales(recentSales);
+      setLast24hOrders(recentOrders);
+
+      // Expenses (Today)
+      let expensesTotal = 0;
+      expenses.forEach((e: Expense) => {
+        if (isToday(e.date || e.createdAt)) {
+          expensesTotal += Number(e.amount) || 0;
+        }
+      });
+      setTodaysExpenses(expensesTotal);
+
+      // Customers & Udhar
+      let udharTotal = 0;
+      let udharCustCount = 0;
+      let newCustCount = 0;
+      customers.forEach((c: Customer) => {
+        if (Number(c.balance) > 0) {
+          udharTotal += Number(c.balance);
+          udharCustCount++;
+        }
+        if (isToday(c.createdAt)) {
+          newCustCount++;
+        }
+      });
+      setTotalCustomers(customers.length);
+      setTotalUdhar(udharTotal);
+      setUdharCustomersCount(udharCustCount);
+      setNewCustomersToday(newCustCount);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [shopData?.shopId, parseDate]);
 
   useEffect(() => {
-    if (!shopData?.shopId) return;
-
-    const fetchDashboardData = async () => {
-      try {
-        const today = new Date();
-        const isToday = (dateString: string) => {
-          if (!dateString) return false;
-          const d = new Date(dateString);
-          return d.getDate() === today.getDate() &&
-                 d.getMonth() === today.getMonth() &&
-                 d.getFullYear() === today.getFullYear();
-        };
-        
-        const [products, transactions, expenses, customers] = await Promise.all([
-          api.products.list(),
-          api.transactions.list(),
-          api.expenses.list(),
-          api.customers.list()
-        ]);
-
-        // Products & Low Stock
-        setAllProducts(products);
-        const lowStock = products.filter((p: Product) => p.stock <= (p.minStock || 5));
-        setLowStockItems(lowStock.sort((a: Product, b: Product) => a.stock - b.stock));
-
-        // Sales (Today)
-        let salesTotal = 0;
-        let orderCount = 0;
-        transactions.forEach((t: Transaction) => {
-          if (isToday(t.createdAt)) {
-            salesTotal += Number(t.totalAmount) || 0;
-            orderCount++;
-          }
-        });
-        setTodaysSales(salesTotal);
-        setTodaysOrders(orderCount);
-
-        // Expenses (Today)
-        let expensesTotal = 0;
-        expenses.forEach((e: Expense) => {
-          if (isToday(e.date)) {
-            expensesTotal += Number(e.amount) || 0;
-          }
-        });
-        setTodaysExpenses(expensesTotal);
-
-        // Customers & Udhar
-        let udharTotal = 0;
-        let udharCustCount = 0;
-        let newCustCount = 0;
-        customers.forEach((c: Customer) => {
-          if (Number(c.balance) > 0) {
-            udharTotal += Number(c.balance);
-            udharCustCount++;
-          }
-          if (isToday(c.createdAt)) {
-            newCustCount++;
-          }
-        });
-        setTotalCustomers(customers.length);
-        setTotalUdhar(udharTotal);
-        setUdharCustomersCount(udharCustCount);
-        setNewCustomersToday(newCustCount);
-
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboardData();
-  }, [shopData?.shopId]);
+  }, [fetchDashboardData]);
 
   const handleExportCSV = async () => {
     try {
@@ -150,13 +187,24 @@ export default function Dashboard() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Today's store overview at a glance</p>
         </div>
-        <button
-          id="export-btn"
-          onClick={handleExportCSV}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/25 hover:bg-primary/90 transition-colors"
-        >
-          <Download className="h-4 w-4" /> Export Report
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchDashboardData(true)}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+            title="नवीन डेटा रिफ्रेश करा"
+          >
+            <RefreshCw className={`h-4 w-4 text-muted-foreground ${isRefreshing ? 'animate-spin text-primary' : ''}`} />
+            <span>रिफ्रेश</span>
+          </button>
+          <button
+            id="export-btn"
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/25 hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            <Download className="h-4 w-4" /> Export Report
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -169,7 +217,14 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="stat-value text-indigo-600">₹{todaysSales.toFixed(2)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Total revenue today</p>
+          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+            <span>Total revenue today</span>
+            {last24hSales > todaysSales && (
+              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800" title="मागील २४ तासांतील एकूण विक्री">
+                २४h: ₹{last24hSales.toFixed(2)}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="stat-card">
@@ -204,7 +259,14 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="stat-value">{todaysOrders}</div>
-          <p className="text-xs text-muted-foreground mt-1">Bills generated</p>
+          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+            <span>Bills generated</span>
+            {last24hOrders > todaysOrders && (
+              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800" title="मागील २४ तासांतील एकूण ऑर्डर्स">
+                २४h: {last24hOrders} बिल
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

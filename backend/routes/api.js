@@ -158,20 +158,31 @@ router.post('/customers', async (req, res) => {
 // --- TRANSACTIONS (POS) ---
 router.get('/transactions', async (req, res) => {
   const [rows] = await pool.query('SELECT * FROM transactions WHERE shopId = ? ORDER BY createdAt DESC LIMIT 100', [req.user.shopId]);
-  res.json(rows);
+  const formatted = rows.map(r => {
+    let dt = r.createdAt;
+    if (dt instanceof Date) {
+      dt = dt.toISOString();
+    } else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
+      dt = dt.replace(' ', 'T') + 'Z';
+    }
+    return { ...r, createdAt: dt };
+  });
+  res.json(formatted);
 });
 
 router.post('/transactions', async (req, res) => {
-  const { id, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items } = req.body;
+  const { id, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt } = req.body;
   
   const connection = await pool.getConnection();
   await connection.beginTransaction();
   
   try {
+    const txCreatedAt = createdAt ? new Date(createdAt).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
     // 1. Insert transaction
     await connection.query(
-      'INSERT INTO transactions (id, shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId || null, JSON.stringify(items)]
+      'INSERT INTO transactions (id, shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId || null, JSON.stringify(items), txCreatedAt]
     );
 
     // 2. Reduce stock for items
@@ -239,7 +250,16 @@ router.post('/expenses', async (req, res) => {
 // --- UDHAR TRANSACTIONS ---
 router.get('/udhar', async (req, res) => {
   const [rows] = await pool.query('SELECT * FROM udhar_transactions WHERE shopId = ? ORDER BY createdAt DESC', [req.user.shopId]);
-  res.json(rows);
+  const formatted = rows.map(r => {
+    let dt = r.createdAt;
+    if (dt instanceof Date) {
+      dt = dt.toISOString();
+    } else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
+      dt = dt.replace(' ', 'T') + 'Z';
+    }
+    return { ...r, createdAt: dt };
+  });
+  res.json(formatted);
 });
 
 router.post('/udhar', async (req, res) => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
@@ -9,6 +10,16 @@ import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product, CartItem } from '../types';
+
+const cleanPhone = (val: string) => {
+  let digits = String(val || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(-10);
+};
 
 export default function POS() {
   const { shopData } = useAuth();
@@ -26,6 +37,23 @@ export default function POS() {
     message: string;
   } | null>(null);
   const [floatingNotification, setFloatingNotification] = useState('');
+  const [liveWaStatus, setLiveWaStatus] = useState<string>('DISCONNECTED');
+
+  // Poll WhatsApp Bot status for live indicator
+  useEffect(() => {
+    const checkWa = async () => {
+      try {
+        const res = await fetch('/api/whatsapp/status');
+        const data = await res.json();
+        setLiveWaStatus(data.status || 'DISCONNECTED');
+      } catch {
+        setLiveWaStatus('DISCONNECTED');
+      }
+    };
+    checkWa();
+    const interval = setInterval(checkWa, 7000);
+    return () => clearInterval(interval);
+  }, []);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -317,7 +345,7 @@ export default function POS() {
         createdAt: new Date().toISOString()
       });
       
-      const phoneToSend = customerPhone.replace(/\D/g, '').slice(0, 10);
+      const phoneToSend = cleanPhone(customerPhone);
 
       // Save result for the success modal
       setCheckoutResult({
@@ -457,6 +485,9 @@ export default function POS() {
           setFloatingNotification(successMsg);
           setTimeout(() => setFloatingNotification(''), 7000);
           return;
+        } else {
+          const errData = await sendRes.json().catch(() => ({}));
+          console.warn('WhatsApp auto-send returned error:', errData);
         }
       }
     } catch (e) {
@@ -478,10 +509,20 @@ export default function POS() {
 
   const handleWhatsAppBill = () => {
     if (!checkoutResult) return;
+    let targetPhone = checkoutResult.customerPhone ? cleanPhone(checkoutResult.customerPhone) : '';
+    if (!targetPhone || targetPhone.length !== 10) {
+      const input = window.prompt('ग्राहक व्हॉट्सअॅप नंबर टाका (10 अंकी मोबाइल नंबर):');
+      if (!input) return;
+      targetPhone = cleanPhone(input);
+      if (targetPhone.length !== 10) {
+        alert('कृपया 10 अंकी वैध मोबाइल नंबर टाका.');
+        return;
+      }
+    }
     sendWhatsAppBill(
       checkoutResult.id, 
       checkoutResult.total, 
-      checkoutResult.customerPhone,
+      targetPhone,
       checkoutResult.items,
       checkoutResult.discountAmount,
       'Paid'
@@ -754,29 +795,45 @@ export default function POS() {
           </div>
         </div>
 
-        {/* Category Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mt-2">
-          <Button 
-            variant={activeTab === 'all' ? 'default' : 'outline'} 
-            className="rounded-full px-6 whitespace-nowrap"
-            onClick={() => setActiveTab('all')}
-          >
-            All Items
-          </Button>
-          <Button 
-            variant={activeTab === 'loose' ? 'default' : 'outline'} 
-            className="rounded-full px-6 whitespace-nowrap"
-            onClick={() => setActiveTab('loose')}
-          >
-            Loose Items (No Barcode)
-          </Button>
-          <Button 
-            variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
-            className="rounded-full px-6 whitespace-nowrap"
-            onClick={() => setActiveTab('barcoded')}
-          >
-            Barcoded
-          </Button>
+        {/* Category Tabs & WhatsApp Bot Live Indicator */}
+        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide -mt-2">
+          <div className="flex gap-2">
+            <Button 
+              variant={activeTab === 'all' ? 'default' : 'outline'} 
+              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm"
+              onClick={() => setActiveTab('all')}
+            >
+              All Items
+            </Button>
+            <Button 
+              variant={activeTab === 'loose' ? 'default' : 'outline'} 
+              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm"
+              onClick={() => setActiveTab('loose')}
+            >
+              Loose Items
+            </Button>
+            <Button 
+              variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
+              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm"
+              onClick={() => setActiveTab('barcoded')}
+            >
+              Barcoded
+            </Button>
+          </div>
+
+          <div className="shrink-0">
+            {liveWaStatus === 'CONNECTED' || liveWaStatus === 'AUTHENTICATED' ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-300 border border-green-300 dark:border-green-800 shadow-xs" title="Auto WhatsApp Bot सक्रिय आहे. चेकआउटवर आपोआप बिल पाठवले जाईल.">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <Smartphone className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> WhatsApp Bot Active
+              </span>
+            ) : (
+              <Link to="/settings" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 transition-colors shadow-xs" title="WhatsApp Bot सुरू करण्यासाठी किंवा QR स्कॅन करण्यासाठी क्लिक करा">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <Smartphone className="w-3.5 h-3.5 text-amber-600" /> Bot Offline (Connect)
+              </Link>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-4">
@@ -981,7 +1038,7 @@ export default function POS() {
                 maxLength={10}
                 value={customerPhone}
                 onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  const val = cleanPhone(e.target.value);
                   setCustomerPhone(val);
                 }}
                 className="h-12 md:h-10 pl-12 text-base md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-zinc-50 font-mono tracking-wider"
@@ -1085,7 +1142,7 @@ export default function POS() {
                     maxLength={10}
                     value={customerPhone} 
                     onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      const val = cleanPhone(e.target.value);
                       setCustomerPhone(val);
                     }}
                     className="h-9 pl-9 font-mono text-sm bg-background border-zinc-200 dark:border-zinc-800"

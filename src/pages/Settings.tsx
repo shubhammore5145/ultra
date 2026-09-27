@@ -24,6 +24,9 @@ export default function Settings() {
   const [staffList, setStaffList] = useState<any[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<any>(null);
+  const [testPhone, setTestPhone] = useState('');
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   const fetchStaff = async () => {
     setLoadingStaff(true);
@@ -95,6 +98,35 @@ export default function Settings() {
       fetchWhatsappStatus();
     } catch (err) {
       alert('Failed to logout WhatsApp bot.');
+    }
+  };
+
+  const handleSendTestMessage = async () => {
+    if (!testPhone || testPhone.trim().length !== 10) {
+      alert('कृपया वैध 10-अंकी मोबाइल नंबर टाका');
+      return;
+    }
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: testPhone,
+          message: `🏪 *${formData.shopName || 'Kirana Store'}*\n\n✅ *WhatsApp Bot Test Successful!*\nआपला किराणा ऑटो व्हॉट्सअॅप बॉट यशस्वीरित्या काम करत आहे.`
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTestResult('व्हॉट्सअॅप चाचणी मेसेज यशस्वीरित्या पाठवला! ✅');
+      } else {
+        setTestResult(`त्रुटी: ${data.error || 'Failed to send'}`);
+      }
+    } catch (e: any) {
+      setTestResult(`त्रुटी: ${e.message}`);
+    } finally {
+      setTestSending(false);
     }
   };
 
@@ -366,12 +398,49 @@ export default function Settings() {
             <p className="text-sm text-muted-foreground mt-4">Open WhatsApp {'->'} Linked Devices {'->'} Link a Device</p>
           </>
         ) : whatsappStatus.status === 'AUTHENTICATED' || whatsappStatus.status === 'CONNECTED' ? (
-          <>
-            <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-            <h3 className="text-xl font-bold text-green-600 mb-2">Connected & Ready!</h3>
-            <p className="text-muted-foreground mb-6">Your bot is active. Bills will be sent automatically.</p>
-            <Button onClick={handleLogoutWhatsapp} variant="outline" className="text-red-500 hover:text-red-600 hover:bg-red-50">Disconnect Bot</Button>
-          </>
+          <div className="w-full max-w-md mx-auto space-y-4">
+            <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
+            <h3 className="text-xl font-bold text-green-600">Connected & Ready!</h3>
+            <p className="text-muted-foreground text-sm">
+              Your bot is active. Bills will be sent automatically to customers after checkout.
+            </p>
+            {whatsappStatus.info?.phone && (
+              <div className="bg-green-50 dark:bg-green-950/40 p-3 rounded-lg border border-green-200 dark:border-green-800 text-sm font-medium text-green-800 dark:text-green-300">
+                Connected Number: <span className="font-mono font-bold">+{whatsappStatus.info.phone}</span>
+                {whatsappStatus.info.pushname && ` (${whatsappStatus.info.pushname})`}
+              </div>
+            )}
+
+            {/* Test WhatsApp Message Tool */}
+            <div className="p-4 bg-muted/40 rounded-xl border border-border text-left space-y-3 mt-4">
+              <Label className="text-xs font-semibold text-foreground">Send Test Message:</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="10-digit mobile number"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  maxLength={10}
+                  className="font-mono text-sm"
+                />
+                <Button 
+                  onClick={handleSendTestMessage} 
+                  disabled={testSending || testPhone.length !== 10}
+                  className="bg-green-600 hover:bg-green-700 text-white shrink-0 text-xs px-3"
+                >
+                  {testSending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Test'}
+                </Button>
+              </div>
+              {testResult && (
+                <p className={`text-xs font-medium ${testResult.includes('यशस्वीरित्या') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                  {testResult}
+                </p>
+              )}
+            </div>
+
+            <Button onClick={handleLogoutWhatsapp} variant="outline" className="text-red-500 hover:text-red-600 hover:bg-red-50 mt-2">
+              Disconnect Bot
+            </Button>
+          </div>
         ) : (
           <p>Unknown Status: {whatsappStatus.status}</p>
         )}

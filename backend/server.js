@@ -55,6 +55,7 @@ app.post('/api/whatsapp/send', async (req, res) => {
     await whatsappBot.sendMessage(phone, message);
     res.json({ success: true, message: 'Message sent successfully' });
   } catch (error) {
+    console.error('WhatsApp send error:', error.message);
     res.status(500).json({ error: error.message || 'Failed to send message' });
   }
 });
@@ -82,4 +83,14 @@ app.use((req, res) => {
 // Start Server
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
+  
+  // Auto-initialize WhatsApp bot in background so it reconnects automatically
+  setTimeout(() => {
+    try {
+      console.log('Auto-initializing WhatsApp bot...');
+      whatsappBot.initializeWhatsApp();
+    } catch (e) {
+      console.error('Failed to auto-start WhatsApp bot:', e.message);
+    }
+  }, 1500);
 });

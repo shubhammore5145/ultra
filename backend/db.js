@@ -18,7 +18,7 @@ if (process.env.DATABASE_URL) {
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'Shubham16@',
     database: process.env.DB_NAME || 'nayashi_kirana',
-    connectTimeout: 4000,
+    connectTimeout: 15000,
   };
 }
 

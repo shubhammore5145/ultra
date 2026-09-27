@@ -96,6 +96,7 @@ export default function POS() {
   const [splitAmounts, setSplitAmounts] = useState({ cash: 0, upi: 0, udhar: 0 });
   const [customerAadhar, setCustomerAadhar] = useState('');
   const [customerPhoto, setCustomerPhoto] = useState('');
+  const [autoRemainderToUdhar, setAutoRemainderToUdhar] = useState(true);
 
   // Fetch live products for fast POS search
   useEffect(() => {

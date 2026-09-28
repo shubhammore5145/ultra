@@ -138,5 +138,10 @@ export const api = {
         headers: key ? { 'x-superadmin-key': key } : {}
       });
     }
+  },
+  notifications: {
+    list: () => fetchAPI('/notifications', { method: 'GET' }),
+    markRead: (id: string) => fetchAPI(`/notifications/${id}/read`, { method: 'PUT' }),
+    markAllRead: () => fetchAPI('/notifications/action/read-all', { method: 'PUT' })
   }
 };

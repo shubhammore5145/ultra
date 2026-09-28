@@ -20,6 +20,7 @@ import Support from './pages/Support';
 import Receipt from './pages/Receipt';
 
 import BarcodePrint from './pages/BarcodePrint';
+import Notifications from './pages/Notifications';
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
                 <Route path="/products" element={<Products />} />
                 <Route path="/products/new" element={<ProductForm />} />
                 <Route path="/products/:id" element={<ProductForm />} />
+                <Route path="/notifications" element={<Notifications />} />
                 <Route path="/support" element={<Support />} />
               </Route>
             </Route>

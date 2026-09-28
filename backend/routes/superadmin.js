@@ -92,6 +92,7 @@ router.get('/stats', async (req, res) => {
 
     const planCounts = {
       free: 0,
+      plus: 0,
       pro: 0,
       ultra_pro: 0
     };
@@ -100,15 +101,16 @@ router.get('/stats', async (req, res) => {
       const p = r.plan || 'free';
       if (p.includes('ultra')) planCounts.ultra_pro += Number(r.count);
       else if (p.includes('pro')) planCounts.pro += Number(r.count);
+      else if (p.includes('plus')) planCounts.plus += Number(r.count);
       else planCounts.free += Number(r.count);
     });
 
-    const activeSubscriptions = planCounts.pro + planCounts.ultra_pro;
+    const activeSubscriptions = planCounts.plus + planCounts.pro + planCounts.ultra_pro;
 
     // Estimated Annualized / Monthly Revenue
-    // Pro: ₹499/mo, Ultra: ₹4,999/yr
-    const estimatedMonthlyRevenue = (planCounts.pro * 499) + Math.round((planCounts.ultra_pro * 4999) / 12);
-    const estimatedAnnualRevenue = (planCounts.pro * 499 * 12) + (planCounts.ultra_pro * 4999);
+    // Plus: ₹299/mo, Pro: ₹499/mo, Ultra: ₹4,999/yr
+    const estimatedMonthlyRevenue = (planCounts.plus * 299) + (planCounts.pro * 499) + Math.round((planCounts.ultra_pro * 4999) / 12);
+    const estimatedAnnualRevenue = (planCounts.plus * 299 * 12) + (planCounts.pro * 499 * 12) + (planCounts.ultra_pro * 4999);
 
     // Expiring within 7 days
     const [expiringSoonRows] = await pool.query(`
@@ -224,12 +226,33 @@ router.put('/shops/:shopId/plan', async (req, res) => {
       ? 'ultra_pro' 
       : (plan || 'free').toLowerCase().includes('pro') 
       ? 'pro' 
+      : (plan || 'free').toLowerCase().includes('plus')
+      ? 'plus'
       : 'free';
 
     await pool.query(
       'UPDATE shops SET plan = ?, planExpiry = ? WHERE shopId = ?',
       [normalizedPlan, newExpiry, shopId]
     );
+
+    // Auto-create in-app notification for the shopkeeper
+    try {
+      const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      const expiryStr = newExpiry ? new Date(newExpiry).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'कायमस्वरूपी (Lifetime)';
+      const planBadge = normalizedPlan === 'ultra_pro' ? '👑 Ultra Pro' : normalizedPlan === 'pro' ? '⚡ Pro' : normalizedPlan === 'plus' ? '🌟 Plus' : 'Free';
+      await pool.query(
+        `INSERT INTO notifications (id, shopId, title, message, type, channel, actionUrl, isRead, readBy, createdAt)
+         VALUES (?, ?, ?, ?, 'plan_upgrade', 'superadmin', '/upgrade', 0, '[]', NOW())`,
+        [
+          notifId, 
+          shopId, 
+          `🎉 सबस्क्रिप्शन अपग्रेड: ${planBadge}!`,
+          `अभिनंदन! Super Admin द्वारे आपल्या दुकानाचा प्लॅन *${planBadge}* वर सेट करण्यात आला आहे. सर्व संबंधित प्रिमियम फीचर्स आता ॲक्टिव्हेट झाली आहेत (वैधता: ${expiryStr}).`
+        ]
+      );
+    } catch (notifErr) {
+      console.warn('Could not insert notification for plan update:', notifErr.message);
+    }
 
     res.json({
       success: true,

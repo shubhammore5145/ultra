@@ -1,11 +1,13 @@
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet, Crown,
-  HelpCircle, ClipboardList, LogOut, X, Barcode
+  HelpCircle, ClipboardList, LogOut, X, Barcode, Bell
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
+import { api } from '../lib/api';
 
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'], color: 'text-indigo-500' },
@@ -18,6 +20,7 @@ const navItems = [
   { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, roles: ['admin'], color: 'text-orange-500' },
   { name: 'Expenses', href: '/expenses', icon: Wallet, roles: ['admin'], color: 'text-amber-500' },
   { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'], color: 'text-teal-500' },
+  { name: 'Notifications', href: '/notifications', icon: Bell, roles: ['admin', 'cashier'], color: 'text-amber-500' },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['admin'], color: 'text-slate-500' },
   { name: 'Upgrade', href: '/upgrade', icon: Crown, roles: ['admin'], color: 'text-yellow-500' },
   { name: 'Support', href: '/support', icon: HelpCircle, roles: ['admin', 'cashier'], color: 'text-green-500' },
@@ -27,8 +30,24 @@ const navItems = [
 export function Sidebar() {
   const { userData, shopData, logout } = useAuth();
   const { plan, canAccess, openUpgradeModal } = usePlan();
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const userRole = userData?.role || 'cashier';
   const filteredNav = navItems.filter(item => item.roles.includes(userRole));
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await api.notifications.list();
+        if (res && typeof res.unreadCount === 'number') {
+          setUnreadNotifs(res.unreadCount);
+        }
+      } catch {}
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-border bg-card">
@@ -77,6 +96,11 @@ export function Sidebar() {
                 <>
                   <Icon className={'h-4 w-4 flex-shrink-0 ' + (isActive ? 'text-white' : item.color)} />
                   <span className="truncate">{item.name}</span>
+                  {item.href === '/notifications' && unreadNotifs > 0 && (
+                    <span className="ml-auto text-[10px] font-black px-1.5 py-0.2 rounded-full bg-rose-500 text-white animate-pulse">
+                      {unreadNotifs}
+                    </span>
+                  )}
                   {item.href === '/barcode-print' && !canAccess('barcode_print') && (
                     <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20">
                       🔒 Plus
@@ -195,6 +219,11 @@ export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: 
                   <>
                     <Icon className={'h-4 w-4 flex-shrink-0 ' + (isActive ? 'text-white' : item.color)} />
                     <span className="truncate">{item.name}</span>
+                    {item.href === '/notifications' && unreadNotifs > 0 && (
+                      <span className="ml-auto text-[10px] font-black px-1.5 py-0.2 rounded-full bg-rose-500 text-white animate-pulse">
+                        {unreadNotifs}
+                      </span>
+                    )}
                     {item.href === '/barcode-print' && !canAccess('barcode_print') && (
                       <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20">
                         🔒 Plus

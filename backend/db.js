@@ -219,6 +219,19 @@ function getSQLiteDb() {
         notes TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        shopId TEXT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT DEFAULT 'info',
+        channel TEXT DEFAULT 'system',
+        actionUrl TEXT,
+        isRead INTEGER DEFAULT 0,
+        readBy TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Run non-destructive column migrations for SQLite
@@ -311,6 +324,22 @@ const pool = {
       // Auto-migrate products columns if needed
       try { await conn.query('ALTER TABLE products ADD COLUMN shortCode VARCHAR(100)'); } catch (e) {}
       try { await conn.query('ALTER TABLE products ADD COLUMN isLoose TINYINT(1) DEFAULT 0'); } catch (e) {}
+      try {
+        await conn.query(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id VARCHAR(64) PRIMARY KEY,
+            shopId VARCHAR(64) NULL,
+            title VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            type VARCHAR(50) DEFAULT 'info',
+            channel VARCHAR(50) DEFAULT 'system',
+            actionUrl VARCHAR(255) NULL,
+            isRead TINYINT(1) DEFAULT 0,
+            readBy TEXT NULL,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } catch (e) {}
 
       conn.release();
       isMySQLReady = true;

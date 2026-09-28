@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Menu, LogOut, Crown, Zap, Sparkles } from 'lucide-react';
+import { Menu, LogOut, Crown, Zap, Sparkles, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
+import { api } from '../lib/api';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
 import { UpgradeModal } from './UpgradeModal';
 
@@ -10,7 +11,23 @@ export default function Layout() {
   const { userData, shopData, logout } = useAuth();
   const { plan, isExpired, openUpgradeModal } = usePlan();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await api.notifications.list();
+        if (res && typeof res.unreadCount === 'number') {
+          setUnreadNotifs(res.unreadCount);
+        }
+      } catch {}
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to log out of MartGPT?')) {
@@ -100,7 +117,21 @@ export default function Layout() {
           </div>
 
           {/* Right: Actions, Plan Badge & Logout */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Notification Bell */}
+            <button
+              onClick={() => navigate('/notifications')}
+              title="Notifications & WhatsApp Broadcasts"
+              className="relative p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadNotifs > 0 && (
+                <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-md animate-pulse">
+                  {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                </span>
+              )}
+            </button>
+
             {/* Active Plan Pill */}
             {renderPlanPill()}
 

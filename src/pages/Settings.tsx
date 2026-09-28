@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send } from 'lucide-react';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -29,6 +29,15 @@ export default function Settings() {
   const [testPhone, setTestPhone] = useState('');
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+
+  // WhatsApp Summary & Bill Settings
+  const [whatsappSettings, setWhatsappSettings] = useState({
+    summaryEnabled: true,
+    summaryTime: '21:30',
+    summaryPhone: '',
+    billDelaySeconds: 5
+  });
+  const [savingWaSettings, setSavingWaSettings] = useState(false);
 
   const fetchStaff = async () => {
     setLoadingStaff(true);
@@ -74,6 +83,14 @@ export default function Settings() {
         gstNumber: shopData.gstNumber || '',
         upiId: shopData.upiId || '',
         publicUrl: (shopData as any).publicUrl || ''
+      });
+      // Load WhatsApp settings from shop.settings JSON
+      const settings = (shopData as any).settings || {};
+      setWhatsappSettings({
+        summaryEnabled: settings.whatsappSummaryEnabled !== false,
+        summaryTime: settings.whatsappSummaryTime || '21:30',
+        summaryPhone: settings.whatsappSummaryPhone || shopData.phone || '',
+        billDelaySeconds: settings.billDelaySeconds ?? 5
       });
       setLoading(false);
       fetchStaff();
@@ -154,7 +171,14 @@ export default function Settings() {
         phone: formData.phone,
         address: formData.address,
         upiId: formData.upiId,
-        publicUrl: formData.publicUrl.trim().replace(/\/$/, '') // remove trailing slash
+        publicUrl: formData.publicUrl.trim().replace(/\/$/, ''), // remove trailing slash
+        settings: {
+          ...((shopData as any)?.settings || {}),
+          whatsappSummaryEnabled: whatsappSettings.summaryEnabled,
+          whatsappSummaryTime: whatsappSettings.summaryTime,
+          whatsappSummaryPhone: whatsappSettings.summaryPhone,
+          billDelaySeconds: whatsappSettings.billDelaySeconds
+        }
       });
       alert("Settings updated successfully!");
     } catch (error) {
@@ -416,6 +440,18 @@ export default function Settings() {
               )}
             </Button>
           </div>
+        ) : whatsappStatus.status === 'PAIRING' ? (
+          <>
+            <Loader2 className="h-10 w-10 animate-spin text-green-600 mb-4" />
+            <p className="font-bold text-green-600 text-lg">QR Scanned! Linking Device...</p>
+            <p className="text-muted-foreground text-sm mt-2">कृपया थांबा, WhatsApp connect होत आहे...</p>
+          </>
+        ) : whatsappStatus.status === 'CONNECTING' ? (
+          <>
+            <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
+            <p className="font-bold text-blue-600 text-lg">Reconnecting...</p>
+            <p className="text-muted-foreground text-sm mt-2">WhatsApp पुन्हा connect होत आहे, कृपया थांबा.</p>
+          </>
         ) : whatsappStatus.status === 'INITIALIZING' ? (
           <>
             <Loader2 className="h-10 w-10 animate-spin text-green-600 mb-4" />
@@ -483,6 +519,134 @@ export default function Settings() {
       </div>
     </div>
   </div>
+
+
+      {/* WhatsApp Bill & Summary Settings */}
+      <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
+        <div className="p-6 border-b bg-blue-500/10">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-blue-600">
+            <Clock className="h-6 w-6" /> WhatsApp Bill & Summary Settings
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            बिल पाठवण्याचा delay आणि daily summary timing सेट करा.
+          </p>
+        </div>
+        <div className="p-6 space-y-6">
+          {/* Bill Delay Setting */}
+          <div className="space-y-3">
+            <Label className="flex items-center gap-2 text-base font-semibold">
+              <Send className="h-4 w-4 text-green-600" /> Auto Bill Send Delay (Seconds)
+            </Label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              बिलिंग नंतर किती seconds मध्ये WhatsApp बिल पाठवायचे? (0 = तात्काळ)
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              {[0, 3, 5, 8, 10].map(val => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setWhatsappSettings(prev => ({...prev, billDelaySeconds: val}))}
+                  className={`px-4 py-2 rounded-lg border font-bold text-sm transition-all ${whatsappSettings.billDelaySeconds === val ? 'bg-green-600 text-white border-green-600 shadow-md scale-105' : 'bg-muted/50 text-foreground border-border hover:bg-muted'}`}
+                >
+                  {val === 0 ? 'तात्काळ' : `${val}s`}
+                </button>
+              ))}
+              <Input
+                type="number"
+                min={0}
+                max={30}
+                value={whatsappSettings.billDelaySeconds}
+                onChange={e => setWhatsappSettings(prev => ({...prev, billDelaySeconds: Math.min(30, Math.max(0, parseInt(e.target.value) || 0))}))}
+                className="w-20 font-mono text-center"
+              />
+            </div>
+          </div>
+
+          <hr className="border-border" />
+
+          {/* Summary Settings */}
+          <div className="space-y-4">
+            <Label className="flex items-center gap-2 text-base font-semibold">
+              <MessageCircle className="h-4 w-4 text-blue-600" /> Daily Business Summary (WhatsApp)
+            </Label>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setWhatsappSettings(prev => ({...prev, summaryEnabled: !prev.summaryEnabled}))}
+                className={`relative w-12 h-6 rounded-full transition-colors ${whatsappSettings.summaryEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${whatsappSettings.summaryEnabled ? 'translate-x-6' : ''}`} />
+              </button>
+              <span className="text-sm font-medium">{whatsappSettings.summaryEnabled ? 'चालू (Enabled)' : 'बंद (Disabled)'}</span>
+            </div>
+
+            {whatsappSettings.summaryEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Summary पाठवण्याची वेळ (IST)</Label>
+                  <Input
+                    type="time"
+                    value={whatsappSettings.summaryTime}
+                    onChange={e => setWhatsappSettings(prev => ({...prev, summaryTime: e.target.value}))}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    रोज या वेळी ऑटो summary WhatsApp वर येईल
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Summary कुठे पाठवायचे? (Phone)</Label>
+                  <Input
+                    type="tel"
+                    placeholder="10-digit mobile number"
+                    value={whatsappSettings.summaryPhone}
+                    onChange={e => setWhatsappSettings(prev => ({...prev, summaryPhone: e.target.value.replace(/\D/g, '').slice(0, 10)}))}
+                    maxLength={10}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    मालकाचा WhatsApp नंबर (daily report इथे येईल)
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            onClick={async () => {
+              setSavingWaSettings(true);
+              try {
+                await api.shops.update({
+                  name: formData.shopName,
+                  ownerName: formData.ownerName,
+                  phone: formData.phone,
+                  address: formData.address,
+                  upiId: formData.upiId,
+                  publicUrl: formData.publicUrl,
+                  settings: {
+                    ...((shopData as any)?.settings || {}),
+                    whatsappSummaryEnabled: whatsappSettings.summaryEnabled,
+                    whatsappSummaryTime: whatsappSettings.summaryTime,
+                    whatsappSummaryPhone: whatsappSettings.summaryPhone,
+                    billDelaySeconds: whatsappSettings.billDelaySeconds
+                  }
+                });
+                alert('WhatsApp settings saved! ✅');
+              } catch {
+                alert('Settings save failed.');
+              } finally {
+                setSavingWaSettings(false);
+              }
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-2"
+          >
+            {savingWaSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save WhatsApp Settings
+          </Button>
+        </div>
+      </div>
 
   {/* Account & Session Management */}
   <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">

@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet, Crown,
-  HelpCircle, ClipboardList, LogOut, Store, Menu, X
+  HelpCircle, ClipboardList, LogOut, X, Barcode
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -10,6 +10,7 @@ const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'], color: 'text-indigo-500' },
   { name: 'POS Billing', href: '/pos', icon: ShoppingCart, roles: ['admin', 'cashier'], color: 'text-emerald-500' },
   { name: 'Products', href: '/products', icon: Package, roles: ['admin', 'cashier'], color: 'text-blue-500' },
+  { name: 'Barcode Print', href: '/barcode-print', icon: Barcode, roles: ['admin', 'cashier'], color: 'text-violet-500' },
   { name: 'Inventory & AI', href: '/inventory', icon: ClipboardList, roles: ['admin', 'cashier'], color: 'text-purple-500' },
   { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'cashier'], color: 'text-cyan-500' },
   { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'cashier'], color: 'text-rose-500' },

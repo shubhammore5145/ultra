@@ -139,6 +139,12 @@ router.delete('/products/:id', async (req, res) => {
 // --- CUSTOMERS ---
 router.get('/customers', async (req, res) => {
   try {
+    const { phone } = req.query;
+    if (phone) {
+      const clean = String(phone).replace(/\D/g, '').slice(-10);
+      const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ? AND (phone = ? OR phone LIKE ?)', [req.user.shopId, clean, `%${clean}`]);
+      return res.json(rows);
+    }
     const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ?', [req.user.shopId]);
     res.json(rows);
   } catch (error) {
@@ -147,12 +153,51 @@ router.get('/customers', async (req, res) => {
 });
 
 router.post('/customers', async (req, res) => {
-  const { id, name, phone, address, balance, aadharNumber, photoUrl } = req.body;
-  await pool.query(
-    'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null]
-  );
+  const { id, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null, aadharPhotoUrl || null]
+    );
+  } catch (err) {
+    // If aadharPhotoUrl column not present yet, attempt alter or fallback
+    try {
+      await pool.query('ALTER TABLE customers ADD COLUMN aadharPhotoUrl LONGTEXT');
+      await pool.query(
+        'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null, aadharPhotoUrl || null]
+      );
+    } catch {
+      await pool.query(
+        'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null]
+      );
+    }
+  }
   res.json({ success: true });
+});
+
+router.put('/customers/:id', async (req, res) => {
+  const { name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
+  try {
+    try {
+      await pool.query(
+        'UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address), balance = COALESCE(?, balance), aadharNumber = COALESCE(?, aadharNumber), photoUrl = COALESCE(?, photoUrl), aadharPhotoUrl = COALESCE(?, aadharPhotoUrl) WHERE id = ? AND shopId = ?',
+        [name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl, req.params.id, req.user.shopId]
+      );
+    } catch {
+      try {
+        await pool.query('ALTER TABLE customers ADD COLUMN aadharPhotoUrl LONGTEXT');
+      } catch {}
+      await pool.query(
+        'UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address), balance = COALESCE(?, balance), aadharNumber = COALESCE(?, aadharNumber), photoUrl = COALESCE(?, photoUrl) WHERE id = ? AND shopId = ?',
+        [name, phone, address, balance, aadharNumber, photoUrl, req.params.id, req.user.shopId]
+      );
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // --- TRANSACTIONS (POS) ---
@@ -290,12 +335,30 @@ router.post('/udhar', async (req, res) => {
 });
 
 // --- SHOPS ---
-router.put('/shops', async (req, res) => {
-  const { name, ownerName, phone, email, address, upiId, publicUrl } = req.body;
+router.get('/shops', async (req, res) => {
   try {
+    const [rows] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [req.user.shopId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Shop not found' });
+    const shop = rows[0];
+    if (typeof shop.settings === 'string') {
+      try { shop.settings = JSON.parse(shop.settings); } catch {}
+    }
+    res.json(shop);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/shops', async (req, res) => {
+  const { name, ownerName, phone, email, address, upiId, publicUrl, settings } = req.body;
+  try {
+    const serializedSettings = typeof settings === 'object' && settings !== null 
+      ? JSON.stringify(settings) 
+      : (settings || null);
+
     await pool.query(
-      'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, upiId=?, publicUrl=? WHERE shopId=?',
-      [name, ownerName, phone, email, address, upiId, publicUrl || null, req.user.shopId]
+      'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, upiId=?, publicUrl=?, settings=? WHERE shopId=?',
+      [name, ownerName, phone, email, address, upiId, publicUrl || null, serializedSettings, req.user.shopId]
     );
     res.json({ success: true });
   } catch (err) {

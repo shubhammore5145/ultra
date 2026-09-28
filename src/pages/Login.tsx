@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Store, Loader2, ArrowRight, Mail, CheckCircle2, X } from 'lucide-react';
+import { Loader2, ArrowRight, Mail, CheckCircle2, X } from 'lucide-react';
 import { 
   auth, 
   googleProvider,

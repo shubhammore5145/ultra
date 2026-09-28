@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
 import { CameraScanner } from '../components/CameraScanner';
+import { compressImage } from '../lib/imageCompressor';
 
 export default function ProductForm() {
   const { id } = useParams();
@@ -105,18 +106,17 @@ export default function ProductForm() {
     setFormData((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setError('Image must be less than 2MB');
-        return;
+      setError('');
+      try {
+        const compressedBase64 = await compressImage(file, 800, 800, 0.75);
+        setFormData(prev => ({ ...prev, imageUrl: compressedBase64 }));
+      } catch (err: any) {
+        console.error('Image compression error:', err);
+        setError('Failed to process image');
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
     }
   };
 

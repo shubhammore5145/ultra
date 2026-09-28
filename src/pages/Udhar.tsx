@@ -4,8 +4,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { 
   Search, Loader2, IndianRupee, History, TrendingUp, TrendingDown, 
-  MessageCircle, BookOpen, X, Printer, Phone, Calendar, ArrowUpRight, ArrowDownLeft,
-  CheckCircle2, Send, AlertTriangle, Smartphone
+  MessageCircle, BookOpen, X, Printer, Phone,
+  CheckCircle2, Send, ShieldCheck
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -48,6 +48,7 @@ export default function Udhar() {
 
   // Ledger / Statement Modal State
   const [ledgerCustomer, setLedgerCustomer] = useState<Customer | null>(null);
+  const [previewAadhaar, setPreviewAadhaar] = useState<{ title: string; url: string } | null>(null);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
@@ -223,7 +224,7 @@ export default function Udhar() {
             <div className="text-left leading-tight">
               <div className="text-[10px] uppercase tracking-wider text-emerald-200 font-extrabold">Auto Reminder</div>
               <div className="text-sm font-black flex items-center gap-1.5">
-                सर्व ग्राहकांना WhatsApp पाठवा
+                Send Bulk WhatsApp
                 <span className="bg-emerald-800 text-white text-[11px] px-2 py-0.5 rounded-full font-black">
                   {pendingCustomers.length}
                 </span>
@@ -341,11 +342,33 @@ export default function Udhar() {
             <div key={customer.id} className="bg-card border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h3 className="font-bold text-lg text-foreground">{customer.name}</h3>
-                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <Phone className="h-3 w-3" /> {customer.phone || 'No phone'}
-                    </p>
+                  <div className="flex items-start gap-3">
+                    {customer.photoUrl ? (
+                      <img 
+                        src={customer.photoUrl} 
+                        alt={customer.name} 
+                        className="h-11 w-11 rounded-full object-cover border-2 border-primary/30 shrink-0" 
+                      />
+                    ) : (
+                      <div className="h-11 w-11 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0">
+                        {customer.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground">{customer.name}</h3>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Phone className="h-3 w-3" /> {customer.phone || 'No phone'}
+                      </p>
+                      {customer.aadharPhotoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAadhaar({ title: `Aadhaar Card: ${customer.name}`, url: customer.aadharPhotoUrl! })}
+                          className="mt-1.5 text-[11px] text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer"
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" /> View Aadhaar Card
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className={`font-black text-xl ${Number(customer.balance) > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
@@ -414,13 +437,29 @@ export default function Udhar() {
         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-muted/30">
-              <div>
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <BookOpen className="h-5 w-5 text-primary" /> {ledgerCustomer.name} - Statement
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Phone: {ledgerCustomer.phone || 'N/A'} | Current Udhar Balance: <span className="font-bold text-red-500">₹{Number(ledgerCustomer.balance || 0).toFixed(2)}</span>
-                </p>
+              <div className="flex items-center gap-3">
+                {ledgerCustomer.photoUrl && (
+                  <img src={ledgerCustomer.photoUrl} alt="Customer" className="h-11 w-11 rounded-full object-cover border-2 border-primary/30 shrink-0" />
+                )}
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" /> {ledgerCustomer.name} - Statement
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>Phone: {ledgerCustomer.phone || 'N/A'}</span>
+                    <span>•</span>
+                    <span>Udhar Balance: <strong className="text-red-500">₹{Number(ledgerCustomer.balance || 0).toFixed(2)}</strong></span>
+                    {ledgerCustomer.aadharPhotoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewAadhaar({ title: `Aadhaar Card: ${ledgerCustomer.name}`, url: ledgerCustomer.aadharPhotoUrl! })}
+                        className="text-[11px] text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded font-semibold flex items-center gap-1 cursor-pointer hover:bg-emerald-200 transition-colors"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" /> View Aadhaar Card
+                      </button>
+                    )}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => window.print()} className="print:hidden">
@@ -622,7 +661,7 @@ export default function Udhar() {
                 onClick={() => setShowBulkModal(false)}
                 disabled={bulkSending}
               >
-                रद्द करा (Close)
+                Close
               </Button>
               <Button
                 onClick={handleStartBulkReminder}
@@ -630,10 +669,40 @@ export default function Udhar() {
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 shadow-md"
               >
                 {bulkSending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> पाठवत आहे...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending...</>
                 ) : (
-                  <><Send className="h-4 w-4 mr-2" /> 🚀 आताच सर्वांना मेसेज पाठवा</>
+                  <><Send className="h-4 w-4 mr-2" /> 🚀 Send All Reminders Now</>
                 )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aadhaar Image Lightbox Modal */}
+      {previewAadhaar && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground p-0 rounded-2xl border shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b bg-muted/40">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                {previewAadhaar.title}
+              </h3>
+              <Button variant="ghost" size="icon" onClick={() => setPreviewAadhaar(null)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4 flex justify-center bg-black/5 dark:bg-black/40">
+              <img 
+                src={previewAadhaar.url} 
+                alt="Aadhaar Preview" 
+                className="max-h-[70vh] w-auto object-contain rounded-lg border shadow-md"
+              />
+            </div>
+            <div className="p-3 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
+              <span>Verified customer identity record</span>
+              <Button size="sm" variant="outline" onClick={() => setPreviewAadhaar(null)}>
+                Close Preview
               </Button>
             </div>
           </div>

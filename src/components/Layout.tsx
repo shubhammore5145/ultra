@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Menu, Store, Bell, LogOut } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
 

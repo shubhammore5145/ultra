@@ -31,7 +31,7 @@ export default function Upgrade() {
       currency: 'INR',
       name: 'KiranaPro',
       description: `Pro Plan Subscription (${planName})`,
-      handler: async function (response: any) {
+      handler: async function (_response: any) {
         try {
           const expiryDate = new Date();
           expiryDate.setDate(expiryDate.getDate() + days);
@@ -52,8 +52,8 @@ export default function Upgrade() {
         }
       },
       prefill: {
-        name: shopData.shopName || shopData.name || '',
-        contact: shopData.phone || '',
+        name: shopData?.shopName || shopData?.name || '',
+        contact: shopData?.phone || '',
       },
       theme: {
         color: '#6366f1' // Primary color
@@ -92,7 +92,7 @@ export default function Upgrade() {
             <h3 className="font-bold text-lg text-green-800">You are on the Pro Plan!</h3>
             <p className="text-sm">
               Enjoy all the premium features. 
-              {shopData.planExpiry && ` Valid until ${new Date(shopData.planExpiry).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}.`}
+              {shopData?.planExpiry && ` Valid until ${new Date(shopData.planExpiry).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}.`}
             </p>
           </div>
         </div>

@@ -18,6 +18,8 @@ import Upgrade from './pages/Upgrade';
 import Support from './pages/Support';
 import Receipt from './pages/Receipt';
 
+import BarcodePrint from './pages/BarcodePrint';
+
 function App() {
   return (
     <AuthProvider>
@@ -30,6 +32,7 @@ function App() {
             <Route element={<Layout />}>
               {/* Cashier + Admin Routes */}
               <Route path="/pos" element={<POS />} />
+              <Route path="/barcode-print" element={<BarcodePrint />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/udhar" element={<Udhar />} />
               <Route path="/products" element={<Products />} />

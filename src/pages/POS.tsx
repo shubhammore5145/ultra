@@ -3,13 +3,43 @@ import { Link } from 'react-router-dom';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, Barcode, Smartphone, Sparkles } from 'lucide-react';
+import { Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, Barcode, Smartphone, Sparkles, Clock, Send } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product, CartItem } from '../types';
+import { compressImage } from '../lib/imageCompressor';
+
+const playSoundboxAlert = (amount: number, method: string) => {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const audioCtx = new AudioCtx();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+      osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+      osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.45);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.45);
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const modeText = method === 'cash' ? 'Cash' : method === 'upi' ? 'UPI' : method === 'udhar' ? 'Udhar' : 'Order';
+      const msg = new SpeechSynthesisUtterance(`${modeText} payment of ₹${Math.round(amount)} received.`);
+      msg.rate = 1.05;
+      window.speechSynthesis.speak(msg);
+    }
+  } catch {}
+};
 
 const cleanPhone = (val: string) => {
   let digits = String(val || '').replace(/\D/g, '');
@@ -23,8 +53,15 @@ const cleanPhone = (val: string) => {
 
 export default function POS() {
   const { shopData } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = localStorage.getItem('pos_products_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,22 +75,14 @@ export default function POS() {
   } | null>(null);
   const [floatingNotification, setFloatingNotification] = useState('');
   const [liveWaStatus, setLiveWaStatus] = useState<string>('DISCONNECTED');
+  const [pendingWhatsApp, setPendingWhatsApp] = useState<{
+    txId: string;
+    phone: string;
+    text: string;
+    countdown: number;
+  } | null>(null);
 
-  // Poll WhatsApp Bot status for live indicator
-  useEffect(() => {
-    const checkWa = async () => {
-      try {
-        const res = await fetch('/api/whatsapp/status');
-        const data = await res.json();
-        setLiveWaStatus(data.status || 'DISCONNECTED');
-      } catch {
-        setLiveWaStatus('DISCONNECTED');
-      }
-    };
-    checkWa();
-    const interval = setInterval(checkWa, 7000);
-    return () => clearInterval(interval);
-  }, []);
+
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +102,7 @@ export default function POS() {
   // Parchi Scanner State
   const [showParchiModal, setShowParchiModal] = useState(false);
   const [isParchiScanning, setIsParchiScanning] = useState(false);
+  const [parchiText, setParchiText] = useState('');
 
   // Checkout Success State
   const [checkoutResult, setCheckoutResult] = useState<{ 
@@ -97,26 +127,182 @@ export default function POS() {
   const [customerPhoto, setCustomerPhoto] = useState('');
   const [autoRemainderToUdhar, setAutoRemainderToUdhar] = useState(true);
 
+  const buildWhatsAppBillText = (
+    txId: string, 
+    billTotal: number, 
+    phone: string, 
+    itemsList: CartItem[] = checkoutResult?.items || [], 
+    discount: number = checkoutResult?.discountAmount || 0,
+    paymentMode: string = 'Paid'
+  ) => {
+    const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
+    const shopPhone = shopData?.phone ? `📞 ${shopData.phone}` : '';
+    const shopAddr = shopData?.address ? `📍 ${shopData.address}` : '';
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // Determine public URL for digital receipt link
+    const customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    let receiptLink: string | null = null;
+    if (customPublicUrl) {
+      receiptLink = `${customPublicUrl}/receipt/${txId}`;
+    } else if (!isLocalhost) {
+      receiptLink = `${window.location.origin}/receipt/${txId}`;
+    }
+
+    // Build comprehensive, professional retail WhatsApp bill
+    let text = `🏪 *${shopName.toUpperCase()}*\n`;
+    const contactLine = [shopAddr, shopPhone].filter(Boolean).join(' | ');
+    if (contactLine) {
+      text += `${contactLine}\n`;
+    }
+    text += `📅 ${formattedDate}, ${formattedTime}\n`;
+    text += `🧾 *Bill No:* #${txId.slice(0, 8)}\n`;
+    text += `────────────────────\n`;
+
+    // Itemized list
+    if (itemsList && itemsList.length > 0) {
+      text += `🛒 *ITEMS PURCHASED:*\n`;
+      itemsList.forEach((item, index) => {
+        const itemPrice = Number(item.sellingPrice || 0);
+        const itemQty = Number(item.qty || 1);
+        const itemTotal = (itemPrice * itemQty).toFixed(2);
+        const unit = item.unit ? ` (${item.unit})` : '';
+        text += `${index + 1}. *${item.name || 'Item'}${unit}*\n`;
+        text += `   ${itemQty} x ₹${itemPrice.toFixed(2)} = ₹${itemTotal}\n`;
+      });
+      text += `────────────────────\n`;
+    }
+
+    const numDiscount = Number(discount || 0);
+    const numTotal = Number(billTotal || 0);
+
+    if (numDiscount > 0) {
+      const subtotalVal = numTotal + numDiscount;
+      text += `Subtotal: ₹${subtotalVal.toFixed(2)}\n`;
+      text += `Discount: -₹${numDiscount.toFixed(2)}\n`;
+    }
+
+    text += `💰 *TOTAL AMOUNT: ₹${numTotal.toFixed(2)}*\n`;
+    text += `💳 *Payment Mode:* ${paymentMode}\n`;
+    text += `────────────────────\n`;
+
+    if (receiptLink) {
+      text += `\n📄 *Download Digital Receipt (PDF):*\n${receiptLink}\n\n`;
+    }
+
+    text += `🙏 *Thank you for shopping with us!*\nPlease visit again! 😊`;
+    return text;
+  };
+
+  const dispatchWhatsAppBill = async (phone: string, text: string, txId: string, retryCount = 0) => {
+    setWhatsappStatusBanner({
+      type: 'loading',
+      message: retryCount > 0 
+        ? `Retrying WhatsApp bill (attempt ${retryCount + 1})...` 
+        : `Sending WhatsApp bill to +91 ${phone}...`
+    });
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      const res = await fetch('/api/whatsapp/send-bill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, message: text, billNo: txId.slice(0, 8) }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        const successMsg = `WhatsApp bill sent to +91 ${phone}! ✅`;
+        setWhatsappStatusBanner({
+          type: 'success',
+          message: successMsg
+        });
+        setFloatingNotification(successMsg);
+        setTimeout(() => setFloatingNotification(''), 7000);
+        setTimeout(() => setWhatsappStatusBanner(null), 6000);
+      } else {
+        const errMsg = data.error || 'Failed to send WhatsApp bill';
+        setWhatsappStatusBanner({
+          type: 'error',
+          message: `⚠️ ${errMsg}`
+        });
+      }
+    } catch (err: any) {
+      setWhatsappStatusBanner({
+        type: 'error',
+        message: `⚠️ Error sending WhatsApp bill: ${err.message}`
+      });
+    }
+  };
+
+  // Poll WhatsApp Bot status for live indicator
+  useEffect(() => {
+    const checkWa = async () => {
+      try {
+        const res = await fetch('/api/whatsapp/status');
+        const data = await res.json();
+        setLiveWaStatus(data.status || 'DISCONNECTED');
+      } catch {
+        setLiveWaStatus('DISCONNECTED');
+      }
+    };
+    checkWa();
+    const interval = setInterval(checkWa, 7000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // WhatsApp countdown timer for auto-sending
+  useEffect(() => {
+    if (!pendingWhatsApp) return;
+
+    if (pendingWhatsApp.countdown <= 0) {
+      const { phone, text, txId } = pendingWhatsApp;
+      setPendingWhatsApp(null);
+      dispatchWhatsAppBill(phone, text, txId);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setPendingWhatsApp(prev => prev ? { ...prev, countdown: prev.countdown - 1 } : null);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [pendingWhatsApp]);
+
+
   // Fetch live products for fast POS search
   useEffect(() => {
+    let isMounted = true;
     const fetchProducts = async () => {
-      setLoading(true);
+      if (products.length === 0) setLoading(true);
       try {
         const prods = await api.products.list();
-        if (Array.isArray(prods)) {
+        if (Array.isArray(prods) && isMounted) {
           setProducts(prods);
-        } else {
-          setProducts([]);
+          try {
+            localStorage.setItem('pos_products_cache', JSON.stringify(prods));
+          } catch (e) {
+            console.warn('LocalStorage quota or write error', e);
+          }
         }
       } catch (err) {
         console.error('Failed to load products in POS', err);
-        setProducts([]);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
     
     fetchProducts();
+    return () => { isMounted = false; };
   }, [shopData?.shopId]);
 
   const addToCart = useCallback((product: Product) => {
@@ -277,6 +463,7 @@ export default function POS() {
       alert('Failed to process image. Please try again with clear handwriting.');
     } finally {
       setIsParchiScanning(false);
+      setParchiText('');
     }
   };
 
@@ -316,9 +503,9 @@ export default function POS() {
 
       // 1. Check or Create Customer if phone is provided
       if (customerPhone.trim()) {
-        const phone = customerPhone.trim();
-        const customers = await api.customers.list();
-        const existing = customers.find((c: any) => c.phone === phone);
+        const phone = cleanPhone(customerPhone.trim());
+        const customers = await api.customers.list({ phone });
+        const existing = Array.isArray(customers) ? customers.find((c: any) => cleanPhone(c.phone) === phone) : null;
 
         if (existing) {
           finalCustomerId = existing.id;
@@ -373,11 +560,24 @@ export default function POS() {
         loyaltyPointsEarned: Math.floor(total / 100)
       });
       setPaymentVerified(false);
+      playSoundboxAlert(total, paymentMethod);
 
-      // Auto-send WhatsApp bill if customer phone is provided (10 digits)
+      // Auto-send WhatsApp bill after configured delay if customer phone is provided (10 digits)
+      const billDelay = ((shopData as any)?.settings?.billDelaySeconds ?? 5);
       if (phoneToSend.length === 10) {
-        sendWhatsAppBill(txId, total, phoneToSend, [...cart], discountAmount, paymentMethod);
+        const billMsg = buildWhatsAppBillText(txId, total, phoneToSend, [...cart], discountAmount, paymentMethod);
+        setPendingWhatsApp({
+          txId,
+          phone: phoneToSend,
+          text: billMsg,
+          countdown: billDelay
+        });
+        setWhatsappStatusBanner({
+          type: 'loading',
+          message: `Sending WhatsApp bill to +91 ${phoneToSend} in ${billDelay}s...`
+        });
       } else {
+        setPendingWhatsApp(null);
         setWhatsappStatusBanner(null);
       }
 
@@ -389,9 +589,9 @@ export default function POS() {
       setCustomerPhoto('');
       setDiscountValue('');
       setShowMobileCart(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Checkout failed:', error);
-      alert('Checkout failed. Please try again.');
+      alert('Checkout failed: ' + (error?.message || 'Please try again.'));
     } finally {
       setCheckoutLoading(false);
     }
@@ -419,139 +619,28 @@ export default function POS() {
     (!p.barcode || p.barcode.trim() === '')
   );
 
-  const sendWhatsAppBill = async (
-    txId: string, 
-    billTotal: number, 
-    phone: string, 
-    itemsList: CartItem[] = checkoutResult?.items || [], 
-    discount: number = checkoutResult?.discountAmount || 0,
-    paymentMode: string = 'Paid'
-  ) => {
-    if (!shopData || !phone) return;
-
-    setWhatsappStatusBanner({
-      type: 'loading',
-      message: `WhatsApp वर बिल पाठवत आहे... (+91 ${phone})`
-    });
-
-    const shopName = shopData.shopName || shopData.name || 'Kirana Store';
-    const shopPhone = shopData.phone ? `📞 ${shopData.phone}` : '';
-    const shopAddr = shopData.address ? `📍 ${shopData.address}` : '';
-    const now = new Date();
-    const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-    // Determine public URL for digital receipt link
-    const customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    let receiptLink: string | null = null;
-    if (customPublicUrl) {
-      receiptLink = `${customPublicUrl}/receipt/${txId}`;
-    } else if (!isLocalhost) {
-      receiptLink = `${window.location.origin}/receipt/${txId}`;
-    }
-
-    // Build comprehensive, professional retail WhatsApp bill
-    let text = `🏪 *${shopName.toUpperCase()}*\n`;
-    const contactLine = [shopAddr, shopPhone].filter(Boolean).join(' | ');
-    if (contactLine) {
-      text += `${contactLine}\n`;
-    }
-    text += `📅 ${formattedDate}, ${formattedTime}\n`;
-    text += `🧾 *Bill No:* #${txId.slice(0, 8)}\n`;
-    text += `────────────────────\n`;
-
-    // Itemized list
-    if (itemsList && itemsList.length > 0) {
-      text += `🛒 *ITEMS PURCHASED:*\n`;
-      itemsList.forEach((item, index) => {
-        const itemTotal = (item.sellingPrice * item.quantity).toFixed(2);
-        const unit = item.unit ? ` (${item.unit})` : '';
-        text += `${index + 1}. *${item.name}${unit}*\n`;
-        text += `   ${item.quantity} x ₹${item.sellingPrice.toFixed(2)} = ₹${itemTotal}\n`;
-      });
-      text += `────────────────────\n`;
-    }
-
-    if (discount > 0) {
-      const subtotalVal = billTotal + discount;
-      text += `Subtotal: ₹${subtotalVal.toFixed(2)}\n`;
-      text += `Discount: -₹${discount.toFixed(2)}\n`;
-    }
-
-    text += `💰 *TOTAL AMOUNT: ₹${billTotal.toFixed(2)}*\n`;
-    text += `💳 *Payment Mode:* ${paymentMode}\n`;
-    text += `────────────────────\n`;
-
-    if (receiptLink) {
-      text += `\n📄 *Download Digital Receipt (PDF):*\n${receiptLink}\n\n`;
-    }
-
-    text += `🙏 *Thank you for shopping with us!*\nPlease visit again! 😊`;
-
-    try {
-      const res = await fetch('/api/whatsapp/status');
-      const data = await res.json();
-      
-      if (data.status === 'CONNECTED' || data.status === 'AUTHENTICATED') {
-        const sendRes = await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, message: text })
-        });
-        
-        if (sendRes.ok) {
-          const successMsg = `WhatsApp बिल यशस्वीरित्या +91 ${phone} वर पाठवले! ✅`;
-          setWhatsappStatusBanner({
-            type: 'success',
-            message: successMsg
-          });
-          setFloatingNotification(successMsg);
-          setTimeout(() => setFloatingNotification(''), 7000);
-          return;
-        } else {
-          const errData = await sendRes.json().catch(() => ({}));
-          console.warn('WhatsApp auto-send returned error:', errData);
-        }
-      }
-    } catch (e) {
-      console.log('Bot auto-send failed, falling back to manual wa.me link', e);
-    }
-
-    // Fallback: If bot is not connected or fails, open manual wa.me link
-    const encodedText = encodeURIComponent(text);
-    const url = `https://wa.me/91${phone}?text=${encodedText}`;
-    window.open(url, '_blank');
-    const fallbackMsg = `WhatsApp मेसेज लिंक उघडली (+91 ${phone}) 📱`;
-    setWhatsappStatusBanner({
-      type: 'success',
-      message: fallbackMsg
-    });
-    setFloatingNotification(fallbackMsg);
-    setTimeout(() => setFloatingNotification(''), 7000);
-  };
 
   const handleWhatsAppBill = () => {
     if (!checkoutResult) return;
     let targetPhone = checkoutResult.customerPhone ? cleanPhone(checkoutResult.customerPhone) : '';
     if (!targetPhone || targetPhone.length !== 10) {
-      const input = window.prompt('ग्राहक व्हॉट्सअॅप नंबर टाका (10 अंकी मोबाइल नंबर):');
+      const input = window.prompt('Enter customer 10-digit WhatsApp number:');
       if (!input) return;
       targetPhone = cleanPhone(input);
       if (targetPhone.length !== 10) {
-        alert('कृपया 10 अंकी वैध मोबाइल नंबर टाका.');
+        alert('Please enter a valid 10-digit mobile number.');
         return;
       }
     }
-    sendWhatsAppBill(
+    const text = buildWhatsAppBillText(
       checkoutResult.id, 
       checkoutResult.total, 
-      targetPhone,
-      checkoutResult.items,
-      checkoutResult.discountAmount,
+      targetPhone, 
+      checkoutResult.items, 
+      checkoutResult.discountAmount, 
       'Paid'
     );
+    dispatchWhatsAppBill(targetPhone, text, checkoutResult.id);
   };
 
   const handlePrintReceipt = () => {
@@ -627,16 +716,39 @@ export default function POS() {
               <div className={`mx-6 mt-4 p-3 rounded-xl border flex items-center gap-3 text-sm animate-in fade-in duration-300 ${
                 whatsappStatusBanner.type === 'success'
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                  : whatsappStatusBanner.type === 'error'
+                  ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-800 dark:text-red-200'
                   : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-200'
               }`}>
                 {whatsappStatusBanner.type === 'loading' ? (
                   <Loader2 className="h-5 w-5 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
+                ) : whatsappStatusBanner.type === 'error' ? (
+                  <X className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
                 ) : (
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 )}
                 <div className="flex-1 font-semibold text-xs leading-tight">
                   {whatsappStatusBanner.message}
+                  {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
+                    <span className="ml-1 text-blue-600 dark:text-blue-400">({pendingWhatsApp.countdown}s)</span>
+                  )}
                 </div>
+                {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
+                  <button
+                    onClick={() => { setPendingWhatsApp(null); setWhatsappStatusBanner(null); }}
+                    className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded border border-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                {whatsappStatusBanner.type !== 'loading' && (
+                  <button
+                    onClick={() => setWhatsappStatusBanner(null)}
+                    className="text-muted-foreground hover:text-foreground ml-auto"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             )}
 
@@ -1009,7 +1121,7 @@ export default function POS() {
                       {/* Scanning laser line effect */}
                       <div className="absolute left-0 right-0 h-1 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] animate-[scan_1.5s_ease-in-out_infinite]"></div>
                     </div>
-                    <p className="mt-4 font-bold text-blue-600 animate-pulse">Reading handwriting...</p>
+                    <p className="mt-4 font-bold text-blue-600 animate-pulse">{parchiText || 'Reading handwriting...'}</p>
                     <p className="text-xs text-muted-foreground mt-1">Matching items with inventory</p>
                   </div>
                 ) : (
@@ -1485,12 +1597,17 @@ export default function POS() {
                               accept="image/*" 
                               capture="environment"
                               className="absolute inset-0 opacity-0 cursor-pointer"
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                  const reader = new FileReader();
-                                  reader.onloadend = () => setCustomerPhoto(reader.result as string);
-                                  reader.readAsDataURL(file);
+                                  try {
+                                    const compressed = await compressImage(file, 600, 600, 0.7);
+                                    setCustomerPhoto(compressed);
+                                  } catch {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => setCustomerPhoto(reader.result as string);
+                                    reader.readAsDataURL(file);
+                                  }
                                 }
                               }}
                             />
@@ -1503,7 +1620,7 @@ export default function POS() {
                 
                 {splitAmounts.udhar > 0 && !customerPhone && (
                   <p className="text-xs text-red-500 font-bold text-center bg-red-50 dark:bg-red-950/40 p-2 rounded-lg border border-red-200">
-                    ⚠️ उधारीसाठी ग्राहकाचा 10 अंकी मोबाईल नंबर आवश्यक आहे!
+                    ⚠️ 10-digit customer mobile number is required for Udhar credit!
                   </p>
                 )}
               </div>
@@ -1516,7 +1633,7 @@ export default function POS() {
                 className="w-1/3 h-12 font-bold text-sm"
                 onClick={() => setShowPaymentModal(false)}
               >
-                रद्द करा
+                Cancel
               </Button>
               <Button 
                 className="w-2/3 h-12 text-base font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-lg"
@@ -1681,7 +1798,7 @@ export default function POS() {
           <div style={{ borderBottom: '1px dashed #000', marginBottom: '10px' }}></div>
           
           <div style={{ textAlign: 'center', marginTop: '10px' }}>
-            {checkoutResult.loyaltyPointsEarned > 0 && (
+            {(checkoutResult.loyaltyPointsEarned ?? 0) > 0 && (
               <p style={{ margin: '0 0 5px 0', fontWeight: 'bold' }}>⭐ You earned {checkoutResult.loyaltyPointsEarned} Loyalty Points!</p>
             )}
             <p style={{ margin: 0 }}>Thank you for shopping!</p>

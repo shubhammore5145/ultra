@@ -9,7 +9,6 @@ import {
   Bot, 
   Loader2, 
   Save,
-  ArrowUp,
   ArrowDown
 } from 'lucide-react';
 import { Button } from '../components/ui/button';

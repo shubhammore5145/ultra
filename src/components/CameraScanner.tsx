@@ -4,8 +4,8 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import Tesseract from 'tesseract.js';
 import { 
   X, Camera, CheckCircle2, Loader2, Zap, ZapOff, 
-  Sparkles, BrainCircuit, Keyboard, ZoomIn, RefreshCw, 
-  Upload, AlertTriangle, ShieldAlert, Image as ImageIcon
+  Sparkles, BrainCircuit, Keyboard, RefreshCw, 
+  Upload, AlertTriangle, ShieldAlert
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -43,8 +43,6 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   // Manual entry state
   const [manualBarcode, setManualBarcode] = useState('');
 
-  // Scan attempt counter for UI feedback
-  const [scanAttempts, setScanAttempts] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,7 +67,7 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         if (hasTorch && torchOn) {
-          try { track.applyConstraints({ advanced: [{ torch: false }] }); } catch(e) {}
+          try { (track as any).applyConstraints({ advanced: [{ torch: false }] }); } catch(e) {}
         }
         track.stop();
       });
@@ -465,7 +463,6 @@ export function CameraScanner({ onScan, onClose }: CameraScannerProps) {
         }
 
         frameCount++;
-        if (frameCount % 10 === 0) setScanAttempts(frameCount);
 
         const video = videoRef.current;
         const c1 = canvasRef.current;

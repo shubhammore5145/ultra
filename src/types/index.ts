@@ -85,6 +85,9 @@ export interface Customer {
   loyaltyPoints?: number;
   visits?: number;
   totalSpent?: number;
+  aadharNumber?: string;
+  photoUrl?: string;
+  aadharPhotoUrl?: string;
   createdAt: string;
 }
 

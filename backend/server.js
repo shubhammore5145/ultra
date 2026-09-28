@@ -128,6 +128,220 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
   res.json({ success: true, results });
 });
 
+app.post('/api/whatsapp/send-bill', async (req, res) => {
+  const { phone, message, billNo } = req.body;
+  if (!phone || !message) {
+    return res.status(400).json({ error: 'Phone and message are required' });
+  }
+  try {
+    await whatsappBot.sendMessage(phone, message);
+    res.json({ success: true, message: `WhatsApp bill #${billNo || ''} sent to +91 ${phone}` });
+  } catch (error) {
+    console.error('WhatsApp send-bill error:', error.message);
+    res.status(500).json({ error: error.message || 'Failed to send WhatsApp bill' });
+  }
+});
+
+// Nightly Business WhatsApp Summary Generator & Sender
+async function generateAndSendNightlySummary(shopId, targetPhone) {
+  const pool = require('./db');
+  let shop = { name: 'Nayashi Kirana', phone: targetPhone };
+  try {
+    const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [shopId || 'default']);
+    if (shops && shops[0]) shop = shops[0];
+  } catch {}
+
+  const recipientPhone = targetPhone || shop.phone;
+  if (!recipientPhone) {
+    throw new Error('Shop phone number is required to send nightly summary.');
+  }
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const startIso = todayStart.toISOString().slice(0, 19).replace('T', ' ');
+  const endIso = todayEnd.toISOString().slice(0, 19).replace('T', ' ');
+
+  let transactions = [];
+  let expenses = [];
+  let lowStock = [];
+
+  try {
+    const [txRows] = await pool.query(
+      'SELECT * FROM transactions WHERE shopId = ? AND createdAt >= ? AND createdAt <= ?',
+      [shop.shopId || shopId || 'default', startIso, endIso]
+    );
+    transactions = txRows || [];
+  } catch {
+    const [txRows] = await pool.query(
+      'SELECT * FROM transactions WHERE createdAt >= ? AND createdAt <= ?',
+      [startIso, endIso]
+    );
+    transactions = txRows || [];
+  }
+
+  try {
+    const [expRows] = await pool.query(
+      'SELECT * FROM expenses WHERE (shopId = ? OR shopId IS NULL) AND date >= ? AND date <= ?',
+      [shop.shopId || shopId || 'default', startIso, endIso]
+    );
+    expenses = expRows || [];
+  } catch {
+    const [expRows] = await pool.query('SELECT * FROM expenses ORDER BY date DESC LIMIT 20');
+    expenses = expRows || [];
+  }
+
+  try {
+    const [stockRows] = await pool.query(
+      'SELECT name, stock, unit FROM products WHERE (shopId = ? OR shopId IS NULL) AND stock <= minStock LIMIT 5',
+      [shop.shopId || shopId || 'default']
+    );
+    lowStock = stockRows || [];
+  } catch {}
+
+  let grossSales = 0;
+  let cashSales = 0;
+  let upiSales = 0;
+  let udharSales = 0;
+  const itemCounts = {};
+
+  transactions.forEach(t => {
+    const amt = Number(t.totalAmount) || 0;
+    grossSales += amt;
+    const method = (t.paymentMethod || '').toLowerCase();
+    if (method === 'cash') cashSales += amt;
+    else if (method === 'upi') upiSales += amt;
+    else if (method === 'udhar') udharSales += amt;
+    else if (method === 'split') {
+      cashSales += amt / 2;
+      upiSales += amt / 2;
+    } else {
+      cashSales += amt;
+    }
+
+    let items = [];
+    try { items = typeof t.items === 'string' ? JSON.parse(t.items) : (t.items || []); } catch(e){}
+    items.forEach(it => {
+      if (it.name) {
+        itemCounts[it.name] = (itemCounts[it.name] || 0) + (it.qty || 1);
+      }
+    });
+  });
+
+  let totalExpenses = 0;
+  expenses.forEach(e => { totalExpenses += Number(e.amount) || 0; });
+
+  const cashInHand = Math.max(0, cashSales - totalExpenses);
+
+  const topItems = Object.entries(itemCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, qty]) => `• ${name}: ${qty} sold`)
+    .join('\n');
+
+  const lowStockAlert = lowStock.length > 0 
+    ? lowStock.map(p => `• ⚠️ ${p.name}: ${p.stock} ${p.unit || ''} left`).join('\n')
+    : '• All inventory healthy ✅';
+
+  const dateFormatted = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  const summaryMessage = 
+`🌙 *DAILY BUSINESS SUMMARY REPORT* 🌙
+🏪 *${shop.name || 'Nayashi Kirana'}*
+📅 ${dateFormatted}
+━━━━━━━━━━━━━━━━━━━
+
+💰 *Gross Sales:* ₹${grossSales.toFixed(2)}
+🧾 *Total Invoices:* ${transactions.length}
+
+💳 *COLLECTIONS BREAKDOWN:*
+💵 Cash Collected: ₹${cashSales.toFixed(2)}
+📱 UPI Received: ₹${upiSales.toFixed(2)}
+📝 Udhar Given: ₹${udharSales.toFixed(2)}
+
+💸 *EXPENSES & CASH FLOW:*
+📤 Today's Expenses: ₹${totalExpenses.toFixed(2)}
+💼 Net Cash in Drawer: ₹${cashInHand.toFixed(2)}
+
+⭐ *TOP SELLING PRODUCTS:*
+${topItems || '• No items logged today'}
+
+📦 *STOCK ALERTS:*
+${lowStockAlert}
+
+━━━━━━━━━━━━━━━━━━━
+✨ *Generated automatically by KiranaPro POS*`;
+
+  await whatsappBot.sendMessage(recipientPhone, summaryMessage);
+  return { success: true, message: 'Nightly summary sent to ' + recipientPhone, preview: summaryMessage };
+}
+
+// Nightly Business WhatsApp Summary Endpoint
+app.post('/api/whatsapp/nightly-summary', async (req, res) => {
+  const { shopId, targetPhone } = req.body;
+  try {
+    const result = await generateAndSendNightlySummary(shopId, targetPhone);
+    res.json(result);
+  } catch (error) {
+    console.error('Nightly summary error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Nightly WhatsApp Summary Scheduler (Runs every 30s) ──────────────────────
+const lastSummarySent = {}; // Key: `${shopId}_${YYYY-MM-DD}`
+
+async function checkAndSendScheduledSummaries() {
+  const status = whatsappBot.getStatus();
+  if (status.status !== 'CONNECTED') return;
+
+  // Indian Standard Time (IST = UTC + 5:30)
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istDate = new Date(utc + (3600000 * 5.5));
+
+  const currentHHMM = istDate.toTimeString().slice(0, 5); // "HH:MM" e.g. "21:30"
+  const dateKey = istDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+  try {
+    const pool = require('./db');
+    const [shops] = await pool.query('SELECT shopId, name, phone, settings FROM shops');
+
+    for (const shop of shops) {
+      let settings = {};
+      try {
+        settings = typeof shop.settings === 'string' ? JSON.parse(shop.settings) : (shop.settings || {});
+      } catch {}
+
+      const isEnabled = settings.whatsappSummaryEnabled !== false;
+      const targetTime = settings.whatsappSummaryTime || '21:30';
+      const recipientPhone = settings.whatsappSummaryPhone || shop.phone;
+      const trackKey = `${shop.shopId}_${dateKey}`;
+
+      if (isEnabled && recipientPhone && currentHHMM === targetTime && !lastSummarySent[trackKey]) {
+        console.log(`[Auto-Summary] Triggering scheduled summary for ${shop.name} (${recipientPhone}) at ${currentHHMM}...`);
+        lastSummarySent[trackKey] = true;
+        try {
+          await generateAndSendNightlySummary(shop.shopId, recipientPhone);
+          console.log(`[Auto-Summary] Successfully sent scheduled summary to ${recipientPhone}`);
+        } catch (err) {
+          console.error(`[Auto-Summary] Failed to send to ${recipientPhone}:`, err.message);
+          delete lastSummarySent[trackKey];
+        }
+      }
+    }
+  } catch {}
+}
+
+setInterval(checkAndSendScheduledSummaries, 30000);
+
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
 

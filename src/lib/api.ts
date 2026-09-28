@@ -59,7 +59,7 @@ export const api = {
     delete: (id: string) => fetchAPI(`/products/${id}`, { method: 'DELETE' })
   },
   customers: {
-    list: () => fetchAPI('/customers', { method: 'GET' }),
+    list: (params?: { phone?: string }) => fetchAPI('/customers' + (params?.phone ? `?phone=${encodeURIComponent(params.phone)}` : ''), { method: 'GET' }),
     create: (data: any) => fetchAPI('/customers', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => fetchAPI(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     getLedger: (id: string) => fetchAPI(`/customers/${id}/ledger`, { method: 'GET' })
@@ -100,6 +100,7 @@ export const api = {
     start: () => fetchAPI('/whatsapp/start', { method: 'POST' }),
     logout: () => fetchAPI('/whatsapp/logout', { method: 'POST' }),
     send: (phone: string, message: string) => fetchAPI('/whatsapp/send', { method: 'POST', body: JSON.stringify({ phone, message }) }),
-    sendBulkReminder: (customers: any[], shopName?: string) => fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName }) })
+    sendBulkReminder: (customers: any[], shopName?: string) => fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName }) }),
+    sendNightlySummary: (data: { shopId?: string; targetPhone?: string }) => fetchAPI('/whatsapp/nightly-summary', { method: 'POST', body: JSON.stringify(data) })
   }
 };

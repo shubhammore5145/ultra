@@ -1,34 +1,46 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   IndianRupee, ShoppingCart, TrendingUp, Users, Wallet,
-  AlertTriangle, Download, Sparkles, RefreshCw
+  AlertTriangle, Download, Sparkles, RefreshCw, Zap,
+  Smartphone, CreditCard, Banknote, MessageCircle, CheckCircle2,
+  ChevronRight, ArrowUpRight
 } from 'lucide-react';
+import { Button } from '../components/ui/button';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product, Transaction, Expense, Customer } from '../types';
 
 export default function Dashboard() {
   const { shopData } = useAuth();
+  const navigate = useNavigate();
   
+  // Financial metrics
   const [todaysSales, setTodaysSales] = useState(0);
+  const [todaysCash, setTodaysCash] = useState(0);
+  const [todaysUPI, setTodaysUPI] = useState(0);
+  const [todaysUdhar, setTodaysUdhar] = useState(0);
   const [todaysExpenses, setTodaysExpenses] = useState(0);
   const [todaysOrders, setTodaysOrders] = useState(0);
+  
   const [last24hSales, setLast24hSales] = useState(0);
   const [last24hOrders, setLast24hOrders] = useState(0);
+
+  // Customer & Udhar metrics
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [totalUdhar, setTotalUdhar] = useState(0);
   const [udharCustomersCount, setUdharCustomersCount] = useState(0);
   const [newCustomersToday, setNewCustomersToday] = useState(0);
-  const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
+  
   const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [sendingSummary, setSendingSummary] = useState(false);
+  const [summaryStatus, setSummaryStatus] = useState<string | null>(null);
 
   const parseDate = useCallback((dateVal: any): Date | null => {
     if (!dateVal) return null;
     if (dateVal instanceof Date) return dateVal;
     let str = String(dateVal).trim();
-    // Normalize naive SQLite/MySQL UTC datetime string (e.g. '2026-09-27 19:46:50') to ISO UTC with 'Z'
     if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.includes('Z') && !str.includes('+')) {
       str = str.replace(' ', 'T') + 'Z';
     }
@@ -36,9 +48,8 @@ export default function Dashboard() {
     return isNaN(d.getTime()) ? null : d;
   }, []);
 
-  const fetchDashboardData = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
-    else setIsRefreshing(true);
+  const fetchDashboardData = useCallback(async (_isSilent = false) => {
+    setIsRefreshing(true);
 
     try {
       const now = new Date();
@@ -70,23 +81,39 @@ export default function Dashboard() {
       const expenses: Expense[] = Array.isArray(rawExpenses) ? rawExpenses : [];
       const customers: Customer[] = Array.isArray(rawCustomers) ? rawCustomers : [];
 
-      // Products & Low Stock
       setAllProducts(products);
-      const lowStock = products.filter((p: Product) => p.stock <= (p.minStock || 5));
-      setLowStockItems(lowStock.sort((a: Product, b: Product) => a.stock - b.stock));
 
-      // Sales & Orders
+      // Financial breakdown calculation
       let salesTotal = 0;
+      let cashTotal = 0;
+      let upiTotal = 0;
+      let udharGivenToday = 0;
       let orderCount = 0;
       let recentSales = 0;
       let recentOrders = 0;
 
       transactions.forEach((t: Transaction) => {
         const amount = Number(t.totalAmount) || 0;
+        const method = (t.paymentMethod || 'cash').toLowerCase();
+
         if (isToday(t.createdAt)) {
           salesTotal += amount;
           orderCount++;
+
+          if (method === 'cash') {
+            cashTotal += amount;
+          } else if (method === 'upi') {
+            upiTotal += amount;
+          } else if (method === 'udhar') {
+            udharGivenToday += amount;
+          } else if (method === 'split') {
+            cashTotal += amount / 2;
+            upiTotal += amount / 2;
+          } else {
+            cashTotal += amount;
+          }
         }
+
         if (isRecent24h(t.createdAt)) {
           recentSales += amount;
           recentOrders++;
@@ -94,11 +121,14 @@ export default function Dashboard() {
       });
 
       setTodaysSales(salesTotal);
+      setTodaysCash(cashTotal);
+      setTodaysUPI(upiTotal);
+      setTodaysUdhar(udharGivenToday);
       setTodaysOrders(orderCount);
       setLast24hSales(recentSales);
       setLast24hOrders(recentOrders);
 
-      // Expenses (Today)
+      // Today's Expenses
       let expensesTotal = 0;
       expenses.forEach((e: Expense) => {
         if (isToday(e.date || e.createdAt)) {
@@ -107,7 +137,7 @@ export default function Dashboard() {
       });
       setTodaysExpenses(expensesTotal);
 
-      // Customers & Udhar
+      // Customers & Total Udhar Outstanding
       let udharTotal = 0;
       let udharCustCount = 0;
       let newCustCount = 0;
@@ -120,6 +150,7 @@ export default function Dashboard() {
           newCustCount++;
         }
       });
+
       setTotalCustomers(customers.length);
       setTotalUdhar(udharTotal);
       setUdharCustomersCount(udharCustCount);
@@ -128,7 +159,6 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
-      setLoading(false);
       setIsRefreshing(false);
     }
   }, [shopData?.shopId, parseDate]);
@@ -137,17 +167,57 @@ export default function Dashboard() {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  // Keyboard shortcut: Press F2 anywhere on Dashboard to open POS
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        navigate('/pos');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
+  // Trigger Nightly Summary WhatsApp to Owner
+  const handleSendNightlySummary = async () => {
+    const phone = shopData?.phone;
+    if (!phone) {
+      alert('Please enter your shop phone number in Settings first.');
+      return;
+    }
+    setSendingSummary(true);
+    setSummaryStatus(null);
+    try {
+      await api.whatsapp.sendNightlySummary({
+        shopId: shopData?.shopId,
+        targetPhone: phone
+      });
+      setSummaryStatus('✓ Summary sent to ' + phone);
+      setTimeout(() => setSummaryStatus(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to send summary:', err);
+      alert(err.message || 'Failed to send WhatsApp summary. Make sure WhatsApp Bot is connected.');
+    } finally {
+      setSendingSummary(false);
+    }
+  };
+
   const handleExportCSV = async () => {
     try {
       const data = [
         ['Metric', 'Value'],
         ['Total Sales Today', todaysSales.toFixed(2)],
-        ['Total Orders Today', todaysOrders],
+        ['Cash Collected Today', todaysCash.toFixed(2)],
+        ['UPI Received Today', todaysUPI.toFixed(2)],
+        ['Udhar (Credit) Given Today', todaysUdhar.toFixed(2)],
         ['Total Expenses Today', todaysExpenses.toFixed(2)],
+        ['Net Cash In Drawer', Math.max(0, todaysCash - todaysExpenses).toFixed(2)],
+        ['Total Orders Today', todaysOrders],
         ['Total Customers', totalCustomers],
-        ['Total Udhar', totalUdhar.toFixed(2)],
-        ['Udhar Customers', udharCustomersCount],
-        ['New Customers Today', newCustomersToday]
+        ['Total Market Udhar', totalUdhar.toFixed(2)],
+        ['Udhar Customers Count', udharCustomersCount],
+        ['New Customers Added Today', newCustomersToday]
       ];
       
       const csvContent = data.map(e => e.join(",")).join("\n");
@@ -155,7 +225,7 @@ export default function Dashboard() {
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", `dashboard_report_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `store_report_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -170,7 +240,6 @@ export default function Dashboard() {
     const restockItems = allProducts.filter(p => p.stock <= (p.minStock || 5)).slice(0, 3);
     const trendingItems = [...allProducts].sort((a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0)).slice(0, 2);
     
-    // Find expiring items (within next 30 days)
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     const expiringItems = allProducts.filter(p => {
@@ -183,54 +252,167 @@ export default function Dashboard() {
   };
 
   const aiInsights = getAIInsights();
+  const netProfit = todaysSales - todaysExpenses;
+  const cashInDrawer = Math.max(0, todaysCash - todaysExpenses);
 
   return (
-    <div className="space-y-6 animate-fadeInUp">
-      <div className="page-header">
+    <div className="space-y-6 pb-10 animate-fadeInUp">
+      {/* Hero Action Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 text-white p-6 rounded-3xl shadow-xl">
         <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Today's store overview at a glance</p>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500 text-white uppercase tracking-wider">
+              Live POS Store
+            </span>
+            <span className="text-white/60 text-xs">
+              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black mt-1">
+            {shopData?.shopName || shopData?.name || 'Nayashi Kirana Store'}
+          </h1>
+          <p className="text-xs sm:text-sm text-indigo-200 mt-0.5">
+            Monitor real-time cash, UPI, udhar collections, and store performance.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
+
+        {/* Primary Action Buttons */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => navigate('/pos')}
+            className="h-12 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold shadow-lg shadow-emerald-500/30 flex items-center gap-2 text-base transition-transform active:scale-95 cursor-pointer"
+          >
+            <Zap className="h-5 w-5 fill-white" /> Start POS Billing
+            <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 text-[10px] bg-emerald-700 rounded font-mono">F2</kbd>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={handleSendNightlySummary}
+            disabled={sendingSummary}
+            className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white font-semibold flex items-center gap-2 text-xs"
+            title="Send daily business summary to owner's WhatsApp"
+          >
+            <MessageCircle className="h-4 w-4 text-emerald-400" />
+            {sendingSummary ? 'Sending...' : 'WhatsApp Summary'}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="icon"
             onClick={() => fetchDashboardData(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors shadow-sm cursor-pointer disabled:opacity-50"
-            title="नवीन डेटा रिफ्रेश करा"
+            className="h-12 w-12 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white"
+            title="Refresh Store Data"
           >
-            <RefreshCw className={`h-4 w-4 text-muted-foreground ${isRefreshing ? 'animate-spin text-primary' : ''}`} />
-            <span>रिफ्रेश</span>
-          </button>
-          <button
-            id="export-btn"
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="icon"
             onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/25 hover:bg-primary/90 transition-colors cursor-pointer"
+            className="h-12 w-12 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white"
+            title="Export Daily Report (CSV)"
           >
-            <Download className="h-4 w-4" /> Export Report
-          </button>
+            <Download className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Stats Grid */}
+      {summaryStatus && (
+        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="h-4 w-4" /> {summaryStatus}
+        </div>
+      )}
+
+      {/* ─── PAYMENT BREAKDOWN ROW (Today's Collections: Cash vs UPI vs Udhar) ─── */}
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <CreditCard className="h-3.5 w-3.5 text-primary" /> Today's Collection & Payment Breakdown
+        </h2>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Today's Cash Collected */}
+          <div className="stat-card border-l-4 border-l-emerald-500">
+            <div className="flex items-center justify-between mb-2">
+              <span className="stat-label text-xs">Cash Collected</span>
+              <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                <Banknote className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="stat-value text-emerald-600 dark:text-emerald-400">
+              ₹{todaysCash.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Cash received in counter</p>
+          </div>
+
+          {/* Today's UPI Received */}
+          <div className="stat-card border-l-4 border-l-blue-500">
+            <div className="flex items-center justify-between mb-2">
+              <span className="stat-label text-xs">UPI Payments</span>
+              <div className="h-8 w-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                <Smartphone className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="stat-value text-blue-600 dark:text-blue-400">
+              ₹{todaysUPI.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Direct to bank account</p>
+          </div>
+
+          {/* Today's Udhar Given */}
+          <div className="stat-card border-l-4 border-l-rose-500">
+            <div className="flex items-center justify-between mb-2">
+              <span className="stat-label text-xs">Udhar Given Today</span>
+              <div className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-600 flex items-center justify-center">
+                <CreditCard className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="stat-value text-rose-600 dark:text-rose-400">
+              ₹{todaysUdhar.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Credit sales recorded today</p>
+          </div>
+
+          {/* Net Cash in Drawer (Galla) */}
+          <div className="stat-card border-l-4 border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="stat-label text-xs">Cash in Drawer (गल्ला)</span>
+              <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                <Wallet className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="stat-value text-amber-600 dark:text-amber-400">
+              ₹{cashInDrawer.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Cash minus expenses</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── PRIMARY STORE OVERVIEW STATS GRID ─── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 stagger">
+        {/* Total Gross Sales */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
-            <span className="stat-label">Today's Sales</span>
+            <span className="stat-label">Total Sales Today</span>
             <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
               <IndianRupee className="h-4 w-4 text-indigo-500" />
             </div>
           </div>
-          <div className="stat-value text-indigo-600">₹{todaysSales.toFixed(2)}</div>
+          <div className="stat-value text-indigo-600 dark:text-indigo-400">₹{todaysSales.toFixed(2)}</div>
           <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-            <span>Total revenue today</span>
+            <span>Total orders revenue</span>
             {last24hSales > todaysSales && (
-              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800" title="मागील २४ तासांतील एकूण विक्री">
-                २४h: ₹{last24hSales.toFixed(2)}
+              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                24h: ₹{last24hSales.toFixed(2)}
               </span>
             )}
           </div>
         </div>
 
+        {/* Today's Expenses */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
             <span className="stat-label">Today's Expenses</span>
@@ -239,50 +421,108 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="stat-value text-red-500">₹{todaysExpenses.toFixed(2)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Costs incurred today</p>
+          <p className="text-xs text-muted-foreground mt-1">Costs logged today</p>
         </div>
 
-        <div className="stat-card border-l-4 border-l-emerald-500">
+        {/* Net Profit (Today's Sales - Expenses) */}
+        <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
-            <span className="stat-label">Net Profit</span>
+            <span className="stat-label">Today's Net Margin</span>
             <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
               <TrendingUp className="h-4 w-4 text-emerald-500" />
             </div>
           </div>
-          <div className={`stat-value ${todaysSales - todaysExpenses >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-            ₹{(todaysSales - todaysExpenses).toFixed(2)}
+          <div className={`stat-value ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            ₹{netProfit.toFixed(2)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">Sales minus Expenses</p>
         </div>
 
+        {/* Today's Order Count */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
-            <span className="stat-label">Today's Orders</span>
+            <span className="stat-label">Today's Invoices</span>
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <ShoppingCart className="h-4 w-4 text-primary" />
             </div>
           </div>
           <div className="stat-value">{todaysOrders}</div>
           <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-            <span>Bills generated</span>
+            <span>Invoices completed</span>
             {last24hOrders > todaysOrders && (
-              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800" title="मागील २४ तासांतील एकूण ऑर्डर्स">
-                २४h: {last24hOrders} बिल
+              <span className="text-[11px] font-bold text-muted-foreground">
+                24h: {last24hOrders} bills
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* AI & Udhar Row */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="kirana-card">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="text-base font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" /> AI Smart Assistant
-            </h2>
+      {/* ─── QUICK SHORTCUTS & ACTION BAR ─── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button
+          onClick={() => navigate('/pos')}
+          className="p-3.5 bg-card border rounded-2xl hover:border-emerald-500 hover:bg-emerald-50/20 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+        >
+          <div>
+            <p className="font-bold text-sm text-foreground group-hover:text-emerald-600">POS Checkout</p>
+            <p className="text-[11px] text-muted-foreground">Barcode / Parchi scan</p>
           </div>
+          <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
+        </button>
+
+        <button
+          onClick={() => navigate('/barcode-print')}
+          className="p-3.5 bg-card border rounded-2xl hover:border-primary hover:bg-primary/5 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+        >
+          <div>
+            <p className="font-bold text-sm text-foreground group-hover:text-primary">Barcode Labels</p>
+            <p className="text-[11px] text-muted-foreground">Print loose item stickers</p>
+          </div>
+          <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+        </button>
+
+        <button
+          onClick={() => navigate('/udhar')}
+          className="p-3.5 bg-card border rounded-2xl hover:border-rose-500 hover:bg-rose-50/20 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+        >
+          <div>
+            <p className="font-bold text-sm text-foreground group-hover:text-rose-600">Udhar Book</p>
+            <p className="text-[11px] text-muted-foreground">Manage customer credit</p>
+          </div>
+          <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-rose-600 group-hover:translate-x-0.5 transition-all" />
+        </button>
+
+        <button
+          onClick={() => navigate('/reports')}
+          className="p-3.5 bg-card border rounded-2xl hover:border-teal-500 hover:bg-teal-50/20 transition-all text-left flex items-center justify-between group cursor-pointer shadow-xs"
+        >
+          <div>
+            <p className="font-bold text-sm text-foreground group-hover:text-teal-600">CA & Tax Reports</p>
+            <p className="text-[11px] text-muted-foreground">GSTR-1 & profit analysis</p>
+          </div>
+          <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" />
+        </button>
+      </div>
+
+      {/* ─── BOTTOM TWO PANELS: AI SMART ASSISTANT + UDHAR SNAPSHOT ─── */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* AI Smart Assistant */}
+        <div className="kirana-card">
+          <div className="border-b border-border px-5 py-4 flex justify-between items-center">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> AI Smart Assistant & Stock Alerts
+            </h2>
+            <button 
+              onClick={() => navigate('/inventory')} 
+              className="text-xs text-primary hover:underline font-semibold flex items-center"
+            >
+              Inventory <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+
           <div className="p-5 space-y-5">
+            {/* Restock items */}
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 text-orange-500" /> Restock Urgently
@@ -290,48 +530,54 @@ export default function Dashboard() {
               {aiInsights.restockItems.length > 0 ? (
                 <ul className="space-y-1">
                   {aiInsights.restockItems.map(p => (
-                    <li key={p.id} className="flex items-center gap-2 text-sm">
-                      <span className="h-1.5 w-1.5 rounded-full bg-orange-500 flex-shrink-0" />
-                      <span className="text-foreground">{p.name}</span>
-                      <span className="ml-auto text-xs badge badge-danger">{p.stock} left</span>
+                    <li key={p.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-orange-500/5 border border-orange-500/10">
+                      <span className="h-2 w-2 rounded-full bg-orange-500 flex-shrink-0" />
+                      <span className="text-foreground font-medium">{p.name}</span>
+                      <span className="ml-auto text-xs font-bold text-orange-600 bg-orange-100 dark:bg-orange-950 px-2 py-0.5 rounded">
+                        {p.stock} {p.unit || 'left'}
+                      </span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-emerald-600">✓ Stock levels look good!</p>
+                <p className="text-sm text-emerald-600 font-medium">✓ All stock levels are currently healthy!</p>
               )}
             </div>
 
+            {/* Trending Items */}
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Top Value Items
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Top Value Products
               </h4>
               {aiInsights.trendingItems.length > 0 ? (
                 <ul className="space-y-1">
                   {aiInsights.trendingItems.map(p => (
-                    <li key={p.id} className="flex items-center gap-2 text-sm">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                      <span className="text-foreground">{p.name}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">₹{Number(p.sellingPrice || 0).toFixed(0)}</span>
+                    <li key={p.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/20">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                      <span className="text-foreground font-medium">{p.name}</span>
+                      <span className="ml-auto text-xs font-bold text-muted-foreground">₹{Number(p.sellingPrice || 0).toFixed(0)}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">Add products to see insights.</p>
+                <p className="text-sm text-muted-foreground">Add products to view inventory insights.</p>
               )}
             </div>
 
+            {/* Expiring Soon */}
             {aiInsights.expiringItems.length > 0 && (
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 text-red-500" /> Expiring Soon
+                  <AlertTriangle className="h-3.5 w-3.5 text-red-500" /> Expiring Within 30 Days
                 </h4>
                 <ul className="space-y-1">
                   {aiInsights.expiringItems.map(p => (
-                    <li key={p.id} className="flex items-center gap-2 text-sm">
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                      <span className="text-foreground">{p.name}</span>
-                      <span className="ml-auto badge badge-danger">{new Date(p.expiryDate!).toLocaleDateString('en-IN')}</span>
+                    <li key={p.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-red-500/5 border border-red-500/10">
+                      <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
+                      <span className="text-foreground font-medium">{p.name}</span>
+                      <span className="ml-auto text-xs font-bold text-red-600 bg-red-100 dark:bg-red-950 px-2 py-0.5 rounded">
+                        {new Date(p.expiryDate!).toLocaleDateString('en-IN')}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -340,30 +586,57 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Udhar & Market Credit Snapshot */}
         <div className="kirana-card">
-          <div className="border-b border-border px-5 py-4">
+          <div className="border-b border-border px-5 py-4 flex justify-between items-center">
             <h2 className="text-base font-semibold flex items-center gap-2">
-              <Users className="h-4 w-4 text-rose-500" /> Udhar Overview
+              <Users className="h-4 w-4 text-rose-500" /> Udhar Book & Customer Overview
             </h2>
+            <button 
+              onClick={() => navigate('/udhar')} 
+              className="text-xs text-rose-600 hover:underline font-semibold flex items-center"
+            >
+              Udhar Book <ChevronRight className="h-3 w-3" />
+            </button>
           </div>
+
           <div className="p-5 space-y-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Total Pending Udhar</p>
-              <p className="text-3xl font-bold text-rose-500">₹{totalUdhar.toFixed(2)}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                Total Market Udhar Outstanding
+              </p>
+              <p className="text-4xl font-black text-rose-600 dark:text-rose-400">
+                ₹{totalUdhar.toFixed(2)}
+              </p>
             </div>
+
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-muted/50 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-0.5">Customers in Udhar</p>
-                <p className="text-xl font-bold text-foreground">{udharCustomersCount}</p>
+              <div className="rounded-2xl bg-muted/40 border border-border p-3.5">
+                <p className="text-xs text-muted-foreground mb-1">Due Customers</p>
+                <p className="text-2xl font-black text-foreground">{udharCustomersCount}</p>
+                <p className="text-[10px] text-rose-500 font-semibold mt-0.5">Pending collection</p>
               </div>
-              <div className="rounded-xl bg-muted/50 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-0.5">New Today</p>
-                <p className="text-xl font-bold text-emerald-600">+{newCustomersToday}</p>
+
+              <div className="rounded-2xl bg-muted/40 border border-border p-3.5">
+                <p className="text-xs text-muted-foreground mb-1">New Customers Today</p>
+                <p className="text-2xl font-black text-emerald-600">+{newCustomersToday}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Registered today</p>
               </div>
             </div>
-            <div className="rounded-xl bg-muted/50 border border-border p-3">
-              <p className="text-xs text-muted-foreground mb-0.5">Total Customers</p>
-              <p className="text-xl font-bold text-foreground">{totalCustomers}</p>
+
+            <div className="rounded-2xl bg-muted/40 border border-border p-3.5 flex justify-between items-center">
+              <div>
+                <p className="text-xs text-muted-foreground">Total Customer Directory</p>
+                <p className="text-2xl font-black text-foreground">{totalCustomers}</p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate('/customers')}
+                className="text-xs font-semibold"
+              >
+                View Directory
+              </Button>
             </div>
           </div>
         </div>

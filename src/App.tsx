@@ -19,6 +19,7 @@ import Support from './pages/Support';
 import Receipt from './pages/Receipt';
 
 import BarcodePrint from './pages/BarcodePrint';
+import SuperAdmin from './pages/superadmin';
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
               <Route path="/products/new" element={<ProductForm />} />
               <Route path="/products/:id" element={<ProductForm />} />
               <Route path="/support" element={<Support />} />
+              <Route path="/super-admin" element={<SuperAdmin />} />
             </Route>
           </Route>
           

@@ -102,5 +102,38 @@ export const api = {
     send: (phone: string, message: string) => fetchAPI('/whatsapp/send', { method: 'POST', body: JSON.stringify({ phone, message }) }),
     sendBulkReminder: (customers: any[], shopName?: string) => fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName }) }),
     sendNightlySummary: (data: { shopId?: string; targetPhone?: string }) => fetchAPI('/whatsapp/nightly-summary', { method: 'POST', body: JSON.stringify(data) })
+  },
+  superadmin: {
+    getStats: (pin?: string) => {
+      const stored = localStorage.getItem('superadmin_pin');
+      const key = pin || stored;
+      return fetchAPI('/superadmin/stats', {
+        headers: key ? { 'x-superadmin-key': key } : {}
+      });
+    },
+    getShops: (pin?: string) => {
+      const stored = localStorage.getItem('superadmin_pin');
+      const key = pin || stored;
+      return fetchAPI('/superadmin/shops', {
+        headers: key ? { 'x-superadmin-key': key } : {}
+      });
+    },
+    updatePlan: (shopId: string, data: { plan: string; durationDays?: number; customExpiryDate?: string }, pin?: string) => {
+      const stored = localStorage.getItem('superadmin_pin');
+      const key = pin || stored;
+      return fetchAPI(`/superadmin/shops/${shopId}/plan`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: key ? { 'x-superadmin-key': key } : {}
+      });
+    },
+    deleteShop: (shopId: string, pin?: string) => {
+      const stored = localStorage.getItem('superadmin_pin');
+      const key = pin || stored;
+      return fetchAPI(`/superadmin/shops/${shopId}`, {
+        method: 'DELETE',
+        headers: key ? { 'x-superadmin-key': key } : {}
+      });
+    }
   }
 };

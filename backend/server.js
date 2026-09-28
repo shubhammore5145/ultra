@@ -30,6 +30,7 @@ pool.testConnection();
 // Routes
 const authRoutes = require('./routes/auth');
 const apiRoutes = require('./routes/api');
+const superAdminRoutes = require('./routes/superadmin');
 
 // ── Health Check Endpoint (for UptimeRobot / keep-alive pings) ────────────────
 app.get('/api/ping', (req, res) => {
@@ -343,6 +344,7 @@ async function checkAndSendScheduledSummaries() {
 setInterval(checkAndSendScheduledSummaries, 30000);
 
 app.use('/api/auth', authRoutes);
+app.use('/api/superadmin', superAdminRoutes);
 app.use('/api', apiRoutes);
 
 // Serve frontend in production

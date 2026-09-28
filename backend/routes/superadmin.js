@@ -1,0 +1,263 @@
+const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const pool = require('../db');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
+const MASTER_KEY = process.env.SUPERADMIN_KEY || '9226';
+
+// List of authorized Super Admin emails and phones
+const SUPERADMIN_IDENTIFIERS = [
+  'shubham45mgm@gmail.com',
+  'shubhamnmore16@gmail.com',
+  'shubhamvmore12@gmail.com',
+  'shubham@example.com',
+  '9226345875'
+];
+
+// Super Admin Authorization Middleware
+const superAdminMiddleware = async (req, res, next) => {
+  try {
+    // 1. Check Master Key Header
+    const masterKeyHeader = req.headers['x-superadmin-key'];
+    if (masterKeyHeader && masterKeyHeader === MASTER_KEY) {
+      req.isSuperAdmin = true;
+      return next();
+    }
+
+    // 2. Check JWT Auth Token
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Super Admin: No token or master key provided' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Look up user in database
+    const [users] = await pool.query('SELECT uid, email, displayName, role FROM users WHERE uid = ?', [decoded.uid]);
+    if (users.length === 0) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+
+    const user = users[0];
+    const isAuthorized = 
+      user.role === 'super_admin' ||
+      SUPERADMIN_IDENTIFIERS.includes(user.email?.toLowerCase()) ||
+      (user.email && user.email.toLowerCase().includes('shubham')) ||
+      (user.displayName && user.displayName.toLowerCase().includes('shubham'));
+
+    if (!isAuthorized) {
+      return res.status(403).json({ error: 'Access denied: You are not authorized as Super Admin' });
+    }
+
+    req.user = user;
+    req.isSuperAdmin = true;
+    next();
+  } catch (err) {
+    console.error('Super Admin Auth Error:', err.message);
+    res.status(401).json({ error: 'Super Admin authentication failed: ' + err.message });
+  }
+};
+
+router.use(superAdminMiddleware);
+
+// ── 1. GET /api/superadmin/stats ──────────────────────────────────────────────
+router.get('/stats', async (req, res) => {
+  try {
+    // Total shops
+    const [[{ totalShops }]] = await pool.query('SELECT COUNT(*) as totalShops FROM shops');
+
+    // Total users
+    const [[{ totalUsers }]] = await pool.query('SELECT COUNT(*) as totalUsers FROM users');
+
+    // Total products
+    const [[{ totalProducts }]] = await pool.query('SELECT COUNT(*) as totalProducts FROM products');
+
+    // Total transactions
+    let totalTransactions = 0;
+    try {
+      const [[txRes]] = await pool.query('SELECT COUNT(*) as count FROM transactions');
+      totalTransactions = txRes?.count || 0;
+    } catch {}
+
+    // Plan counts
+    const [planRows] = await pool.query(`
+      SELECT 
+        LOWER(COALESCE(plan, 'free')) as plan, 
+        COUNT(*) as count 
+      FROM shops 
+      GROUP BY LOWER(COALESCE(plan, 'free'))
+    `);
+
+    const planCounts = {
+      free: 0,
+      pro: 0,
+      ultra_pro: 0
+    };
+
+    planRows.forEach(r => {
+      const p = r.plan || 'free';
+      if (p.includes('ultra')) planCounts.ultra_pro += Number(r.count);
+      else if (p.includes('pro')) planCounts.pro += Number(r.count);
+      else planCounts.free += Number(r.count);
+    });
+
+    const activeSubscriptions = planCounts.pro + planCounts.ultra_pro;
+
+    // Estimated Annualized / Monthly Revenue
+    // Pro: ₹499/mo, Ultra: ₹4,999/yr
+    const estimatedMonthlyRevenue = (planCounts.pro * 499) + Math.round((planCounts.ultra_pro * 4999) / 12);
+    const estimatedAnnualRevenue = (planCounts.pro * 499 * 12) + (planCounts.ultra_pro * 4999);
+
+    // Expiring within 7 days
+    const [expiringSoonRows] = await pool.query(`
+      SELECT COUNT(*) as count 
+      FROM shops 
+      WHERE planExpiry IS NOT NULL 
+        AND planExpiry > NOW() 
+        AND planExpiry <= DATE_ADD(NOW(), INTERVAL 7 DAY)
+    `);
+    const expiringSoon = expiringSoonRows[0]?.count || 0;
+
+    res.json({
+      success: true,
+      stats: {
+        totalShops: Number(totalShops),
+        totalUsers: Number(totalUsers),
+        totalProducts: Number(totalProducts),
+        totalTransactions: Number(totalTransactions),
+        planCounts,
+        activeSubscriptions,
+        estimatedMonthlyRevenue,
+        estimatedAnnualRevenue,
+        expiringSoon
+      }
+    });
+  } catch (err) {
+    console.error('Super Admin Stats Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── 2. GET /api/superadmin/shops ──────────────────────────────────────────────
+router.get('/shops', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        s.shopId,
+        s.name as shopName,
+        s.ownerName,
+        s.phone,
+        s.email,
+        s.address,
+        s.gstNumber,
+        s.upiId,
+        s.plan,
+        s.planExpiry,
+        s.createdAt,
+        (SELECT COUNT(*) FROM products p WHERE p.shopId = s.shopId) as productCount,
+        (SELECT COUNT(*) FROM users u WHERE u.shopId = s.shopId) as userCount,
+        (SELECT COUNT(*) FROM transactions t WHERE t.shopId = s.shopId) as transactionCount,
+        (SELECT COALESCE(SUM(total), 0) FROM transactions t WHERE t.shopId = s.shopId) as totalSalesVolume
+      FROM shops s
+      ORDER BY s.createdAt DESC
+    `;
+
+    const [shops] = await pool.query(query);
+
+    // Format expiry and status
+    const formattedShops = shops.map(shop => {
+      const now = new Date();
+      const expiry = shop.planExpiry ? new Date(shop.planExpiry) : null;
+      let status = 'free';
+
+      const planName = (shop.plan || 'free').toLowerCase();
+      const isPaid = planName === 'pro' || planName === 'ultra_pro';
+
+      if (isPaid) {
+        if (!expiry) {
+          status = 'lifetime';
+        } else if (expiry > now) {
+          const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          status = daysLeft <= 7 ? 'expiring_soon' : 'active';
+        } else {
+          status = 'expired';
+        }
+      }
+
+      return {
+        ...shop,
+        productCount: Number(shop.productCount || 0),
+        userCount: Number(shop.userCount || 0),
+        transactionCount: Number(shop.transactionCount || 0),
+        totalSalesVolume: Number(shop.totalSalesVolume || 0),
+        subscriptionStatus: status
+      };
+    });
+
+    res.json({ success: true, shops: formattedShops });
+  } catch (err) {
+    console.error('Super Admin Shops Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── 3. PUT /api/superadmin/shops/:shopId/plan ──────────────────────────────────
+router.put('/shops/:shopId/plan', async (req, res) => {
+  const { shopId } = req.params;
+  const { plan, durationDays, customExpiryDate } = req.body;
+
+  try {
+    let newExpiry = null;
+
+    if (customExpiryDate) {
+      newExpiry = new Date(customExpiryDate);
+    } else if (durationDays && durationDays > 0) {
+      newExpiry = new Date();
+      newExpiry.setDate(newExpiry.getDate() + Number(durationDays));
+    } else if (plan === 'free') {
+      newExpiry = null;
+    }
+
+    const normalizedPlan = (plan || 'free').toLowerCase().includes('ultra') 
+      ? 'ultra_pro' 
+      : (plan || 'free').toLowerCase().includes('pro') 
+      ? 'pro' 
+      : 'free';
+
+    await pool.query(
+      'UPDATE shops SET plan = ?, planExpiry = ? WHERE shopId = ?',
+      [normalizedPlan, newExpiry, shopId]
+    );
+
+    res.json({
+      success: true,
+      message: `Shop ${shopId} plan updated to ${normalizedPlan}`,
+      plan: normalizedPlan,
+      planExpiry: newExpiry
+    });
+  } catch (err) {
+    console.error('Super Admin Update Plan Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── 4. DELETE /api/superadmin/shops/:shopId ────────────────────────────────────
+router.delete('/shops/:shopId', async (req, res) => {
+  const { shopId } = req.params;
+  try {
+    // Delete transactions, products, users, shop
+    await pool.query('DELETE FROM transactions WHERE shopId = ?', [shopId]).catch(() => {});
+    await pool.query('DELETE FROM products WHERE shopId = ?', [shopId]).catch(() => {});
+    await pool.query('DELETE FROM users WHERE shopId = ?', [shopId]).catch(() => {});
+    await pool.query('DELETE FROM shops WHERE shopId = ?', [shopId]);
+
+    res.json({ success: true, message: `Shop ${shopId} deleted successfully` });
+  } catch (err) {
+    console.error('Super Admin Delete Shop Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

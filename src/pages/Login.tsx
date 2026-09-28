@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,6 +24,21 @@ export default function Login() {
   const [resetSuccessMessage, setResetSuccessMessage] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
+  
+  // Support 1-Click Login from Super Admin
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const directToken = params.get('token');
+    if (directToken) {
+      localStorage.setItem('auth_token', directToken);
+      api.auth.me().then(res => {
+        login(directToken, res.user, res.shop);
+        navigate(res.user?.role === 'cashier' ? '/pos' : '/');
+      }).catch(err => {
+        console.error('Super Admin impersonation failed:', err);
+      });
+    }
+  }, []);
 
   // Form State
   const [email, setEmail] = useState('');

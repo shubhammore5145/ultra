@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 console.log('----------------------------------------------------');
-console.log('🚀 Starting KiranaPro Fullstack Development Server...');
+console.log('🚀 Starting MartGPT Fullstack Development Server...');
 console.log('----------------------------------------------------');
 
 const isWindows = process.platform === 'win32';

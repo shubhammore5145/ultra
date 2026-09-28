@@ -29,7 +29,7 @@ export default function Upgrade() {
       key: 'rzp_live_TUJQRz220FyjLO',
       amount: amountInPaise,
       currency: 'INR',
-      name: 'KiranaPro',
+      name: 'MartGPT',
       description: `Pro Plan Subscription (${planName})`,
       handler: async function (_response: any) {
         try {
@@ -78,7 +78,7 @@ export default function Upgrade() {
       <div className="text-center space-y-4 pt-8">
         <h1 className="text-4xl font-extrabold tracking-tight flex items-center justify-center gap-3">
           <Crown className="h-10 w-10 text-yellow-500" />
-          KiranaPro <span className="text-primary">Premium</span>
+          MartGPT <span className="text-primary">Premium</span>
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Take your shop to the next level with advanced AI insights, multi-staff access, and CA-ready exports.

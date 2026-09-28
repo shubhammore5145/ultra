@@ -131,7 +131,7 @@ async function connect() {
         if (me) {
           clientInfo = {
             phone: me.id?.split(':')[0] || me.id?.split('@')[0] || '',
-            pushname: me.name || me.notify || 'Kirana Store'
+            pushname: me.name || me.notify || 'MartGPT Store'
           };
           console.log(`[WhatsApp] ✅ Connected successfully as: ${clientInfo.pushname} (+${clientInfo.phone})`);
         }

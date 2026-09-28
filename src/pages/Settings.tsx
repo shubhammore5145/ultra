@@ -389,7 +389,7 @@ export default function Settings() {
               <Button
                 type="button"
                 onClick={() => {
-                  const text = `Hello! Join my shop on KiranaPro. Sign up at the app and select 'Join Shop (Cashier)' with this Shop ID: ${shopData?.shopId}`;
+                  const text = `Hello! Join my shop on MartGPT. Sign up at the app and select 'Join Shop (Cashier)' with this Shop ID: ${shopData?.shopId}`;
                   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                 }}
                 className="bg-green-500 hover:bg-green-600 text-white"
@@ -671,7 +671,7 @@ export default function Settings() {
       <Button
         variant="destructive"
         onClick={() => {
-          if (window.confirm('Are you sure you want to log out of KiranaPro?')) {
+          if (window.confirm('Are you sure you want to log out of MartGPT?')) {
             logout();
           }
         }}

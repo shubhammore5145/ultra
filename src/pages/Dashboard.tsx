@@ -269,7 +269,7 @@ export default function Dashboard() {
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black mt-1">
-            {shopData?.shopName || shopData?.name || 'Nayashi Kirana Store'}
+            {shopData?.shopName || shopData?.name || 'MartGPT Store'}
           </h1>
           <p className="text-xs sm:text-sm text-indigo-200 mt-0.5">
             Monitor real-time cash, UPI, udhar collections, and store performance.

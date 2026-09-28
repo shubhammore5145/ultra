@@ -33,7 +33,7 @@ export default function Support() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const handleWhatsApp = () => {
-    window.open('https://wa.me/919226345875?text=Hello%20KiranaPro%20Support,%20I%20need%20help!', '_blank');
+    window.open('https://wa.me/919226345875?text=Hello%20MartGPT%20Support,%20I%20need%20help!', '_blank');
   };
 
   return (

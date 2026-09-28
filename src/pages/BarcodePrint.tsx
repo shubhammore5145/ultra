@@ -132,7 +132,7 @@ export default function BarcodePrint() {
   };
 
   const totalCopies = Math.max(1, Math.min(100, parseInt(printCopies) || 1));
-  const shopTitle = shopData?.shopName || shopData?.name || 'Nayashi Kirana';
+  const shopTitle = shopData?.shopName || shopData?.name || 'MartGPT Store';
 
   return (
     <div className="space-y-6 pb-12 animate-fadeInUp">

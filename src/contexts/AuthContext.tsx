@@ -92,7 +92,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm font-medium text-slate-300">KiranaPro सुरू होत आहे...</p>
+          <p className="text-sm font-medium text-slate-300">MartGPT सुरू होत आहे...</p>
         </div>
       </div>
     );

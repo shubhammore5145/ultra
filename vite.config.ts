@@ -12,9 +12,9 @@ export default defineConfig({
         enabled: false
       },
       manifest: {
-        name: 'KiranaPro',
-        short_name: 'KiranaPro',
-        description: 'Advanced Kirana Store Management POS',
+        name: 'MartGPT',
+        short_name: 'MartGPT',
+        description: 'Smart AI Supermarket & Kirana POS',
         theme_color: '#4f46e5',
         icons: [
           {

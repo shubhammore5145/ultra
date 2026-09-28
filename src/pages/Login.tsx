@@ -171,9 +171,9 @@ export default function Login() {
         
         <div className="relative z-10 flex items-center gap-3">
           <div className="rounded-2xl bg-white/20 p-2 backdrop-blur-md shadow-2xl overflow-hidden border border-white/20">
-            <img src="/favicon.svg" alt="KiranaPro Logo" className="h-10 w-10 rounded-xl object-contain shadow-md" />
+            <img src="/favicon.svg" alt="MartGPT Logo" className="h-10 w-10 rounded-xl object-contain shadow-md" />
           </div>
-          <span className="text-3xl font-extrabold text-white tracking-tight">KiranaPro</span>
+          <span className="text-3xl font-extrabold text-white tracking-tight">MartGPT</span>
         </div>
 
         <div className="relative z-10 max-w-lg">
@@ -186,7 +186,7 @@ export default function Login() {
         </div>
 
         <div className="relative z-10 flex items-center gap-4 text-sm font-medium text-white/60">
-          <span>© {new Date().getFullYear()} KiranaPro Software</span>
+          <span>© {new Date().getFullYear()} MartGPT Software</span>
           <span>•</span>
           <a href="/support" className="hover:text-white transition-colors">Privacy Policy</a>
           <span>•</span>
@@ -205,7 +205,7 @@ export default function Login() {
               {isLogin ? 'Welcome back' : 'Create your account'}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              {isLogin ? 'Enter your credentials to access your store' : 'Get started with KiranaPro today'}
+              {isLogin ? 'Enter your credentials to access your store' : 'Get started with MartGPT today'}
             </p>
           </div>
 

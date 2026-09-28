@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render Build Script for KiranaPro
+# Render Build Script for MartGPT
 set -o errexit
 
 echo ">>> [Render Build] Installing root dependencies..."

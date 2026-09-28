@@ -250,7 +250,7 @@ export default function Reports() {
   // Export CSV Handlers
   const exportGSTR1CSV = () => {
     const rows = [
-      ['CA-READY GSTR-1 TAX REPORT - NAYASHI KIRANA'],
+      [`CA-READY GSTR-1 TAX REPORT - ${(shopData?.shopName || shopData?.name || 'MARTGPT').toUpperCase()}`],
       ['Generated On', new Date().toLocaleString()],
       ['Tax Period', dateFilter.toUpperCase()],
       ['GSTIN', shopData?.gstNumber || 'Unregistered / Composition'],

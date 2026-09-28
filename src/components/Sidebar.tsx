@@ -33,10 +33,10 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden shadow-md shadow-primary/30">
-          <img src="/favicon.svg" alt="KiranaPro" className="h-full w-full object-cover" />
+          <img src="/favicon.svg" alt="MartGPT" className="h-full w-full object-cover" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-foreground leading-tight">{shopData?.name || 'KiranaPro'}</p>
+          <p className="truncate text-sm font-bold text-foreground leading-tight">{shopData?.name || 'MartGPT'}</p>
           <p className="text-xs text-muted-foreground capitalize">{userData?.role || 'Admin'}</p>
         </div>
       </div>
@@ -135,10 +135,10 @@ export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: 
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm">
-              <img src="/favicon.svg" alt="KiranaPro" className="h-full w-full object-cover" />
+              <img src="/favicon.svg" alt="MartGPT" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-sm font-bold text-foreground">{shopData?.name || 'KiranaPro'}</p>
+              <p className="text-sm font-bold text-foreground">{shopData?.name || 'MartGPT'}</p>
               <p className="text-xs text-muted-foreground capitalize">{userData?.role}</p>
             </div>
           </div>

@@ -145,7 +145,7 @@ app.post('/api/whatsapp/send-bill', async (req, res) => {
 // Nightly Business WhatsApp Summary Generator & Sender
 async function generateAndSendNightlySummary(shopId, targetPhone) {
   const pool = require('./db');
-  let shop = { name: 'Nayashi Kirana', phone: targetPhone };
+  let shop = { name: 'MartGPT Store', phone: targetPhone };
   try {
     const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [shopId || 'default']);
     if (shops && shops[0]) shop = shops[0];
@@ -254,7 +254,7 @@ async function generateAndSendNightlySummary(shopId, targetPhone) {
 
   const summaryMessage = 
 `🌙 *DAILY BUSINESS SUMMARY REPORT* 🌙
-🏪 *${shop.name || 'Nayashi Kirana'}*
+🏪 *${shop.name || 'MartGPT Store'}*
 📅 ${dateFormatted}
 ━━━━━━━━━━━━━━━━━━━
 
@@ -277,7 +277,7 @@ ${topItems || '• No items logged today'}
 ${lowStockAlert}
 
 ━━━━━━━━━━━━━━━━━━━
-✨ *Generated automatically by KiranaPro POS*`;
+✨ *Generated automatically by MartGPT POS*`;
 
   await whatsappBot.sendMessage(recipientPhone, summaryMessage);
   return { success: true, message: 'Nightly summary sent to ' + recipientPhone, preview: summaryMessage };
@@ -358,7 +358,7 @@ app.use((req, res) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(200).send('KiranaPro Backend API running on port ' + port);
+    res.status(200).send('MartGPT Backend API running on port ' + port);
   }
 });
 
@@ -389,7 +389,7 @@ function startKeepAlive() {
 
 // ── Start Server ──────────────────────────────────────────────────────────────
 app.listen(port, () => {
-  console.log(`🚀 KiranaPro Server running on http://localhost:${port}`);
+  console.log(`🚀 MartGPT Server running on http://localhost:${port}`);
 
   // Auto-initialize WhatsApp bot
   setTimeout(() => {

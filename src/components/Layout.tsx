@@ -10,7 +10,7 @@ export default function Layout() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    if (window.confirm('Are you sure you want to log out of KiranaPro?')) {
+    if (window.confirm('Are you sure you want to log out of MartGPT?')) {
       logout();
       navigate('/login');
     }
@@ -37,7 +37,7 @@ export default function Layout() {
                 <img src="/favicon.svg" alt="Logo" className="h-full w-full object-cover" />
               </div>
               <span className="text-base font-bold text-foreground truncate max-w-[140px]">
-                {shopData?.name || 'KiranaPro'}
+                {shopData?.name || 'MartGPT'}
               </span>
             </div>
 

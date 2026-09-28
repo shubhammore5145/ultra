@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet, Crown,
-  HelpCircle, ClipboardList, LogOut, X, Barcode, ShieldCheck
+  HelpCircle, ClipboardList, LogOut, X, Barcode
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -26,20 +26,7 @@ const navItems = [
 export function Sidebar() {
   const { userData, shopData, logout } = useAuth();
   const userRole = userData?.role || 'cashier';
-  
-  const isSuperAdmin = 
-    userData?.role === 'super_admin' ||
-    ['shubham45mgm@gmail.com', 'shubhamnmore16@gmail.com', 'shubhamvmore12@gmail.com', 'shubham@example.com'].includes(userData?.email?.toLowerCase() || '') ||
-    (userData?.email && userData.email.toLowerCase().includes('shubham')) ||
-    (userData?.displayName && userData.displayName.toLowerCase().includes('shubham')) ||
-    shopData?.phone === '9226345875' ||
-    localStorage.getItem('superadmin_pin') === '9226';
-
-  const dynamicNavItems = isSuperAdmin
-    ? [...navItems, { name: 'Super Admin', href: '/super-admin', icon: ShieldCheck, roles: ['admin', 'cashier'], color: 'text-amber-500' }]
-    : navItems;
-
-  const filteredNav = dynamicNavItems.filter(item => item.roles.includes(userRole));
+  const filteredNav = navItems.filter(item => item.roles.includes(userRole));
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-border bg-card">
@@ -133,20 +120,7 @@ export function MobileBottomNav() {
 export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { userData, shopData, logout } = useAuth();
   const userRole = userData?.role || 'cashier';
-
-  const isSuperAdmin = 
-    userData?.role === 'super_admin' ||
-    ['shubham45mgm@gmail.com', 'shubhamnmore16@gmail.com', 'shubhamvmore12@gmail.com', 'shubham@example.com'].includes(userData?.email?.toLowerCase() || '') ||
-    (userData?.email && userData.email.toLowerCase().includes('shubham')) ||
-    (userData?.displayName && userData.displayName.toLowerCase().includes('shubham')) ||
-    shopData?.phone === '9226345875' ||
-    localStorage.getItem('superadmin_pin') === '9226';
-
-  const dynamicNavItems = isSuperAdmin
-    ? [...navItems, { name: 'Super Admin', href: '/super-admin', icon: ShieldCheck, roles: ['admin', 'cashier'], color: 'text-amber-500' }]
-    : navItems;
-
-  const allItems = dynamicNavItems.filter(item => item.roles.includes(userRole));
+  const allItems = navItems.filter(item => item.roles.includes(userRole));
 
   if (!isOpen) return null;
 

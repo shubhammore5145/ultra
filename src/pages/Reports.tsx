@@ -419,7 +419,13 @@ export default function Reports() {
         </button>
 
         <button
-          onClick={() => setActiveTab('gstr1')}
+          onClick={() => {
+            if (!canAccess('gstr1_reports')) {
+              openUpgradeModal('gstr1_reports');
+              return;
+            }
+            setActiveTab('gstr1');
+          }}
           className={`pb-2 px-3 border-b-2 transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === 'gstr1' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}

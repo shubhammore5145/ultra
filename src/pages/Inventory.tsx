@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import { 
   Package, 
   Search, 
@@ -8,8 +9,8 @@ import {
   AlertTriangle, 
   Bot, 
   Loader2, 
-  Save,
-  ArrowDown
+  Save, 
+  ArrowDown 
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -17,6 +18,7 @@ import type { Product } from '../types';
 
 export default function Inventory() {
   const { shopData } = useAuth();
+  const { canAccess, openUpgradeModal } = usePlan();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -76,6 +78,10 @@ export default function Inventory() {
   };
 
   const runAIPredictor = async () => {
+    if (!canAccess('demand_forecast')) {
+      openUpgradeModal('demand_forecast');
+      return;
+    }
     setAiLoading(true);
     setShowAiReport(true);
     
@@ -135,6 +141,11 @@ export default function Inventory() {
           >
             <Bot className="mr-2 h-5 w-5" />
             Smart AI Predictor
+            {!canAccess('demand_forecast') && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-purple-900/80 text-white shadow-sm">
+                ⚡ PRO
+              </span>
+            )}
           </Button>
         </div>
       </div>

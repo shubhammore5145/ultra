@@ -39,6 +39,67 @@ router.get('/public/receipt/:id', async (req, res) => {
   }
 });
 
+// Validate Promo Code (Public / Available at Checkout)
+router.post('/coupons/validate', async (req, res) => {
+  const { code, planName, price } = req.body;
+  if (!code || !code.trim()) {
+    return res.status(400).json({ error: 'Please enter a coupon code.' });
+  }
+
+  try {
+    const cleanCode = code.trim().toUpperCase();
+    const [rows] = await pool.query('SELECT * FROM promo_codes WHERE UPPER(code) = ?', [cleanCode]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid coupon code. Please verify and try again.' });
+    }
+
+    const coupon = rows[0];
+
+    // Check expiry
+    if (coupon.validUntil && new Date(coupon.validUntil) < new Date()) {
+      return res.status(400).json({ error: 'This coupon code has expired.' });
+    }
+
+    // Check usage limits
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+      return res.status(400).json({ error: 'This coupon usage limit has been reached.' });
+    }
+
+    // Check plan restriction
+    if (coupon.planType && coupon.planType !== 'all') {
+      const target = (planName || '').toLowerCase();
+      if (!target.includes(coupon.planType.toLowerCase())) {
+        return res.status(400).json({ error: `This coupon is only valid for ${coupon.planType.toUpperCase()} plans.` });
+      }
+    }
+
+    const originalPrice = Number(price || 0);
+    let discountAmount = 0;
+
+    if (coupon.discountPercent > 0) {
+      discountAmount = Math.round((originalPrice * coupon.discountPercent) / 100);
+    } else if (coupon.flatDiscount > 0) {
+      discountAmount = Math.min(coupon.flatDiscount, originalPrice);
+    }
+
+    const finalPrice = Math.max(1, originalPrice - discountAmount);
+
+    res.json({
+      success: true,
+      code: coupon.code,
+      discountPercent: coupon.discountPercent,
+      flatDiscount: coupon.flatDiscount,
+      discountAmount,
+      originalPrice,
+      finalPrice,
+      message: `Promo code ${coupon.code} applied! You save ₹${discountAmount}.`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.use(authMiddleware);
 
 // --- PRODUCTS ---
@@ -366,14 +427,27 @@ router.put('/shops', async (req, res) => {
   }
 });
 
+
 router.put('/shops/plan', async (req, res) => {
-  const { plan, planExpiry } = req.body;
+  const { plan, planExpiry, couponCode } = req.body;
   try {
-    const normalizedPlan = (plan || 'free').toLowerCase().includes('ultra') ? 'ultra_pro' : (plan || 'free').toLowerCase().includes('pro') ? 'pro' : 'free';
+    const p = (plan || 'free').toLowerCase();
+    let normalizedPlan = 'free';
+    if (p.includes('ultra')) normalizedPlan = 'ultra_pro';
+    else if (p.includes('pro')) normalizedPlan = 'pro';
+    else if (p.includes('plus') || p.includes('growth')) normalizedPlan = 'plus';
+    else normalizedPlan = 'free';
+
     await pool.query(
       'UPDATE shops SET plan=?, planExpiry=? WHERE shopId=?',
       [normalizedPlan, planExpiry ? new Date(planExpiry) : null, req.user.shopId]
     );
+
+    // Increment coupon usage if provided
+    if (couponCode) {
+      await pool.query('UPDATE promo_codes SET usedCount = usedCount + 1 WHERE UPPER(code) = ?', [couponCode.toUpperCase()]).catch(() => {});
+    }
+
     res.json({ success: true, plan: normalizedPlan });
   } catch (err) {
     res.status(500).json({ error: err.message });

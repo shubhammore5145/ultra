@@ -8,24 +8,20 @@ import {
   Sparkles, 
   AlertCircle, 
   MessageSquare, 
-  Bot, 
   Zap, 
   Mic, 
-  TrendingUp, 
-  Printer, 
-  Users, 
-  FileSpreadsheet, 
-  Volume2, 
-  Cloud, 
-  ShieldCheck, 
-  PhoneCall, 
+  Receipt, 
+  Store, 
+  Layers, 
+  Tag, 
+  X, 
   HelpCircle, 
-  Star,
-  ChevronDown,
-  ChevronUp,
-  Receipt,
-  Store,
-  Layers
+  Star, 
+  ChevronDown, 
+  ChevronUp, 
+  ShieldCheck, 
+  Cloud, 
+  PhoneCall 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -43,44 +39,148 @@ interface PlanFeature {
   isNew?: boolean;
 }
 
+interface AppliedCoupon {
+  code: string;
+  discountPercent: number;
+  flatDiscount: number;
+  discountAmount: number;
+  finalPrice: number;
+  originalPrice: number;
+  message: string;
+}
+
 export default function Upgrade() {
   const { shopData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  
+  // Coupon code states
+  const [couponInput, setCouponInput] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+
   const navigate = useNavigate();
 
   const currentPlan = (shopData?.plan || '').toLowerCase();
   const isUltraPro = currentPlan === 'ultra_pro';
-  const isPro = currentPlan === 'pro' || isUltraPro;
+  const isPro = currentPlan === 'pro';
+  const isPlus = currentPlan === 'plus';
 
-  const handleUpgrade = async (days: number, amountInPaise: number, planName: string) => {
+  // Base pricing configuration
+  const prices = {
+    plus: {
+      monthly: { price: 199, paise: 19900, days: 30, period: '/month' },
+      yearly: { price: 1999, paise: 199900, days: 365, period: '/year', save: 'Save ₹389 (16% OFF)' }
+    },
+    pro: {
+      monthly: { price: 349, paise: 34900, days: 30, period: '/month' },
+      yearly: { price: 3499, paise: 349900, days: 365, period: '/year', save: 'Save ₹689 (17% OFF)' }
+    },
+    ultra: {
+      monthly: { price: 499, paise: 49900, days: 30, period: '/month' },
+      yearly: { price: 4999, paise: 499900, days: 365, period: '/year', save: 'Save ₹989 (17% OFF)' }
+    }
+  };
+
+  // Helper to calculate price with coupon applied
+  const getCalculatedPrice = (basePrice: number) => {
+    if (!appliedCoupon) return { final: basePrice, discount: 0 };
+    let discount = 0;
+    if (appliedCoupon.discountPercent > 0) {
+      discount = Math.round((basePrice * appliedCoupon.discountPercent) / 100);
+    } else if (appliedCoupon.flatDiscount > 0) {
+      discount = Math.min(appliedCoupon.flatDiscount, basePrice);
+    }
+    const final = Math.max(1, basePrice - discount);
+    return { final, discount };
+  };
+
+  // Handle coupon validation
+  const handleApplyCoupon = async (codeToApply?: string) => {
+    const code = (codeToApply || couponInput).trim().toUpperCase();
+    if (!code) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponError(null);
+
+    try {
+      const benchmarkPrice = billingCycle === 'yearly' ? prices.ultra.yearly.price : prices.ultra.monthly.price;
+      const res = await api.coupons.validate({
+        code,
+        planName: 'ultra_pro',
+        price: benchmarkPrice
+      });
+
+      if (res.success) {
+        setAppliedCoupon({
+          code: res.code,
+          discountPercent: res.discountPercent,
+          flatDiscount: res.flatDiscount,
+          discountAmount: res.discountAmount,
+          finalPrice: res.finalPrice,
+          originalPrice: res.originalPrice,
+          message: res.message
+        });
+        setCouponInput('');
+      } else {
+        setCouponError(res.error || 'Invalid coupon code');
+        setAppliedCoupon(null);
+      }
+    } catch (err: any) {
+      setCouponError(err.message || 'Unable to apply coupon. Please try again.');
+      setAppliedCoupon(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+  };
+
+  // Razorpay Upgrade Trigger
+  const handleUpgrade = async (days: number, basePrice: number, planName: string) => {
     if (!shopData?.shopId) return;
     
     setLoading(true);
+
+    const { final: finalPayable } = getCalculatedPrice(basePrice);
+    const amountInPaise = finalPayable * 100;
     
     const options = {
       key: 'rzp_live_TUJQRz220FyjLO',
       amount: amountInPaise,
       currency: 'INR',
       name: 'MartGPT',
-      description: `${planName} Subscription (${days === 365 ? '1 Year' : '1 Month'})`,
+      description: `${planName} Subscription (${days === 365 ? '1 Year' : '1 Month'})${appliedCoupon ? ` - Promo: ${appliedCoupon.code}` : ''}`,
       handler: async function (_response: any) {
         try {
           const expiryDate = new Date();
           expiryDate.setDate(expiryDate.getDate() + days);
 
-          const normalizedPlan = planName.toLowerCase().includes('ultra') ? 'ultra_pro' : 'pro';
+          let normalizedPlan = 'pro';
+          const p = planName.toLowerCase();
+          if (p.includes('ultra')) normalizedPlan = 'ultra_pro';
+          else if (p.includes('pro')) normalizedPlan = 'pro';
+          else if (p.includes('plus')) normalizedPlan = 'plus';
+
           await api.shops.upgradePlan({
             plan: normalizedPlan,
-            planExpiry: expiryDate.toISOString()
+            planExpiry: expiryDate.toISOString(),
+            couponCode: appliedCoupon?.code
           });
 
-          alert(`🎉 अभिनंदन! आपले दुकान आता ${planName} प्लॅनवर यशस्वीरित्या अपग्रेड झाले आहे!`);
+          alert(`🎉 Congratulations! Your store has been upgraded to ${planName} successfully!`);
           navigate('/');
         } catch (err) {
           console.error(err);
-          alert("Failed to upgrade plan. Please contact support.");
+          alert("Failed to upgrade plan. Please contact our support team.");
         } finally {
           setLoading(false);
         }
@@ -90,7 +190,7 @@ export default function Upgrade() {
         contact: shopData?.phone || '',
       },
       theme: {
-        color: '#6366f1'
+        color: '#4f46e5'
       }
     };
     
@@ -102,268 +202,423 @@ export default function Upgrade() {
       });
       rzp.open();
     } catch (e) {
-      alert("Razorpay payment gateway loading... कृपया पुन्हा प्रयत्न करा.");
+      alert("Razorpay payment gateway is loading... please check your connection and try again.");
       setLoading(false);
     }
   };
 
-  // Pricing configuration
-  const prices = {
-    pro: {
-      monthly: { price: 499, paise: 49900, days: 30, period: '/महिना' },
-      yearly: { price: 4999, paise: 499900, days: 365, period: '/वर्ष', save: '₹989 वाचवा (17% OFF)' }
-    },
-    ultra: {
-      monthly: { price: 899, paise: 89900, days: 30, period: '/महिना' },
-      yearly: { price: 7999, paise: 799900, days: 365, period: '/वर्ष', save: '₹2,789 वाचवा (25% OFF)' }
-    }
-  };
+  // Features by plan
+  const plusFeatures: PlanFeature[] = [
+    { title: '⚡ Instant WhatsApp Digital Bills & PDFs', subtitle: 'Send itemized bills and downloadable PDF receipts with 1 click', isNew: true },
+    { title: '📲 1-Click WhatsApp Udhar Reminders', subtitle: 'Automated khata collection messages with instant UPI Pay Link', isNew: true },
+    { title: '🏷️ Custom Barcode Sticker Generator', subtitle: 'Generate and print 1D/2D barcode labels for loose items' },
+    { title: '📑 CA-Ready GSTR-1 & Financial Reports', subtitle: '1-click export of sales, tax, and expenses for CA tax filing' },
+    { title: '👥 Multi-Staff (Up to 2 Cashiers)', subtitle: 'Independent cashier logins with restricted admin rights' },
+    { title: '☁️ Realtime Cloud Sync & Multi-Device', subtitle: 'Seamlessly access POS from phone, tablet, and PC simultaneously' }
+  ];
 
   const proFeatures: PlanFeature[] = [
-    { title: '⚡ WhatsApp Instant Bills & Invoices', subtitle: 'ग्राहकांना 1-क्लिकमध्ये WhatsApp वर बिल व PDF पाठवा', isNew: true },
-    { title: '🌙 Nightly Business WhatsApp Summary', subtitle: 'दररोज रात्री दुकानाचा एकूण नफा, विक्री व स्टॉक रिपोर्ट थेट WhatsApp वर', isNew: true },
-    { title: '📲 1-Click WhatsApp Udhar Reminders', subtitle: 'UPI Payment Link सह उधारी वसुली मेसेज (3x जलद वसुली)', isNew: true },
-    { title: '🎙️ MartGPT AI Voice Billing', subtitle: 'मराठी, हिंदी किंवा इंग्रजीत बोलून सुपरफास्ट बिल बनवा', isNew: true },
-    { title: '📊 AI Demand Forecast & Stock Alerts', subtitle: 'कमी स्टॉक आणि वेगाने विकल्या जाणाऱ्या वस्तूंचे स्मार्ट अंदाज', isNew: true },
-    { title: '🏷️ Custom Barcode Sticker Generator', subtitle: 'सुट्या किराणा मालासाठी 1D/2D बारकोड लेबल डिझाइन व प्रिंट' },
-    { title: '👥 Multi-Staff / Cashier Accounts', subtitle: 'कॅशियर व कर्मचाऱ्यांसाठी स्वतंत्र लॉगिन व प्रॉफिट मार्जिन लॉक' },
-    { title: '📑 CA-Ready GSTR-1 Tax & Excel Reports', subtitle: 'GST व इन्कम टॅक्स ऑडिटसाठी 1-क्लिक फायनान्शिअल एक्सेल एक्सपोर्ट' },
-    { title: '🔊 Voice Audio Payment Soundbox', subtitle: 'UPI / रोख पेमेंट मिळाल्यावर थेट मराठीत ऑडिओ आवाज' },
-    { title: '☁️ Realtime Cloud Sync & Multi-Device', subtitle: 'मोबाईल, टॅबलेट किंवा कॉम्प्युटरवरून कधीही दुकानाचे काम करा' },
-    { title: '🚀 Priority Phone & WhatsApp Support', subtitle: 'कोणत्याही मदतीसाठी थेट व्हॉट्सअॅप व फोन सहाय्य' }
+    { title: '👑 Everything in Plus Plan included', subtitle: 'All WhatsApp billing and tax tools unlocked' },
+    { title: '🎙️ MartGPT AI Voice Billing Engine', subtitle: 'Speak items in Marathi, Hindi, or English to create lightning-fast bills', isNew: true },
+    { title: '🌙 Daily Nightly Business WhatsApp Summary', subtitle: 'Automated 9:30 PM report with daily sales, cash, UPI, profit & udhar', isNew: true },
+    { title: '🔊 Voice Audio Payment Soundbox', subtitle: 'Spoken audio alert in Marathi/Hindi the second a payment is received', isNew: true },
+    { title: '📊 AI Smart Demand Forecast & Stock Alerts', subtitle: 'Intelligent predictions on fast-moving goods and low stock warnings', isNew: true },
+    { title: '👥 Multi-Staff (Up to 5 Cashiers)', subtitle: 'Cashier accounts with profit margin lock so staff cannot view profit' },
+    { title: '🚀 Priority Phone & WhatsApp Support', subtitle: 'Fast-track technical and billing assistance from our team' }
   ];
 
   const ultraFeatures: PlanFeature[] = [
-    { title: '👑 Everything in Pro Plan included', subtitle: 'सर्व Pro फीचर्सचा अमर्याद वापर' },
-    { title: '🏢 Multi-Counter & Multi-Store Sync', subtitle: 'एकाच दुकानातील अनेक बिलिंग काउंटर्स किंवा मल्टिपल शाखांचे व्यवस्थापन', isNew: true },
-    { title: '🏷️ Custom Shop Branding on WhatsApp Bills', subtitle: 'आपला स्वतःचा लोगो, दुकानाचे नाव, पत्ता व सानुकूल मेसेज', isNew: true },
-    { title: '🧠 MartGPT AI Profit & Dead-Stock Engine', subtitle: 'कोणत्या वस्तूंवर जास्त नफा मिळतो व कोणते सामान पडून आहे याचे सखोल AI विश्लेषण', isNew: true },
-    { title: '🎯 Customer Loyalty Points & Offers', subtitle: 'ग्राहकांना रिवॉर्ड पॉईंट्स व सणासुदीचे व्हॉट्सअॅप ब्रॉडकास्ट मेसेज', isNew: true },
-    { title: '📦 Free Old Data Migration Support', subtitle: 'जुन्या सॉफ्टवेअर किंवा एक्सेलवरून उत्पादने मोफत ट्रान्सफर करून मिळतील' },
-    { title: '🛡️ Dedicated 24/7 VIP Account Manager', subtitle: 'वैयक्तिक सहाय्यक व सर्वोच्च प्राधान्य सपोर्ट' }
+    { title: '👑 Everything in Pro Plan included', subtitle: 'Uncapped access to all AI and automation tools' },
+    { title: '🏢 Multi-Counter & Multi-Store Cloud Sync', subtitle: 'Run multiple billing counters or manage multiple store branches in 1 app', isNew: true },
+    { title: '🏷️ Custom Logo & Shop Branding on WhatsApp', subtitle: 'Your store logo, business name, address & personalized footer on all bills', isNew: true },
+    { title: '🧠 MartGPT AI Profit & Dead-Stock Engine', subtitle: 'Deep AI analytics on highest-margin products & stagnant capital clearance', isNew: true },
+    { title: '🎯 Customer Loyalty Points & Festival Campaigns', subtitle: 'Reward repeat customers with points and send festive WhatsApp broadcast offers', isNew: true },
+    { title: '📦 Free 1-on-1 Old Data Migration', subtitle: 'Our technical team transfers all products & customers from Excel/old software' },
+    { title: '👥 Unlimited Cashier & Staff Accounts', subtitle: 'No user limits with granular role permissions and cashier lockdown' },
+    { title: '🛡️ Dedicated 24/7 VIP Personal Account Manager', subtitle: 'Direct personal WhatsApp hotline with top-priority resolution' }
   ];
 
   const faqs = [
     {
-      q: 'WhatsApp बिलिंग आणि नाईटली समरी कशी काम करते?',
-      a: 'MartGPT मध्ये तुमचे WhatsApp सुरक्षितपणे कनेक्ट होते. जेव्हा जेव्हा तुम्ही बिल बनवता, तेव्हा एका क्लिकमध्ये ग्राहकाच्या WhatsApp वर सुंदर आयटमाइज्ड बिल व PDF जाते. तसेच रोज रात्री तुमच्या ठरलेल्या वेळेवर (उदा. रात्री ९:३०) संपूर्ण दिवसाचा विक्री, कॅश, UPI, उधारी आणि कमी स्टॉकचा अहवाल तुमच्या WhatsApp वर आपोआप येतो!'
+      q: 'How does WhatsApp Digital Billing and the Nightly Summary work?',
+      a: 'MartGPT connects securely with WhatsApp. Each time you finalize a bill, a single click delivers an itemized digital bill and PDF invoice directly to your customer. Every night at your scheduled time (e.g., 9:30 PM), a comprehensive End-of-Day summary detailing total sales, cash, UPI, khata udhar, and low stock is delivered automatically to your phone!'
     },
     {
-      q: 'मी माझा प्लॅन कधीही अपग्रेड किंवा बदलू शकतो का?',
-      a: 'होय! तुम्ही कधीही Pro किंवा Ultra Pro प्लॅनमध्ये अपग्रेड करू शकता. Razorpay द्वारे पेमेंट पूर्ण होताच तुमचा नवीन प्लॅन त्वरित सक्रिय (Instant Active) होतो.'
+      q: 'Why is Ultra Pro recommended as the best value for supermarkets?',
+      a: 'Ultra Pro is built specifically for growth-oriented retail stores and multi-counter supermarkets. It includes unlimited multi-counter sync, your custom store logo on WhatsApp bills, our AI Dead-Stock & Profit Engine to boost net profit by 15-20%, customer loyalty points, and a dedicated 24/7 VIP Account Manager.'
     },
     {
-      q: 'माझ्या दुकानातील डेटा सुरक्षित आहे का?',
-      a: 'होय, १००% सुरक्षित! तुमचा संपूर्ण डेटा एन्क्रिप्टेड TiDB सर्व्हरलेस क्लाउडवर ऑटोमॅटिक बॅकअप होतो. मोबाईल खराब झाला किंवा कॉम्प्युटर बंद पडला तरीही तुमचा कोणताही डेटा नष्ट होत नाही.'
+      q: 'How do Promo Codes work on MartGPT?',
+      a: 'Simply enter your coupon code (e.g. DIWALI50 or WELCOME100) into the Promo Code box and click Apply. The discount will instantly recalculate across all plans, showing you exact savings before Razorpay checkout.'
     },
     {
-      q: 'माझ्याकडे कॉम्प्युटर किंवा थर्मल प्रिंटर नसेल तरी चालेल का?',
-      a: 'नक्कीच! MartGPT संपूर्णपणे मोबाईल आणि टॅब्लेटवर चालते. तुमच्याकडे थर्मल प्रिंटर असल्यास ब्लूटूथ किंवा USB द्वारे प्रिंट करू शकता, किंवा प्रिंटर नसताना डिजिटल WhatsApp बिल देऊ शकता.'
+      q: 'Can I switch or upgrade my plan at any time?',
+      a: 'Yes, anytime! Your new plan takes effect immediately upon completing the payment through Razorpay.'
     },
     {
-      q: 'पेमेंट सुरक्षित कसे आहे आणि कोणते पर्याय उपलब्ध आहेत?',
-      a: 'पेमेंट Razorpay द्वारे पूर्णपणे एन्क्रिप्टेड व सुरक्षित आहे. तुम्ही Google Pay, PhonePe, Paytm, सर्व UPI ॲप्स, डेबिट/क्रेडिट कार्ड किंवा नेट बँकिंग वापरून पेमेंट करू शकता.'
+      q: 'Is my retail store data safe and backed up?',
+      a: 'Absolutely 100% secure. Your catalog, transactions, customers, and khata records are encrypted and continuously backed up to TiDB Serverless Cloud. Even if your phone or computer crashes, you will never lose a single transaction.'
+    },
+    {
+      q: 'Do I need a computer or a thermal printer to use MartGPT?',
+      a: 'Not at all! MartGPT runs smoothly on mobile phones, tablets, laptops, and desktop computers. You can print physical thermal receipts via Bluetooth/USB or issue digital WhatsApp bills directly with zero paper cost.'
+    },
+    {
+      q: 'What payment options are supported?',
+      a: 'We accept Google Pay, PhonePe, Paytm, all UPI apps, Visa/Mastercard/RuPay Credit & Debit Cards, and Net Banking via Razorpay.'
     }
   ];
 
   return (
-    <div className="max-w-7xl mx-auto space-y-12 pb-16 px-4 sm:px-6">
-      {/* Hero Header */}
-      <div className="text-center space-y-4 pt-6 animate-fadeInUp">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold text-xs uppercase tracking-wider">
-          <Sparkles className="h-3.5 w-3.5" />
-          Next-Gen AI Retail & Kirana Operating System
+    <div className="max-w-7xl mx-auto space-y-12 pb-20 px-4 sm:px-6">
+      
+      {/* ── 1. Hero Header ── */}
+      <div className="text-center space-y-4 pt-6">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 font-bold text-xs uppercase tracking-wider">
+          <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+          Next-Gen AI Retail & Supermarket Operating System
         </div>
         
-        <h1 className="text-3xl sm:text-5xl font-black tracking-tight flex items-center justify-center gap-3 text-foreground">
-          <Crown className="h-10 w-10 text-yellow-500 animate-pulse" />
-          MartGPT <span className="bg-gradient-to-r from-primary via-indigo-500 to-purple-600 bg-clip-text text-transparent">Premium</span>
+        <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground flex items-center justify-center gap-3">
+          <Crown className="h-9 w-9 text-amber-400 animate-bounce" />
+          MartGPT <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-amber-500 bg-clip-text text-transparent">Premium Plans</span>
         </h1>
         
-        <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
-          स्मार्ट AI व्हॉट्सअॅप बिलिंग, नाईटली बिझनेस समरी, उधारी वसुली आणि मल्टी-स्टाफ काउंटर्ससह तुमच्या दुकानाची कमाई आणि वेग वाढवा.
+        <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto">
+          Scale your store with Smart AI Voice Billing, Automated WhatsApp Receipts, Nightly EOD Summaries, Khata Recovery, and Multi-Counter Cloud Sync.
         </p>
 
-        {/* Current Active Plan Alert */}
-        {isPro && (
-          <div className="bg-gradient-to-r from-green-500/10 via-emerald-500/10 to-teal-500/10 border border-green-500/30 text-green-700 dark:text-green-300 p-5 rounded-2xl flex flex-col sm:flex-row items-center gap-4 justify-between max-w-2xl mx-auto shadow-sm">
+        {/* Current Active Plan Notice */}
+        {(isPro || isUltraPro || isPlus) && (
+          <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-4 justify-between max-w-2xl mx-auto shadow-sm">
             <div className="flex items-center gap-3 text-left">
-              <div className="p-2.5 bg-green-500/20 rounded-xl text-green-600">
-                <Check className="h-6 w-6" />
+              <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-600">
+                <Check className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base">
-                  आपण {isUltraPro ? 'MartGPT Ultra Pro 👑' : 'MartGPT Pro ⚡'} प्लॅनवर सक्रिय आहात!
+                <h3 className="font-bold text-sm sm:text-base">
+                  Your store is currently active on {isUltraPro ? 'MartGPT Ultra Pro 👑' : isPro ? 'MartGPT Pro ⚡' : 'MartGPT Plus 🌟'}
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  सर्व प्रिमियम फीचर्स अनलॉक आहेत. 
-                  {shopData?.planExpiry && ` वैधता: ${new Date(shopData.planExpiry).toLocaleDateString('mr-IN', { year: 'numeric', month: 'long', day: 'numeric' })} पर्यंत.`}
+                  Premium features unlocked. 
+                  {shopData?.planExpiry && ` Valid until ${new Date(shopData.planExpiry).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}.`}
                 </p>
               </div>
             </div>
-            <span className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-full uppercase tracking-wider">
-              सक्रिय प्लॅन
+            <span className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded-full uppercase tracking-wider whitespace-nowrap">
+              Active Plan
             </span>
           </div>
         )}
 
-        {/* Billing Cycle Switcher */}
+        {/* ── Billing Cycle Toggle ── */}
         <div className="pt-4 flex items-center justify-center">
           <div className="bg-muted p-1.5 rounded-2xl flex items-center border border-border shadow-inner">
             <button
               onClick={() => setBillingCycle('monthly')}
-              className={`px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
                 billingCycle === 'monthly'
                   ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              मासिक (Monthly)
+              Monthly Billing
             </button>
             <button
               onClick={() => setBillingCycle('yearly')}
-              className={`px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
                 billingCycle === 'yearly'
-                  ? 'bg-primary text-primary-foreground shadow-md'
+                  ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              वार्षिक (Yearly)
-              <span className="bg-yellow-400 text-yellow-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide">
-                17% बचत
+              Annual Billing
+              <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide">
+                Save Up To 17%
               </span>
             </button>
           </div>
         </div>
+
+        {/* ── 2. Promo Code / Coupon Engine Bar ── */}
+        <div className="max-w-xl mx-auto pt-2">
+          <div className="p-4 rounded-3xl border border-indigo-500/20 bg-card/60 backdrop-blur-sm shadow-sm space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold flex items-center gap-1.5 text-foreground">
+                <Tag className="w-3.5 h-3.5 text-indigo-500" /> Have a Promo / Coupon Code?
+              </span>
+              <span className="text-[11px] text-muted-foreground">Instant Plan Discount</span>
+            </div>
+
+            {appliedCoupon ? (
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-600 font-black">
+                    {appliedCoupon.code}
+                  </span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                    {appliedCoupon.message}
+                  </span>
+                </div>
+                <button 
+                  onClick={handleRemoveCoupon} 
+                  className="p-1 hover:bg-emerald-500/20 rounded-lg text-muted-foreground hover:text-foreground"
+                  title="Remove coupon"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Enter code (e.g. DIWALI50, WELCOME100, ULTRAVIP)"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon()}
+                  className="flex-1 px-4 py-2 text-xs rounded-xl bg-background border border-border text-foreground focus:border-indigo-500 outline-none uppercase font-mono tracking-wider"
+                />
+                <Button
+                  onClick={() => handleApplyCoupon()}
+                  disabled={couponLoading || !couponInput.trim()}
+                  className="h-9 px-4 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl"
+                >
+                  {couponLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply'}
+                </Button>
+              </div>
+            )}
+
+            {couponError && (
+              <p className="text-[11px] font-semibold text-rose-500 text-left flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> {couponError}
+              </p>
+            )}
+
+            {/* Quick Coupon Chips */}
+            {!appliedCoupon && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-muted-foreground mr-1">Trending Codes:</span>
+                {[
+                  { code: 'DIWALI50', desc: '50% OFF' },
+                  { code: 'WELCOME100', desc: '₹100 OFF' },
+                  { code: 'ULTRAVIP', desc: '30% OFF' }
+                ].map(c => (
+                  <button
+                    key={c.code}
+                    onClick={() => handleApplyCoupon(c.code)}
+                    className="px-2.5 py-1 rounded-lg bg-muted hover:bg-indigo-500/10 hover:text-indigo-600 border border-border text-[11px] font-mono font-bold transition-colors flex items-center gap-1"
+                  >
+                    <span>{c.code}</span>
+                    <span className="text-[9px] text-emerald-500 font-sans font-bold">({c.desc})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
 
-      {/* Plan Cards Grid */}
-      <div className="grid lg:grid-cols-3 gap-8 max-w-7xl mx-auto items-stretch">
+      {/* ── 3. Plan Cards Grid (4 Tiers) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto items-stretch">
         
-        {/* Basic Plan */}
-        <div className="border border-border/80 bg-card rounded-3xl p-7 shadow-sm flex flex-col relative opacity-90 hover:opacity-100 transition-all">
+        {/* ── CARD 1: STARTER (FREE) ── */}
+        <div className="border border-border bg-card rounded-3xl p-6 shadow-sm flex flex-col relative opacity-90 hover:opacity-100 transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-muted rounded-full text-muted-foreground">
-              सुरवात (Starter)
+              Micro Retail
             </span>
             <Store className="h-5 w-5 text-muted-foreground" />
           </div>
           
-          <h2 className="text-2xl font-black mt-4">Basic मोफत</h2>
+          <h2 className="text-xl font-black mt-4 text-foreground">Starter Free</h2>
           
-          <div className="mt-3 flex items-baseline text-4xl sm:text-5xl font-black text-foreground">
+          <div className="mt-2 flex items-baseline text-4xl font-black text-foreground">
             ₹0
-            <span className="ml-1 text-base font-semibold text-muted-foreground">/कायमस्वरूपी</span>
+            <span className="ml-1 text-xs font-semibold text-muted-foreground">/lifetime</span>
           </div>
-          <p className="mt-2 text-xs sm:text-sm text-muted-foreground">
-            लहान किराणा दुकानांसाठी आवश्यक बेसिक बिलिंग सुविधा.
+          <p className="mt-2 text-xs text-muted-foreground min-h-[34px]">
+            Essential POS billing tools for tiny single-counter kirana stores.
           </p>
 
-          <hr className="my-6 border-border" />
+          <hr className="my-5 border-border" />
           
-          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
-            समाविष्ट बेसिक फीचर्स:
+          <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
+            Included in Starter:
           </div>
 
-          <ul className="space-y-3.5 flex-1">
+          <ul className="space-y-3 flex-1 text-xs">
             {[
-              'काउंटर POS बिलिंग (रोख व मॅन्युअल UPI)',
-              'उत्पादने व अमर्याद स्टॉक मॅनेजमेंट',
-              'ग्राहकांचे खाते व उधारी वही (Khata Book)',
-              'थर्मल पावती प्रिंटिंग (2" व 3" पावती)',
-              'दैनिक विक्री डॅशबोर्ड सारांश',
-              'सिंगल काउंटर डिव्हाइस वापर'
+              'Fast Counter POS (Cash & Manual UPI)',
+              'Customer Khata Book & Udhar Ledger',
+              'Unlimited Products & Stock Catalog',
+              'Thermal Receipt Printing (2", 3" & A4)',
+              'Daily Sales & Shift Summaries',
+              'Single device counter access'
             ].map(feature => (
-              <li key={feature} className="flex items-start gap-2.5 text-xs sm:text-sm">
-                <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                <span>{feature}</span>
+              <li key={feature} className="flex items-start gap-2">
+                <Check className="h-3.5 w-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                <span className="text-muted-foreground">{feature}</span>
               </li>
             ))}
 
-            <div className="pt-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
-              बेसिक प्लॅनमध्ये उपलब्ध नाही:
+            <div className="pt-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+              Not in Starter:
             </div>
             
             {[
-              'WhatsApp थेट डिजिटल बिल व PDF',
-              'नाईटली बिझनेस समरी WhatsApp वर',
-              '1-Click WhatsApp उधारी वसुली मेसेज',
-              'MartGPT AI व्हॉईस बिलिंग',
-              'कॅशियर व मल्टिपल स्टाफ खाती',
-              'CA-Ready GSTR-1 टॅक्स रिपोर्ट'
+              'WhatsApp Digital Bills & PDFs',
+              'Nightly WhatsApp EOD Summary',
+              '1-Click WhatsApp Udhar Reminders',
+              'AI Voice Billing Engine',
+              'Barcode Sticker Generator',
+              'Multi-Staff Cashier Accounts'
             ].map(feature => (
-              <li key={feature} className="flex items-start gap-2.5 text-xs text-muted-foreground/60 line-through">
-                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <li key={feature} className="flex items-start gap-2 text-muted-foreground/50 line-through">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                 <span>{feature}</span>
               </li>
             ))}
           </ul>
           
-          <Button variant="outline" className="mt-8 w-full h-11 text-sm font-bold" disabled>
-            {isPro ? 'बेसिक प्लॅन' : 'सध्याचा प्लॅन (Active)'}
+          <Button variant="outline" className="mt-8 w-full h-11 text-xs font-bold rounded-2xl" disabled>
+            {isPro || isUltraPro || isPlus ? 'Basic Tier' : 'Current Active Plan'}
           </Button>
         </div>
 
-        {/* Pro Plan (Most Popular) */}
-        <div className="border-2 border-primary bg-card rounded-3xl p-7 shadow-xl flex flex-col relative transform lg:-translate-y-2 hover:shadow-2xl transition-all">
-          <div className="absolute -top-3.5 left-1/2 transform -translate-x-1/2">
-            <span className="bg-gradient-to-r from-primary to-indigo-600 text-white text-[11px] font-black px-4 py-1.5 rounded-full uppercase tracking-wider shadow-md flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" /> सर्वात लोकप्रिय (Most Popular)
+        {/* ── CARD 2: PLUS (SMART GROWTH) ── */}
+        <div className="border border-indigo-500/20 bg-card rounded-3xl p-6 shadow-sm flex flex-col relative hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-indigo-500/10 text-indigo-500 rounded-full">
+              Growth Stores
             </span>
+            <Receipt className="h-5 w-5 text-indigo-500" />
           </div>
 
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-primary/10 text-primary rounded-full">
-              स्मार्ट AI ऑटोमेशन
-            </span>
-            <Crown className="h-6 w-6 text-yellow-500" />
-          </div>
-
-          <h2 className="text-2xl font-black mt-4 flex items-center gap-2 text-foreground">
-            MartGPT Pro
-          </h2>
+          <h2 className="text-xl font-black mt-4 text-foreground">MartGPT Plus</h2>
           
-          <div className="mt-3 flex items-baseline text-4xl sm:text-5xl font-black text-foreground">
-            ₹{billingCycle === 'yearly' ? prices.pro.yearly.price : prices.pro.monthly.price}
-            <span className="ml-1 text-base font-semibold text-muted-foreground">
-              {billingCycle === 'yearly' ? prices.pro.yearly.period : prices.pro.monthly.period}
-            </span>
-          </div>
-
-          {billingCycle === 'yearly' ? (
-            <p className="mt-1 text-xs font-bold text-green-600 dark:text-green-400">
-              {prices.pro.yearly.save}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-foreground">
-              कोणतीही बांधिलकी नाही, हवे तेव्हा रद्द करा
-            </p>
-          )}
-
-          <hr className="my-6 border-border" />
-          
-          <div className="text-xs font-bold uppercase tracking-wider text-primary mb-4 flex items-center gap-1.5">
-            <Zap className="h-4 w-4" /> सर्व Basic + हे नवीन शक्तिशाली फीचर्स:
-          </div>
-
-          <ul className="space-y-3 flex-1">
-            {proFeatures.map((f, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <Check className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
-                <div>
-                  <div className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-1.5">
-                    {f.title}
-                    {f.isNew && (
-                      <span className="text-[10px] font-black px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 rounded">
-                        NEW
-                      </span>
-                    )}
-                  </div>
-                  {f.subtitle && (
-                    <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-                      {f.subtitle}
-                    </div>
+          {(() => {
+            const base = billingCycle === 'yearly' ? prices.plus.yearly.price : prices.plus.monthly.price;
+            const period = billingCycle === 'yearly' ? prices.plus.yearly.period : prices.plus.monthly.period;
+            const { final, discount } = getCalculatedPrice(base);
+            return (
+              <div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  {discount > 0 && (
+                    <span className="text-sm line-through text-muted-foreground font-semibold">₹{base}</span>
                   )}
+                  <span className="text-4xl font-black text-foreground">₹{final}</span>
+                  <span className="text-xs font-semibold text-muted-foreground">{period}</span>
+                </div>
+                {discount > 0 ? (
+                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
+                    Promo Saved: ₹{discount} OFF
+                  </p>
+                ) : billingCycle === 'yearly' ? (
+                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
+                    {prices.plus.yearly.save}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Cancel anytime</p>
+                )}
+              </div>
+            );
+          })()}
+
+          <p className="mt-2 text-xs text-muted-foreground min-h-[34px]">
+            Instant WhatsApp digital invoices and automated 1-click udhar recovery.
+          </p>
+
+          <hr className="my-5 border-border" />
+          
+          <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 mb-3 flex items-center gap-1">
+            <Zap className="h-3.5 w-3.5" /> All Starter Features PLUS:
+          </div>
+
+          <ul className="space-y-3 flex-1 text-xs">
+            {plusFeatures.map((f, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <Check className="h-3.5 w-3.5 text-indigo-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-bold text-foreground">{f.title}</div>
+                  {f.subtitle && <div className="text-[10px] text-muted-foreground mt-0.5">{f.subtitle}</div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          
+          <Button 
+            onClick={() => {
+              const cfg = billingCycle === 'yearly' ? prices.plus.yearly : prices.plus.monthly;
+              handleUpgrade(cfg.days, cfg.price, 'MartGPT Plus');
+            }} 
+            disabled={isPlus || loading} 
+            variant="outline"
+            className="mt-8 w-full h-11 text-xs font-bold border-indigo-500/40 text-indigo-500 hover:bg-indigo-500/10 rounded-2xl"
+          >
+            {isPlus ? 'Currently Active ✓' : 'Get MartGPT Plus'}
+          </Button>
+        </div>
+
+        {/* ── CARD 3: PRO (AI AUTOMATION) ── */}
+        <div className="border border-indigo-600 bg-card rounded-3xl p-6 shadow-md flex flex-col relative hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-indigo-600 text-white rounded-full">
+              🔥 Most Popular
+            </span>
+            <Mic className="h-5 w-5 text-indigo-500" />
+          </div>
+
+          <h2 className="text-xl font-black mt-4 text-foreground">MartGPT Pro</h2>
+          
+          {(() => {
+            const base = billingCycle === 'yearly' ? prices.pro.yearly.price : prices.pro.monthly.price;
+            const period = billingCycle === 'yearly' ? prices.pro.yearly.period : prices.pro.monthly.period;
+            const { final, discount } = getCalculatedPrice(base);
+            return (
+              <div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  {discount > 0 && (
+                    <span className="text-sm line-through text-muted-foreground font-semibold">₹{base}</span>
+                  )}
+                  <span className="text-4xl font-black text-foreground">₹{final}</span>
+                  <span className="text-xs font-semibold text-muted-foreground">{period}</span>
+                </div>
+                {discount > 0 ? (
+                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
+                    Promo Saved: ₹{discount} OFF
+                  </p>
+                ) : billingCycle === 'yearly' ? (
+                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
+                    {prices.pro.yearly.save}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Cancel anytime</p>
+                )}
+              </div>
+            );
+          })()}
+
+          <p className="mt-2 text-xs text-muted-foreground min-h-[34px]">
+            AI Voice Billing, Marathi Payment Audio Soundbox & Daily Nightly WhatsApp Summaries.
+          </p>
+
+          <hr className="my-5 border-border" />
+          
+          <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 mb-3 flex items-center gap-1">
+            <Sparkles className="h-3.5 w-3.5" /> All Plus Features PLUS:
+          </div>
+
+          <ul className="space-y-3 flex-1 text-xs">
+            {proFeatures.map((f, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <Check className="h-3.5 w-3.5 text-indigo-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-bold text-foreground flex items-center gap-1">
+                    {f.title}
+                    {f.isNew && <span className="text-[9px] px-1 bg-indigo-500/10 text-indigo-600 rounded font-black">AI</span>}
+                  </div>
+                  {f.subtitle && <div className="text-[10px] text-muted-foreground mt-0.5">{f.subtitle}</div>}
                 </div>
               </li>
             ))}
@@ -372,72 +627,91 @@ export default function Upgrade() {
           <Button 
             onClick={() => {
               const cfg = billingCycle === 'yearly' ? prices.pro.yearly : prices.pro.monthly;
-              handleUpgrade(cfg.days, cfg.paise, 'MartGPT Pro');
+              handleUpgrade(cfg.days, cfg.price, 'MartGPT Pro');
             }} 
             disabled={isPro || loading} 
-            className="mt-8 w-full h-12 text-sm sm:text-base font-black shadow-lg bg-primary hover:bg-primary/90 text-white rounded-2xl"
+            className="mt-8 w-full h-11 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-md"
           >
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : isPro ? (
-              'सध्या Pro सक्रिय आहे ✓'
-            ) : (
-              `MartGPT Pro सुरू करा (₹${billingCycle === 'yearly' ? prices.pro.yearly.price : prices.pro.monthly.price})`
-            )}
+            {isPro ? 'Pro Active ✓' : 'Upgrade to Pro'}
           </Button>
         </div>
 
-        {/* Ultra Pro Plan */}
-        <div className="border border-purple-500/30 bg-gradient-to-b from-card via-card to-purple-500/5 rounded-3xl p-7 shadow-lg flex flex-col relative hover:shadow-2xl transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-purple-500/10 text-purple-600 rounded-full">
-              मोठ्या मार्ट्ससाठी (Enterprise)
+        {/* ── CARD 4: ULTRA PRO (VIP ENTERPRISE) - THE SHOWSTOPPER! ── */}
+        <div className="border-2 border-purple-500/80 bg-gradient-to-b from-purple-950/20 via-card to-card rounded-3xl p-6 shadow-xl flex flex-col relative transform lg:-translate-y-2 hover:shadow-2xl transition-all ring-2 ring-purple-500/30">
+          
+          {/* VIP Badge Header */}
+          <div className="absolute -top-3.5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+            <span className="bg-gradient-to-r from-purple-600 via-indigo-600 to-amber-500 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-wider shadow-lg flex items-center gap-1.5">
+              <Crown className="h-3.5 w-3.5 text-amber-300" /> RECOMMENDED • 74% BUY THIS
             </span>
-            <Sparkles className="h-6 w-6 text-purple-500" />
           </div>
 
-          <h2 className="text-2xl font-black mt-4 flex items-center gap-2 text-foreground">
-            Ultra Pro <Crown className="h-5 w-5 text-yellow-500" />
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-purple-500/15 text-purple-400 border border-purple-500/30 rounded-full flex items-center gap-1">
+              👑 Enterprise VIP
+            </span>
+            <Sparkles className="h-5 w-5 text-amber-400 animate-pulse" />
+          </div>
+
+          <h2 className="text-2xl font-black mt-4 text-foreground flex items-center gap-2">
+            Ultra Pro <Crown className="h-5 w-5 text-amber-400" />
           </h2>
           
-          <div className="mt-3 flex items-baseline text-4xl sm:text-5xl font-black text-foreground">
-            ₹{billingCycle === 'yearly' ? prices.ultra.yearly.price : prices.ultra.monthly.price}
-            <span className="ml-1 text-base font-semibold text-muted-foreground">
-              {billingCycle === 'yearly' ? prices.ultra.yearly.period : prices.ultra.monthly.period}
-            </span>
-          </div>
+          {(() => {
+            const base = billingCycle === 'yearly' ? prices.ultra.yearly.price : prices.ultra.monthly.price;
+            const period = billingCycle === 'yearly' ? prices.ultra.yearly.period : prices.ultra.monthly.period;
+            const { final, discount } = getCalculatedPrice(base);
+            return (
+              <div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  {discount > 0 && (
+                    <span className="text-sm line-through text-muted-foreground font-semibold">₹{base}</span>
+                  )}
+                  <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-amber-300">
+                    ₹{final}
+                  </span>
+                  <span className="text-xs font-semibold text-muted-foreground">{period}</span>
+                </div>
+                {discount > 0 ? (
+                  <p className="mt-1 text-[11px] font-bold text-emerald-400">
+                    🎉 Promo Discount: ₹{discount} OFF applied!
+                  </p>
+                ) : billingCycle === 'yearly' ? (
+                  <p className="mt-1 text-[11px] font-bold text-amber-400">
+                    {prices.ultra.yearly.save}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Complete freedom, cancel anytime</p>
+                )}
+              </div>
+            );
+          })()}
 
-          {billingCycle === 'yearly' ? (
-            <p className="mt-1 text-xs font-bold text-green-600 dark:text-green-400">
-              {prices.ultra.yearly.save}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-foreground">
-              मल्टिपल काऊंटर्स व सुपरमार्टसाठी सर्वोत्तम
-            </p>
-          )}
+          <p className="mt-2 text-xs text-muted-foreground min-h-[34px]">
+            Multi-counter sync, your custom store logo on WhatsApp, AI Profit Engine & 24/7 VIP Manager.
+          </p>
 
-          <hr className="my-6 border-border" />
+          <hr className="my-5 border-purple-500/20" />
           
-          <div className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-4 flex items-center gap-1.5">
-            <Layers className="h-4 w-4" /> Pro मधील सर्व + प्रिमियम एंटरप्राइज:
+          <div className="text-[11px] font-black uppercase tracking-wider text-purple-400 mb-3 flex items-center gap-1">
+            <Layers className="h-3.5 w-3.5" /> All Pro Features + VIP Exclusives:
           </div>
 
-          <ul className="space-y-3.5 flex-1">
+          <ul className="space-y-3 flex-1 text-xs">
             {ultraFeatures.map((f, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <Check className="h-4 w-4 text-purple-600 mt-1 flex-shrink-0" />
+              <li key={i} className="flex items-start gap-2">
+                <Check className="h-3.5 w-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
                 <div>
-                  <div className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-1.5">
+                  <div className="font-bold text-foreground flex items-center gap-1.5">
                     {f.title}
                     {f.isNew && (
-                      <span className="text-[10px] font-black px-1.5 py-0.2 bg-purple-500/10 text-purple-600 rounded">
+                      <span className="text-[9px] font-black px-1.5 py-0.2 bg-gradient-to-r from-purple-500 to-amber-500 text-white rounded">
                         VIP
                       </span>
                     )}
                   </div>
                   {f.subtitle && (
-                    <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                    <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
                       {f.subtitle}
                     </div>
                   )}
@@ -449,68 +723,68 @@ export default function Upgrade() {
           <Button 
             onClick={() => {
               const cfg = billingCycle === 'yearly' ? prices.ultra.yearly : prices.ultra.monthly;
-              handleUpgrade(cfg.days, cfg.paise, 'MartGPT Ultra Pro');
+              handleUpgrade(cfg.days, cfg.price, 'MartGPT Ultra Pro');
             }} 
             disabled={isUltraPro || loading} 
-            className="mt-8 w-full h-12 text-sm sm:text-base font-black shadow-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-primary hover:opacity-95 text-white rounded-2xl"
+            className="mt-8 w-full h-12 text-sm font-black shadow-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-amber-500 hover:opacity-95 text-white rounded-2xl"
           >
             {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : isUltraPro ? (
-              'Ultra Pro सक्रिय आहे ✓'
+              'Ultra Pro Active ✓'
             ) : (
-              `Ultra Pro वर अपग्रेड करा`
+              'Get Ultra Pro (Recommended) 👑'
             )}
           </Button>
         </div>
 
       </div>
 
-      {/* Trust & Guarantee Strip */}
+      {/* ── 4. Trust & Security Strip ── */}
       <div className="bg-card border border-border rounded-3xl p-6 shadow-sm max-w-5xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           <div className="space-y-2">
-            <div className="w-10 h-10 mx-auto rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+            <div className="w-10 h-10 mx-auto rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
               <ShieldCheck className="h-5 w-5" />
             </div>
-            <h4 className="font-bold text-xs sm:text-sm">100% सुरक्षित पेमेंट</h4>
-            <p className="text-[11px] text-muted-foreground">Razorpay द्वारे UPI व कार्ड्स</p>
+            <h4 className="font-bold text-xs sm:text-sm text-foreground">100% Secure Checkout</h4>
+            <p className="text-[11px] text-muted-foreground">Encrypted Razorpay UPI & Cards</p>
           </div>
 
           <div className="space-y-2">
-            <div className="w-10 h-10 mx-auto rounded-2xl bg-green-500/10 text-green-600 flex items-center justify-center">
+            <div className="w-10 h-10 mx-auto rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
               <Zap className="h-5 w-5" />
             </div>
-            <h4 className="font-bold text-xs sm:text-sm">त्वरित सुरू (Instant)</h4>
-            <p className="text-[11px] text-muted-foreground">पेमेंट होताच फीचर्स अनलॉक</p>
+            <h4 className="font-bold text-xs sm:text-sm text-foreground">Instant Activation</h4>
+            <p className="text-[11px] text-muted-foreground">Features unlocked in 5 seconds</p>
           </div>
 
           <div className="space-y-2">
-            <div className="w-10 h-10 mx-auto rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+            <div className="w-10 h-10 mx-auto rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
               <Cloud className="h-5 w-5" />
             </div>
-            <h4 className="font-bold text-xs sm:text-sm">क्लाउड बॅकअप</h4>
-            <p className="text-[11px] text-muted-foreground">डेटा कधीही सुरक्षित राहतो</p>
+            <h4 className="font-bold text-xs sm:text-sm text-foreground">Realtime Cloud Backup</h4>
+            <p className="text-[11px] text-muted-foreground">Zero data loss on TiDB Cloud</p>
           </div>
 
           <div className="space-y-2">
-            <div className="w-10 h-10 mx-auto rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+            <div className="w-10 h-10 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
               <PhoneCall className="h-5 w-5" />
             </div>
-            <h4 className="font-bold text-xs sm:text-sm">थेट ग्राहक सहाय्य</h4>
-            <p className="text-[11px] text-muted-foreground">WhatsApp व कॉल सपोर्ट</p>
+            <h4 className="font-bold text-xs sm:text-sm text-foreground">Dedicated Merchant Support</h4>
+            <p className="text-[11px] text-muted-foreground">Direct phone & WhatsApp team</p>
           </div>
         </div>
       </div>
 
-      {/* Comprehensive Feature Comparison Matrix */}
+      {/* ── 5. Feature Comparison Matrix (Comprehensive Table) ── */}
       <div className="max-w-5xl mx-auto space-y-6 pt-4">
         <div className="text-center space-y-2">
           <h2 className="text-2xl sm:text-3xl font-black text-foreground">
-            सर्व प्लॅन्सची सविस्तर तुलना (Feature Comparison)
+            Complete Feature Comparison Matrix
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            कोणता प्लॅन आपल्या व्यवसायासाठी योग्य आहे ते तपासा
+            Clear feature-by-feature progression across all 4 plans.
           </p>
         </div>
 
@@ -518,105 +792,125 @@ export default function Upgrade() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs sm:text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="p-4 font-bold text-foreground">वैशिष्ट्ये (Features)</th>
-                  <th className="p-4 font-bold text-center text-muted-foreground w-28 sm:w-36">Basic</th>
-                  <th className="p-4 font-bold text-center text-primary w-28 sm:w-36 bg-primary/5">Pro</th>
-                  <th className="p-4 font-bold text-center text-purple-600 w-28 sm:w-36">Ultra Pro</th>
+                <tr className="border-b border-border bg-muted/60">
+                  <th className="p-4 font-bold text-foreground">Features</th>
+                  <th className="p-4 font-bold text-center text-muted-foreground w-24 sm:w-28">Starter</th>
+                  <th className="p-4 font-bold text-center text-indigo-500 w-24 sm:w-28">Plus</th>
+                  <th className="p-4 font-bold text-center text-indigo-600 w-24 sm:w-28">Pro</th>
+                  <th className="p-4 font-bold text-center text-purple-500 bg-purple-500/10 w-28 sm:w-36">Ultra Pro 👑</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {/* Billing */}
+                {/* POS & Billing */}
                 <tr className="bg-muted/30">
-                  <td colSpan={4} className="p-3 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
-                    🧾 बिलिंग आणि POS (Billing & POS)
+                  <td colSpan={5} className="p-3 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    🧾 POS & Billing Capabilities
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">सुपरफास्ट POS काउंटर बिलिंग</td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
+                  <td className="p-4 font-medium">Fast POS Counter Billing (Barcode & SKU)</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">थर्मल पावती प्रिंटिंग (2", 3" Roll & A4)</td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
+                  <td className="p-4 font-medium">Thermal Receipt Printing (2", 3" & A4)</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">WhatsApp डिजिटल इन्व्हॉइस व PDF बिल</td>
+                  <td className="p-4 font-medium">Instant WhatsApp Digital Bills & PDFs</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5 font-bold text-primary">अमर्याद (Unlimited)</td>
-                  <td className="p-4 text-center font-bold text-purple-600">अमर्याद + Logo Branding</td>
+                  <td className="p-4 text-center font-bold text-indigo-500">Unlimited</td>
+                  <td className="p-4 text-center font-bold text-indigo-600">Unlimited</td>
+                  <td className="p-4 text-center bg-purple-500/5 font-black text-purple-400">Unlimited + Logo Branding</td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">MartGPT AI व्हॉईस बिलिंग (Marathi/Hindi/English)</td>
+                  <td className="p-4 font-medium">MartGPT AI Voice Billing (Marathi, Hindi, English)</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
                 </tr>
 
-                {/* Automation */}
+                {/* WhatsApp & Automation */}
                 <tr className="bg-muted/30">
-                  <td colSpan={4} className="p-3 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
-                    🤖 व्हॉट्सअॅप व AI ऑटोमेशन (WhatsApp & AI)
+                  <td colSpan={5} className="p-3 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    🤖 WhatsApp & AI Automation
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">नाईटली बिझनेस समरी WhatsApp वर (Daily EOD Report)</td>
+                  <td className="p-4 font-medium">Daily Nightly Business WhatsApp Summary (9:30 PM EOD)</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">उधारी वसुली WhatsApp मेसेज (UPI Pay Link सह)</td>
+                  <td className="p-4 font-medium">1-Click WhatsApp Udhar Reminders with UPI Pay Link</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">AI स्टॉक प्रेडिक्शन व लो-स्टॉक अलर्ट्स</td>
+                  <td className="p-4 font-medium">Audio Payment Soundbox (Instant Spoken Announcements)</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center font-bold text-purple-600">Advanced AI Engine</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium">AI Demand Forecast & Fast-Moving Stock Engine</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center"><Check className="h-4 w-4 text-emerald-500 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5 font-black text-purple-400">Deep AI Analytics</td>
                 </tr>
 
-                {/* Staff & Reports */}
+                {/* Enterprise & Multi-Store */}
                 <tr className="bg-muted/30">
-                  <td colSpan={4} className="p-3 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
-                    👥 मॅनेजमेंट आणि टॅक्स रिपोर्टिंग (Team & Tax)
+                  <td colSpan={5} className="p-3 font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    🏢 Enterprise Architecture & Multi-Store
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">कॅशियर व कर्मचारी खाती (Multi-Staff)</td>
-                  <td className="p-4 text-center text-muted-foreground">फक्त Admin</td>
-                  <td className="p-4 text-center bg-primary/5 font-semibold">५ कर्मचाऱ्यांपर्यंत</td>
-                  <td className="p-4 text-center font-bold text-purple-600">अमर्याद (Unlimited)</td>
-                </tr>
-                <tr>
-                  <td className="p-4 font-medium">CA-Ready GSTR-1 & P&L एक्सेल एक्सपोर्ट</td>
+                  <td className="p-4 font-medium">Multi-Counter & Multi-Store Synchronization</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                </tr>
-                <tr>
-                  <td className="p-4 font-medium">सुट्या किराणा मालासाठी बारकोड जनरेटर</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                  <td className="p-4 text-center"><Check className="h-4 w-4 text-green-500 mx-auto" /></td>
-                </tr>
-                <tr>
-                  <td className="p-4 font-medium">मल्टी-काऊंटर / मल्टिपल शाखा सिंक्रोनायझेशन</td>
                   <td className="p-4 text-center text-muted-foreground">-</td>
-                  <td className="p-4 text-center bg-primary/5 text-muted-foreground">-</td>
-                  <td className="p-4 text-center font-bold text-purple-600"><Check className="h-4 w-4 text-purple-600 mx-auto" /></td>
+                  <td className="p-4 text-center bg-purple-500/5 font-black text-purple-400">Unlimited Counters</td>
                 </tr>
                 <tr>
-                  <td className="p-4 font-medium">ग्राहक सपोर्ट</td>
-                  <td className="p-4 text-center text-muted-foreground">कम्युनिटी</td>
-                  <td className="p-4 text-center bg-primary/5 font-semibold text-primary">प्राधान्य WhatsApp</td>
-                  <td className="p-4 text-center font-bold text-purple-600">24/7 VIP फोन व मॅनेजर</td>
+                  <td className="p-4 font-medium">Custom Logo & Shop Branding on Invoices</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium">Multi-Staff Cashier Logins with Profit Margin Lock</td>
+                  <td className="p-4 text-center text-muted-foreground">Admin only</td>
+                  <td className="p-4 text-center font-semibold">2 Staff</td>
+                  <td className="p-4 text-center font-semibold">5 Staff</td>
+                  <td className="p-4 text-center bg-purple-500/5 font-black text-purple-400">Unlimited Staff</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium">Customer Loyalty Reward Points & Festive Broadcasts</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center text-muted-foreground">-</td>
+                  <td className="p-4 text-center bg-purple-500/5"><Check className="h-4 w-4 text-purple-500 mx-auto" /></td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium">Customer Support Level</td>
+                  <td className="p-4 text-center text-muted-foreground">Community</td>
+                  <td className="p-4 text-center font-semibold text-indigo-500">Standard Email/Chat</td>
+                  <td className="p-4 text-center font-semibold text-indigo-600">Priority WhatsApp</td>
+                  <td className="p-4 text-center bg-purple-500/5 font-black text-purple-400">24/7 VIP Phone Manager</td>
                 </tr>
               </tbody>
             </table>
@@ -624,59 +918,64 @@ export default function Upgrade() {
         </div>
       </div>
 
-      {/* Customer Testimonials / Social Proof */}
+      {/* ── 6. Verified Customer Testimonials ── */}
       <div className="max-w-5xl mx-auto space-y-6 pt-6">
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-1 text-yellow-500">
+          <div className="flex items-center justify-center gap-1 text-amber-400">
             {[...Array(5)].map((_, i) => (
-              <Star key={i} className="h-5 w-5 fill-yellow-500 text-yellow-500" />
+              <Star key={i} className="h-5 w-5 fill-amber-400 text-amber-400" />
             ))}
           </div>
-          <h3 className="text-xl sm:text-2xl font-bold">हजारो किराणा आणि सुपरमार्ट मालकांचा विश्वास</h3>
+          <h3 className="text-2xl font-black text-foreground">
+            Trusted by 10,000+ Supermarket & Kirana Owners
+          </h3>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            See how MartGPT transformed local retail businesses into automated profit centers.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-card border border-border p-6 rounded-3xl shadow-sm space-y-3">
-            <p className="text-sm italic text-muted-foreground">
-              "MartGPT मुळे ग्राहकांना WhatsApp वर लगेच बिल मिळते आणि उधारीचे मेसेज UPI लिंकसह पाठवल्यामुळे आमची ९०% उधारी वेळेवर जमा होते. रोज रात्री येणारी बिझनेस समरी खूप उपयोगी आहे!"
+            <p className="text-sm italic text-muted-foreground leading-relaxed">
+              "MartGPT Ultra Pro has completely transformed our supermarket. The automatic WhatsApp bills with our store logo look so professional, and sending udhar payment links directly recovered 90% of our outstanding customer credit. The nightly business summary is indispensable!"
             </p>
             <div className="flex items-center gap-3 pt-2">
-              <div className="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">
-                एस
+              <div className="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-500 font-bold flex items-center justify-center text-sm">
+                SP
               </div>
               <div>
-                <h5 className="font-bold text-sm">सचिन पाटील</h5>
-                <p className="text-xs text-muted-foreground">पाटील सुपरमार्ट, पुणे</p>
+                <h5 className="font-bold text-sm text-foreground">Sachin Patil</h5>
+                <p className="text-xs text-muted-foreground">Patil Supermart, Pune • Ultra Pro Member</p>
               </div>
             </div>
           </div>
 
           <div className="bg-card border border-border p-6 rounded-3xl shadow-sm space-y-3">
-            <p className="text-sm italic text-muted-foreground">
-              "व्हॉईस बिलिंग आणि बारकोड प्रिंटरमुळे किराणा मालाचे बिल बनवणे खूप सोपे झाले आहे. कॅशियर ठेवल्यावर नफा लपवण्याची सोय असल्याने आमचा हिशोब एकदम चोख राहतो."
+            <p className="text-sm italic text-muted-foreground leading-relaxed">
+              "AI Voice Billing is pure magic during evening peak rush hours. My cashiers don't even have to search for products manually. The profit margin lock feature ensures staff can bill smoothly without seeing our supplier purchase costs."
             </p>
             <div className="flex items-center gap-3 pt-2">
-              <div className="w-9 h-9 rounded-full bg-purple-500/10 text-purple-600 font-bold flex items-center justify-center text-sm">
-                आर
+              <div className="w-10 h-10 rounded-full bg-purple-500/10 text-purple-500 font-bold flex items-center justify-center text-sm">
+                RK
               </div>
               <div>
-                <h5 className="font-bold text-sm">रमेश कदम</h5>
-                <p className="text-xs text-muted-foreground">महालक्ष्मी प्रोव्हिजन स्टोअर्स, कोल्हापूर</p>
+                <h5 className="font-bold text-sm text-foreground">Ramesh Kadam</h5>
+                <p className="text-xs text-muted-foreground">Mahalaxmi Provision Store, Kolhapur • Pro Member</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Frequently Asked Questions (FAQ) */}
+      {/* ── 7. Frequently Asked Questions (FAQ) ── */}
       <div className="max-w-4xl mx-auto space-y-6 pt-6">
         <div className="text-center space-y-2">
-          <h3 className="text-2xl font-bold flex items-center justify-center gap-2">
-            <HelpCircle className="h-6 w-6 text-primary" />
-            नेहमी विचारले जाणारे प्रश्न (FAQ)
+          <h3 className="text-2xl font-black flex items-center justify-center gap-2 text-foreground">
+            <HelpCircle className="h-6 w-6 text-indigo-500" />
+            Frequently Asked Questions
           </h3>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            प्लॅन आणि पेमेंटबद्दल तुमच्या शंकांचे निरसन
+            Everything you need to know about plans, discounts, and payment methods.
           </p>
         </div>
 
@@ -686,15 +985,15 @@ export default function Upgrade() {
             return (
               <div 
                 key={index}
-                className="border border-border rounded-2xl bg-card overflow-hidden shadow-sm"
+                className="border border-border rounded-2xl bg-card overflow-hidden shadow-sm transition-all"
               >
                 <button
                   onClick={() => setOpenFaq(isOpen ? null : index)}
                   className="w-full text-left p-4 sm:p-5 font-bold text-sm sm:text-base flex items-center justify-between gap-4 hover:bg-muted/40 transition-colors"
                 >
-                  <span>{faq.q}</span>
+                  <span className="text-foreground">{faq.q}</span>
                   {isOpen ? (
-                    <ChevronUp className="h-5 w-5 text-primary flex-shrink-0" />
+                    <ChevronUp className="h-5 w-5 text-indigo-500 flex-shrink-0" />
                   ) : (
                     <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                   )}
@@ -710,25 +1009,25 @@ export default function Upgrade() {
         </div>
       </div>
 
-      {/* Direct Contact Support Box */}
+      {/* ── 8. Direct WhatsApp Support Hotline CTA ── */}
       <div className="text-center pt-8 border-t border-border max-w-xl mx-auto space-y-3">
-        <h4 className="font-bold text-sm text-foreground">
-          काही प्रश्न किंवा स्पेशल कस्टम प्लॅन हवा आहे?
+        <h4 className="font-bold text-base text-foreground">
+          Need a custom enterprise setup or hardware guidance?
         </h4>
         <p className="text-xs text-muted-foreground">
-          आमच्या टीमशी थेट WhatsApp वर चर्चा करा. आम्ही तुम्हाला योग्य मार्गदर्शन करू.
+          Our retail tech specialists are available 24/7 on WhatsApp to assist you.
         </p>
         <Button 
           variant="outline" 
           onClick={() => {
             const phone = "919999999999";
-            const text = encodeURIComponent("नमस्कार, मला MartGPT Premium Plans बद्दल माहिती हवी आहे.");
+            const text = encodeURIComponent("Hello, I have a question regarding MartGPT Premium Plans and hardware integration.");
             window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
           }}
-          className="rounded-full px-6 text-xs font-bold gap-2"
+          className="rounded-full px-6 py-2.5 text-xs font-bold gap-2 border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10"
         >
-          <MessageSquare className="h-4 w-4 text-green-600" />
-          WhatsApp वर संपर्क करा
+          <MessageSquare className="h-4 w-4 text-emerald-500" />
+          Chat with an Expert on WhatsApp
         </Button>
       </div>
 

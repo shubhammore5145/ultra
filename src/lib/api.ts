@@ -93,7 +93,10 @@ export const api = {
   },
   shops: {
     update: (data: any) => fetchAPI('/shops', { method: 'PUT', body: JSON.stringify(data) }),
-    upgradePlan: (data: { plan: string; planExpiry?: string }) => fetchAPI('/shops/plan', { method: 'PUT', body: JSON.stringify(data) })
+    upgradePlan: (data: { plan: string; planExpiry?: string; couponCode?: string }) => fetchAPI('/shops/plan', { method: 'PUT', body: JSON.stringify(data) })
+  },
+  coupons: {
+    validate: (data: { code: string; planName: string; price: number }) => fetchAPI('/coupons/validate', { method: 'POST', body: JSON.stringify(data) })
   },
   whatsapp: {
     status: () => fetchAPI('/whatsapp/status', { method: 'GET' }),

@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { PlanProvider } from './contexts/PlanContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -23,41 +24,43 @@ import BarcodePrint from './pages/BarcodePrint';
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/receipt/:id" element={<Receipt />} />
-          
-          <Route element={<ProtectedRoute />}>
-            <Route element={<Layout />}>
-              {/* Cashier + Admin Routes */}
-              <Route path="/pos" element={<POS />} />
-              <Route path="/barcode-print" element={<BarcodePrint />} />
-              <Route path="/customers" element={<Customers />} />
-              <Route path="/udhar" element={<Udhar />} />
-              <Route path="/products" element={<Products />} />
-              <Route path="/products/new" element={<ProductForm />} />
-              <Route path="/products/:id" element={<ProductForm />} />
-              <Route path="/support" element={<Support />} />
+      <PlanProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/receipt/:id" element={<Receipt />} />
+            
+            <Route element={<ProtectedRoute />}>
+              <Route element={<Layout />}>
+                {/* Cashier + Admin Routes */}
+                <Route path="/pos" element={<POS />} />
+                <Route path="/barcode-print" element={<BarcodePrint />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/udhar" element={<Udhar />} />
+                <Route path="/products" element={<Products />} />
+                <Route path="/products/new" element={<ProductForm />} />
+                <Route path="/products/:id" element={<ProductForm />} />
+                <Route path="/support" element={<Support />} />
+              </Route>
             </Route>
-          </Route>
-          
-          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-            <Route element={<Layout />}>
-              {/* Admin Only Routes */}
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/purchases" element={<Purchases />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/expenses" element={<Expenses />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/upgrade" element={<Upgrade />} />
+            
+            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+              <Route element={<Layout />}>
+                {/* Admin Only Routes */}
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/purchases" element={<Purchases />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/upgrade" element={<Upgrade />} />
+              </Route>
             </Route>
-          </Route>
-          
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+      </PlanProvider>
     </AuthProvider>
   );
 }

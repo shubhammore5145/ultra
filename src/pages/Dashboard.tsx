@@ -9,10 +9,12 @@ import {
 import { Button } from '../components/ui/button';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import type { Product, Transaction, Expense, Customer } from '../types';
 
 export default function Dashboard() {
   const { shopData } = useAuth();
+  const { canAccess, openUpgradeModal } = usePlan();
   const navigate = useNavigate();
   
   // Financial metrics
@@ -181,6 +183,10 @@ export default function Dashboard() {
 
   // Trigger Nightly Summary WhatsApp to Owner
   const handleSendNightlySummary = async () => {
+    if (!canAccess('nightly_summary')) {
+      openUpgradeModal('nightly_summary');
+      return;
+    }
     const phone = shopData?.phone;
     if (!phone) {
       alert('Please enter your shop phone number in Settings first.');
@@ -295,6 +301,11 @@ export default function Dashboard() {
           >
             <MessageCircle className="h-4 w-4 text-emerald-400" />
             {sendingSummary ? 'Sending...' : 'WhatsApp Summary'}
+            {!canAccess('nightly_summary') && (
+              <span className="text-[10px] bg-purple-500/90 text-white font-black px-1.5 py-0.5 rounded-full ml-0.5 shadow-sm">
+                ⚡ PRO
+              </span>
+            )}
           </Button>
 
           <Button

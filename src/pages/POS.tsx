@@ -9,6 +9,7 @@ import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import type { Product, CartItem } from '../types';
 import { compressImage } from '../lib/imageCompressor';
 
@@ -53,6 +54,7 @@ const cleanPhone = (val: string) => {
 
 export default function POS() {
   const { shopData } = useAuth();
+  const { canAccess, requireFeature, openUpgradeModal } = usePlan();
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const cached = localStorage.getItem('pos_products_cache');
@@ -560,11 +562,13 @@ export default function POS() {
         loyaltyPointsEarned: Math.floor(total / 100)
       });
       setPaymentVerified(false);
-      playSoundboxAlert(total, paymentMethod);
+      if (canAccess('audio_soundbox')) {
+        playSoundboxAlert(total, paymentMethod);
+      }
 
-      // Auto-send WhatsApp bill after configured delay if customer phone is provided (10 digits)
+      // Auto-send WhatsApp bill after configured delay if plan allows and customer phone is provided (10 digits)
       const billDelay = ((shopData as any)?.settings?.billDelaySeconds ?? 5);
-      if (phoneToSend.length === 10) {
+      if (canAccess('whatsapp_bills') && phoneToSend.length === 10) {
         const billMsg = buildWhatsAppBillText(txId, total, phoneToSend, [...cart], discountAmount, paymentMethod);
         setPendingWhatsApp({
           txId,
@@ -621,6 +625,7 @@ export default function POS() {
 
 
   const handleWhatsAppBill = () => {
+    if (!requireFeature('whatsapp_bills')) return;
     if (!checkoutResult) return;
     let targetPhone = checkoutResult.customerPhone ? cleanPhone(checkoutResult.customerPhone) : '';
     if (!targetPhone || targetPhone.length !== 10) {
@@ -648,6 +653,7 @@ export default function POS() {
   };
 
   const handleVoiceSearch = () => {
+    if (!requireFeature('voice_billing')) return;
     if (!voiceSupported) {
       alert("Voice search is not supported in this browser.");
       return;
@@ -800,8 +806,17 @@ export default function POS() {
               )}
 
               <div className="grid grid-cols-3 gap-2 no-print">
-                <Button variant="outline" className="h-12 w-full flex gap-1 font-medium px-2" onClick={handleWhatsAppBill}>
+                <Button 
+                  variant="outline" 
+                  className="h-12 w-full flex gap-1 font-medium px-2 relative" 
+                  onClick={handleWhatsAppBill}
+                >
                   <MessageCircle className="h-4 w-4 text-green-500" /> WhatsApp
+                  {!canAccess('whatsapp_bills') && (
+                    <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-black">
+                      🔒 Plus
+                    </span>
+                  )}
                 </Button>
                 <Button variant="outline" className="h-12 w-full flex gap-1 font-medium px-2" onClick={handlePrintReceipt}>
                   <Printer className="h-4 w-4 text-blue-500" /> Print
@@ -946,14 +961,20 @@ export default function POS() {
               <Button
                 variant="ghost"
                 size="icon"
-                className={`rounded-full transition-all h-10 w-10 ${
+                className={`rounded-full transition-all h-10 w-10 relative ${
                   isListening 
                     ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 animate-pulse' 
                     : 'text-muted-foreground hover:text-primary hover:bg-muted'
                 }`}
                 onClick={handleVoiceSearch}
+                title={canAccess('voice_billing') ? "MartGPT Voice Billing" : "Voice Billing (Pro Feature - Click to Upgrade)"}
               >
                 <Mic className="h-5 w-5" />
+                {!canAccess('voice_billing') && (
+                  <span className="absolute -top-1 -right-1 text-[9px] bg-indigo-600 text-white font-black px-1 rounded-full shadow-sm">
+                    PRO
+                  </span>
+                )}
               </Button>
             )}
           </div>

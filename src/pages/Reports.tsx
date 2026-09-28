@@ -11,12 +11,14 @@ import {
 } from 'recharts';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import { Button } from '../components/ui/button';
 import type { Transaction, Product, Expense, Customer } from '../types';
 
 
 export default function Reports() {
   const { shopData } = useAuth();
+  const { canAccess, requireFeature, openUpgradeModal } = usePlan();
   const [sales, setSales] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -249,6 +251,7 @@ export default function Reports() {
 
   // Export CSV Handlers
   const exportGSTR1CSV = () => {
+    if (!requireFeature('gstr1_reports')) return;
     const rows = [
       [`CA-READY GSTR-1 TAX REPORT - ${(shopData?.shopName || shopData?.name || 'MARTGPT').toUpperCase()}`],
       ['Generated On', new Date().toLocaleString()],
@@ -417,11 +420,16 @@ export default function Reports() {
 
         <button
           onClick={() => setActiveTab('gstr1')}
-          className={`pb-2 px-3 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+          className={`pb-2 px-3 border-b-2 transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === 'gstr1' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          📜 CA-Ready GSTR-1
+          <span>📜 CA-Ready GSTR-1</span>
+          {!canAccess('gstr1_reports') && (
+            <span className="text-[9px] bg-amber-500/20 text-amber-600 px-1.5 py-0.5 rounded font-black">
+              🔒 Plus
+            </span>
+          )}
         </button>
 
         <button

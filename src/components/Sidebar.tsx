@@ -5,6 +5,7 @@ import {
   HelpCircle, ClipboardList, LogOut, X, Barcode
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'], color: 'text-indigo-500' },
@@ -25,19 +26,37 @@ const navItems = [
 /** Desktop Sidebar */
 export function Sidebar() {
   const { userData, shopData, logout } = useAuth();
+  const { plan, canAccess, openUpgradeModal } = usePlan();
   const userRole = userData?.role || 'cashier';
   const filteredNav = navItems.filter(item => item.roles.includes(userRole));
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-border bg-card">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden shadow-md shadow-primary/30">
           <img src="/favicon.svg" alt="MartGPT" className="h-full w-full object-cover" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground leading-tight">{shopData?.name || 'MartGPT'}</p>
-          <p className="text-xs text-muted-foreground capitalize">{userData?.role || 'Admin'}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[11px] text-muted-foreground capitalize">{userData?.role || 'Admin'}</span>
+            <span className="text-[10px] text-muted-foreground">•</span>
+            {plan === 'ultra_pro' ? (
+              <span className="text-[10px] font-black text-purple-400">👑 Ultra</span>
+            ) : plan === 'pro' ? (
+              <span className="text-[10px] font-black text-indigo-400">⚡ Pro</span>
+            ) : plan === 'plus' ? (
+              <span className="text-[10px] font-bold text-blue-400">🌟 Plus</span>
+            ) : (
+              <button 
+                onClick={() => openUpgradeModal()}
+                className="text-[10px] font-bold text-amber-500 hover:underline"
+              >
+                Free ⚡
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -57,7 +76,17 @@ export function Sidebar() {
               {({ isActive }: { isActive: boolean }) => (
                 <>
                   <Icon className={'h-4 w-4 flex-shrink-0 ' + (isActive ? 'text-white' : item.color)} />
-                  <span>{item.name}</span>
+                  <span className="truncate">{item.name}</span>
+                  {item.href === '/barcode-print' && !canAccess('barcode_print') && (
+                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20">
+                      🔒 Plus
+                    </span>
+                  )}
+                  {item.href === '/upgrade' && (
+                    <span className="ml-auto text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">
+                      ⚡
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>
@@ -119,6 +148,7 @@ export function MobileBottomNav() {
 /** Mobile Full-Screen Menu Drawer */
 export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { userData, shopData, logout } = useAuth();
+  const { canAccess } = usePlan();
   const userRole = userData?.role || 'cashier';
   const allItems = navItems.filter(item => item.roles.includes(userRole));
 
@@ -164,7 +194,17 @@ export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 {({ isActive }: { isActive: boolean }) => (
                   <>
                     <Icon className={'h-4 w-4 flex-shrink-0 ' + (isActive ? 'text-white' : item.color)} />
-                    <span>{item.name}</span>
+                    <span className="truncate">{item.name}</span>
+                    {item.href === '/barcode-print' && !canAccess('barcode_print') && (
+                      <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20">
+                        🔒 Plus
+                      </span>
+                    )}
+                    {item.href === '/upgrade' && (
+                      <span className="ml-auto text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">
+                        ⚡
+                      </span>
+                    )}
                   </>
                 )}
               </NavLink>

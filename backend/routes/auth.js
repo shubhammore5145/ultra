@@ -100,7 +100,7 @@ router.post('/login', async (req, res) => {
       try {
         await pool.query(
           'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
-          [user.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'ultra_pro']
+          [user.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'free']
         );
         const [createdShops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
         shop = createdShops[0] || null;
@@ -135,7 +135,7 @@ router.get('/me', async (req, res) => {
       try {
         await pool.query(
           'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
-          [decoded.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'ultra_pro']
+          [decoded.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'free']
         );
         const [createdShops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [decoded.shopId]);
         shop = createdShops[0] || null;

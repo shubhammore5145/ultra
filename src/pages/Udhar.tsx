@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import type { Customer } from '../types';
 
 interface LedgerEntry {
@@ -24,6 +25,7 @@ interface LedgerEntry {
 
 export default function Udhar() {
   const { shopData } = useAuth();
+  const { canAccess, requireFeature } = usePlan();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -116,6 +118,7 @@ export default function Udhar() {
   };
 
   const handleWhatsAppReminder = async (customer: Customer) => {
+    if (!requireFeature('whatsapp_reminders')) return;
     if (!customer.phone) {
       alert('ग्राहकाचा फोन नंबर उपलब्ध नाही.');
       return;
@@ -144,6 +147,7 @@ export default function Udhar() {
   const pendingCustomers = customers.filter(c => Number(c.balance || 0) > 0);
 
   const handleOpenBulkModal = async () => {
+    if (!requireFeature('whatsapp_reminders')) return;
     setShowBulkModal(true);
     setBulkStatus(null);
     try {
@@ -218,11 +222,13 @@ export default function Udhar() {
           <Button
             onClick={handleOpenBulkModal}
             disabled={pendingCustomers.length === 0}
-            className="h-14 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2.5 transition-all active:scale-95 disabled:opacity-50"
+            className="h-14 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2.5 transition-all active:scale-95 disabled:opacity-50 relative"
           >
             <MessageCircle className="h-5 w-5 fill-white/20" />
             <div className="text-left leading-tight">
-              <div className="text-[10px] uppercase tracking-wider text-emerald-200 font-extrabold">Auto Reminder</div>
+              <div className="text-[10px] uppercase tracking-wider text-emerald-200 font-extrabold flex items-center gap-1">
+                Auto Reminder {!canAccess('whatsapp_reminders') && <span className="bg-amber-400 text-slate-950 px-1 rounded text-[9px] font-black">🔒 PLUS</span>}
+              </div>
               <div className="text-sm font-black flex items-center gap-1.5">
                 Send Bulk WhatsApp
                 <span className="bg-emerald-800 text-white text-[11px] px-2 py-0.5 rounded-full font-black">
@@ -418,11 +424,16 @@ export default function Udhar() {
                     <Button 
                       size="sm" 
                       variant="ghost" 
-                      className="text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                      className="text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center"
                       onClick={() => handleWhatsAppReminder(customer)}
-                      title="Send WhatsApp Reminder"
+                      title={canAccess('whatsapp_reminders') ? "Send WhatsApp Reminder" : "WhatsApp Reminder (Plus Feature - Click to Upgrade)"}
                     >
                       <MessageCircle className="h-3.5 w-3.5 mr-1" /> Reminder
+                      {!canAccess('whatsapp_reminders') && (
+                        <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-600 px-1 py-0.2 rounded font-black">
+                          🔒
+                        </span>
+                      )}
                     </Button>
                   )}
                 </div>

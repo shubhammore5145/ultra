@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles } from 'lucide-react';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import { api } from '../lib/api';
 
 export default function Settings() {
   const { userData, shopData, logout } = useAuth();
+  const { plan, canAccess, openUpgradeModal, maxStaffAllowed } = usePlan();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -103,6 +105,10 @@ export default function Settings() {
   }, [shopData]);
 
   const handleStartWhatsapp = async () => {
+    if (!canAccess('whatsapp_bills')) {
+      openUpgradeModal('whatsapp_bills');
+      return;
+    }
     setStartingWhatsapp(true);
     try {
       const res = await fetch('/api/whatsapp/start', { method: 'POST' });
@@ -131,6 +137,10 @@ export default function Settings() {
   };
 
   const handleSendTestMessage = async () => {
+    if (!canAccess('whatsapp_bills')) {
+      openUpgradeModal('whatsapp_bills');
+      return;
+    }
     if (!testPhone || testPhone.trim().length !== 10) {
       alert('कृपया वैध 10-अंकी मोबाइल नंबर टाका');
       return;
@@ -320,13 +330,37 @@ export default function Settings() {
 
       {/* Staff Accounts Section (Live Real Staff Management) */}
       <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
-        <div className="p-6 border-b bg-muted/30">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" /> Staff Accounts & Security
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">Manage who has access to your shop. Cashiers can only access billing and basic operations.</p>
+        <div className="p-6 border-b bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <ShieldCheck className="h-6 w-6 text-primary" /> Staff Accounts & Security
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">Manage who has access to your shop. Cashiers can only access billing and basic operations.</p>
+          </div>
+          <span className="text-xs px-3 py-1.5 rounded-full bg-background border font-semibold text-foreground self-start sm:self-auto shrink-0 shadow-sm">
+            Staff Limit: {staffList.length} / {maxStaffAllowed >= 999 ? 'Unlimited' : maxStaffAllowed}
+          </span>
         </div>
         <div className="p-6 space-y-6">
+          {staffList.length >= maxStaffAllowed && (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-700 dark:text-amber-300">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0 text-amber-500" />
+                <span>
+                  <strong>Staff quota reached:</strong> You have {staffList.length} / {maxStaffAllowed} team member accounts on your <strong>{plan.toUpperCase()}</strong> plan. Upgrade to invite more cashiers!
+                </span>
+              </div>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="h-8 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-500/15 shrink-0 font-bold self-start sm:self-auto" 
+                onClick={() => openUpgradeModal('multi_staff')}
+              >
+                Upgrade Plan ⚡
+              </Button>
+            </div>
+          )}
+
           <div className="space-y-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Active Team Members</h3>
             {loadingStaff ? (
@@ -389,6 +423,10 @@ export default function Settings() {
               <Button
                 type="button"
                 onClick={() => {
+                  if (staffList.length >= maxStaffAllowed) {
+                    openUpgradeModal('multi_staff');
+                    return;
+                  }
                   const text = `Hello! Join my shop on MartGPT. Sign up at the app and select 'Join Shop (Cashier)' with this Shop ID: ${shopData?.shopId}`;
                   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                 }}
@@ -403,12 +441,22 @@ export default function Settings() {
 
       {/* WhatsApp Bot Section */}
       <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
-    <div className="p-6 border-b bg-green-500/10">
-      <h2 className="text-xl font-bold flex items-center gap-2 text-green-600">
-        <Smartphone className="h-6 w-6" /> Auto WhatsApp Bot
-      </h2>
-      <p className="text-sm text-muted-foreground mt-1">Scan the QR code to automatically send bills to customers without clicking "Send".</p>
-    </div>
+        <div className="p-6 border-b bg-green-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2 text-green-600">
+              <Smartphone className="h-6 w-6" /> Auto WhatsApp Bot
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">Scan the QR code to automatically send bills to customers without clicking "Send".</p>
+          </div>
+          {!canAccess('whatsapp_bills') && (
+            <button
+              onClick={() => openUpgradeModal('whatsapp_bills')}
+              className="text-xs font-bold px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-all self-start sm:self-auto shrink-0 cursor-pointer"
+            >
+              🔒 Plus Plan Feature
+            </button>
+          )}
+        </div>
     <div className="p-6">
       <div className="flex flex-col items-center justify-center p-6 border rounded-xl bg-background text-center">
         {!whatsappStatus || whatsappStatus.status === 'DISCONNECTED' ? (
@@ -566,19 +614,36 @@ export default function Settings() {
 
           {/* Summary Settings */}
           <div className="space-y-4">
-            <Label className="flex items-center gap-2 text-base font-semibold">
-              <MessageCircle className="h-4 w-4 text-blue-600" /> Daily Business Summary (WhatsApp)
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2 text-base font-semibold">
+                <MessageCircle className="h-4 w-4 text-blue-600" /> Daily Business Summary (WhatsApp)
+              </Label>
+              {!canAccess('nightly_summary') && (
+                <button
+                  type="button"
+                  onClick={() => openUpgradeModal('nightly_summary')}
+                  className="text-xs font-bold px-2.5 py-1 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/25 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  ⚡ Pro Feature
+                </button>
+              )}
+            </div>
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setWhatsappSettings(prev => ({...prev, summaryEnabled: !prev.summaryEnabled}))}
-                className={`relative w-12 h-6 rounded-full transition-colors ${whatsappSettings.summaryEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                onClick={() => {
+                  if (!canAccess('nightly_summary')) {
+                    openUpgradeModal('nightly_summary');
+                    return;
+                  }
+                  setWhatsappSettings(prev => ({...prev, summaryEnabled: !prev.summaryEnabled}));
+                }}
+                className={`relative w-12 h-6 rounded-full transition-colors ${whatsappSettings.summaryEnabled && canAccess('nightly_summary') ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
               >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${whatsappSettings.summaryEnabled ? 'translate-x-6' : ''}`} />
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${whatsappSettings.summaryEnabled && canAccess('nightly_summary') ? 'translate-x-6' : ''}`} />
               </button>
-              <span className="text-sm font-medium">{whatsappSettings.summaryEnabled ? 'चालू (Enabled)' : 'बंद (Disabled)'}</span>
+              <span className="text-sm font-medium">{whatsappSettings.summaryEnabled && canAccess('nightly_summary') ? 'चालू (Enabled)' : 'बंद (Disabled)'}</span>
             </div>
 
             {whatsappSettings.summaryEnabled && (

@@ -55,20 +55,26 @@ export default function Login() {
   const [resetError, setResetError] = useState('');
 
   const formatFirebaseError = (err: any) => {
-    const code = err.code || '';
+    const code = err?.code || '';
     if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-      return 'Invalid email or password.';
+      return 'ईमेल किंवा पासवर्ड चुकीचा आहे.';
     }
     if (code === 'auth/email-already-in-use') {
-      return 'This email is already registered. Please sign in instead.';
+      return 'हा ईमेल आधीच नोंदणीकृत आहे. कृपया लॉगिन करा.';
     }
     if (code === 'auth/weak-password') {
-      return 'Password should be at least 6 characters.';
+      return 'पासवर्ड कमीत कमी 6 अक्षरांचा असावा.';
     }
     if (code === 'auth/invalid-email') {
-      return 'Please enter a valid email address.';
+      return 'कृपया योग्य ईमेल आयडी टाका.';
     }
-    return err.message || 'Authentication failed. Please try again.';
+    if (code === 'auth/popup-closed-by-user') {
+      return 'Google साइन इन विंडो बंद करण्यात आली.';
+    }
+    if (err?.message && (err.message.includes('Failed to fetch') || err.message.includes('not reachable') || err.message.includes('No response'))) {
+      return 'बॅकएंड सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड सर्व्हर (Port 5000) चालू असल्याची खात्री करा.';
+    }
+    return err?.message || 'लॉगिन अयशस्वी झाले. कृपया पुन्हा प्रयत्न करा.';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,21 +83,62 @@ export default function Login() {
     setResetSuccessMessage('');
     setLoading(true);
 
+    const cleanEmail = email.trim().toLowerCase();
+
     try {
       if (isLogin) {
-        // 1. Firebase Authentication
-        const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-        const fbUser = userCredential.user;
+        let authUser: any = null;
+        let authShop: any = null;
+        let authToken: string = '';
+        let fbFailureReason: any = null;
 
-        // 2. Sync with MySQL Database
-        const res = await api.auth.firebaseSync({
-          uid: fbUser.uid,
-          email: fbUser.email,
-          displayName: fbUser.displayName || name || email.split('@')[0]
-        });
+        // 1. Try Firebase Authentication first
+        try {
+          const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          const fbUser = userCredential.user;
 
-        login(res.token, res.user, res.shop);
-        navigate(res.user?.role === 'cashier' ? '/pos' : '/');
+          // Sync with Database
+          const res = await api.auth.firebaseSync({
+            uid: fbUser.uid,
+            email: fbUser.email,
+            displayName: fbUser.displayName || name || cleanEmail.split('@')[0]
+          });
+
+          authToken = res.token;
+          authUser = res.user;
+          authShop = res.shop;
+        } catch (fbErr: any) {
+          console.warn('Firebase login failed, attempting direct database login:', fbErr?.code || fbErr?.message);
+          fbFailureReason = fbErr;
+        }
+
+        // 2. If Firebase login failed, fallback to direct database login
+        if (!authToken) {
+          try {
+            const dbRes = await api.auth.login({
+              email: cleanEmail,
+              password
+            });
+            authToken = dbRes.token;
+            authUser = dbRes.user;
+            authShop = dbRes.shop;
+          } catch (dbErr: any) {
+            console.error('Direct database login also failed:', dbErr);
+            // If backend is down or unreachable
+            if (dbErr.message && (dbErr.message.includes('Failed to fetch') || dbErr.message.includes('No response') || dbErr.message.includes('not reachable'))) {
+              throw new Error('बॅकएंड सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड (Port 5000) चालू करा.');
+            }
+            // If DB returned a specific error (e.g. registered with Google, wrong password)
+            if (dbErr.message && !dbErr.message.includes('Server error')) {
+              throw dbErr;
+            }
+            // Otherwise throw original Firebase error
+            throw fbFailureReason || dbErr;
+          }
+        }
+
+        login(authToken, authUser, authShop);
+        navigate(authUser?.role === 'cashier' ? '/pos' : '/');
       } else {
         // Sign Up Flow
         if (roleChoice === 'cashier' && !joinShopId.trim()) {
@@ -99,7 +146,7 @@ export default function Login() {
         }
 
         // 1. Firebase Create Account
-        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         const fbUser = userCredential.user;
 
         if (name) {
@@ -112,7 +159,7 @@ export default function Login() {
         const res = await api.auth.firebaseSync({
           uid: fbUser.uid,
           email: fbUser.email,
-          displayName: name || email.split('@')[0],
+          displayName: name || cleanEmail.split('@')[0],
           role: roleChoice,
           shopId: roleChoice === 'cashier' ? joinShopId.trim() : undefined,
           shopName: roleChoice === 'admin' ? (shopName || 'My Kirana Store') : undefined,
@@ -149,7 +196,13 @@ export default function Login() {
       navigate(res.user?.role === 'cashier' ? '/pos' : '/');
     } catch (err: any) {
       console.error('Google sign in error:', err);
-      setError(formatFirebaseError(err));
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Google साइन इन विंडो बंद करण्यात आली.');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        // user clicked again while opening, ignore
+      } else {
+        setError(formatFirebaseError(err));
+      }
     } finally {
       setGoogleLoading(false);
     }

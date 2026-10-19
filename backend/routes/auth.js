@@ -76,17 +76,26 @@ router.post('/signup', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email आणि password आवश्यक आहेत.' });
+    }
     
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+    const cleanEmail = email.trim().toLowerCase();
+    const [users] = await pool.query('SELECT * FROM users WHERE LOWER(email) = ?', [cleanEmail]);
     if (users.length === 0) {
-      return res.status(400).json({ error: 'User not found' });
+      return res.status(400).json({ error: 'या ईमेलने नोंदणीकृत युझर सापडला नाही. कृपया आधी Sign Up करा.' });
     }
     
     const user = users[0];
+    if (!user.password) {
+      return res.status(400).json({ 
+        error: 'हा अकाउंट Google ने रजिस्टर केलेला आहे. कृपया खालील "Continue with Google" बटण वापरा.' 
+      });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
-    
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid password' });
+      return res.status(400).json({ error: 'पासवर्ड चुकीचा आहे. कृपया योग्य पासवर्ड टाका.' });
     }
 
     const token = jwt.sign({ uid: user.uid, shopId: user.shopId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -112,7 +121,7 @@ router.post('/login', async (req, res) => {
     res.json({ token, user, shop });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error during login' });
+    res.status(500).json({ error: error.message || 'Server error during login' });
   }
 });
 

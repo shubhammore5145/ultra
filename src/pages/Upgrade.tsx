@@ -49,10 +49,12 @@ interface AppliedCoupon {
   message: string;
 }
 
+export type BillingCycle = '3months' | '6months' | 'yearly' | 'lifetime';
+
 export default function Upgrade() {
   const { shopData } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('yearly');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   
   // Coupon code states
@@ -68,19 +70,25 @@ export default function Upgrade() {
   const isPro = currentPlan === 'pro';
   const isPlus = currentPlan === 'plus';
 
-  // Base pricing configuration
-  const prices = {
+  // Base pricing configuration for 3 Months, 6 Months, 1 Year, and Lifetime
+  const prices: Record<string, Record<BillingCycle, { price: number; paise: number; days: number; period: string; save?: string }>> = {
     plus: {
-      monthly: { price: 199, paise: 19900, days: 30, period: '/month' },
-      yearly: { price: 1999, paise: 199900, days: 365, period: '/year', save: 'Save ₹389 (16% OFF)' }
+      '3months': { price: 499, paise: 49900, days: 90, period: '/3 months', save: 'Save ₹98 (16% OFF)' },
+      '6months': { price: 899, paise: 89900, days: 180, period: '/6 months', save: 'Save ₹295 (25% OFF)' },
+      'yearly': { price: 1599, paise: 159900, days: 365, period: '/year', save: 'Save ₹797 (33% OFF)' },
+      'lifetime': { price: 3999, paise: 399900, days: 36500, period: 'One-time', save: 'Lifetime Access • Best Value' }
     },
     pro: {
-      monthly: { price: 349, paise: 34900, days: 30, period: '/month' },
-      yearly: { price: 3499, paise: 349900, days: 365, period: '/year', save: 'Save ₹689 (17% OFF)' }
+      '3months': { price: 999, paise: 99900, days: 90, period: '/3 months', save: 'Save ₹198 (16% OFF)' },
+      '6months': { price: 1799, paise: 179900, days: 180, period: '/6 months', save: 'Save ₹595 (25% OFF)' },
+      'yearly': { price: 2999, paise: 299900, days: 365, period: '/year', save: 'Save ₹1,795 (37% OFF)' },
+      'lifetime': { price: 6999, paise: 699900, days: 36500, period: 'One-time', save: 'Lifetime VIP Access • Never Pay Again' }
     },
     ultra: {
-      monthly: { price: 499, paise: 49900, days: 30, period: '/month' },
-      yearly: { price: 4999, paise: 499900, days: 365, period: '/year', save: 'Save ₹989 (17% OFF)' }
+      '3months': { price: 1399, paise: 139900, days: 90, period: '/3 months', save: 'Save ₹298 (18% OFF)' },
+      '6months': { price: 2499, paise: 249900, days: 180, period: '/6 months', save: 'Save ₹895 (26% OFF)' },
+      'yearly': { price: 4499, paise: 449900, days: 365, period: '/year', save: 'Save ₹2,695 (37% OFF)' },
+      'lifetime': { price: 9999, paise: 999900, days: 36500, period: 'One-time', save: 'Lifetime Enterprise VIP • All Unlocked' }
     }
   };
 
@@ -109,7 +117,7 @@ export default function Upgrade() {
     setCouponError(null);
 
     try {
-      const benchmarkPrice = billingCycle === 'yearly' ? prices.ultra.yearly.price : prices.ultra.monthly.price;
+      const benchmarkPrice = prices.ultra[billingCycle].price;
       const res = await api.coupons.validate({
         code,
         planName: 'ultra_pro',
@@ -153,16 +161,31 @@ export default function Upgrade() {
     const { final: finalPayable } = getCalculatedPrice(basePrice);
     const amountInPaise = finalPayable * 100;
     
+    const cycleLabel = 
+      days >= 30000 ? 'Lifetime Access' :
+      days === 365 ? '1 Year' :
+      days === 180 ? '6 Months' :
+      days === 90 ? '3 Months' : `${days} Days`;
+
     const options = {
       key: 'rzp_live_TUJQRz220FyjLO',
       amount: amountInPaise,
       currency: 'INR',
       name: 'MartGPT',
-      description: `${planName} Subscription (${days === 365 ? '1 Year' : '1 Month'})${appliedCoupon ? ` - Promo: ${appliedCoupon.code}` : ''}`,
+      description: `${planName} Subscription (${cycleLabel})${appliedCoupon ? ` - Promo: ${appliedCoupon.code}` : ''}`,
       handler: async function (_response: any) {
         try {
-          const expiryDate = new Date();
-          expiryDate.setDate(expiryDate.getDate() + days);
+          let expiryDate: string | null = null;
+          if (days >= 30000) {
+            // Lifetime plan: 100 years future expiry
+            const d = new Date();
+            d.setFullYear(d.getFullYear() + 100);
+            expiryDate = d.toISOString();
+          } else {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            expiryDate = d.toISOString();
+          }
 
           let normalizedPlan = 'pro';
           const p = planName.toLowerCase();
@@ -172,7 +195,7 @@ export default function Upgrade() {
 
           await api.shops.upgradePlan({
             plan: normalizedPlan,
-            planExpiry: expiryDate.toISOString(),
+            planExpiry: expiryDate,
             couponCode: appliedCoupon?.code
           });
 
@@ -248,6 +271,10 @@ export default function Upgrade() {
       a: 'Ultra Pro is built specifically for growth-oriented retail stores and multi-counter supermarkets. It includes unlimited multi-counter sync, your custom store logo on WhatsApp bills, our AI Dead-Stock & Profit Engine to boost net profit by 15-20%, customer loyalty points, and a dedicated 24/7 VIP Account Manager.'
     },
     {
+      q: 'What subscription durations are available (3 Months, 6 Months, 1 Year, Lifetime)?',
+      a: 'You can choose between 3 Months, 6 Months, 1 Year, or Lifetime. With the Lifetime plan, you make a single one-time payment and never have to pay renewal fees again, with permanent access to all corresponding features and upcoming updates!'
+    },
+    {
       q: 'How do Promo Codes work on MartGPT?',
       a: 'Simply enter your coupon code (e.g. DIWALI50 or WELCOME100) into the Promo Code box and click Apply. The discount will instantly recalculate across all plans, showing you exact savings before Razorpay checkout.'
     },
@@ -301,7 +328,11 @@ export default function Upgrade() {
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   Premium features unlocked. 
-                  {shopData?.planExpiry && ` Valid until ${new Date(shopData.planExpiry).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}.`}
+                  {shopData?.planExpiry && (
+                    new Date(shopData.planExpiry).getFullYear() > 2090
+                      ? ' Lifetime VIP Access (No Expiry).'
+                      : ` Valid until ${new Date(shopData.planExpiry).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}.`
+                  )}
                 </p>
               </div>
             </div>
@@ -311,30 +342,60 @@ export default function Upgrade() {
           </div>
         )}
 
-        {/* ── Billing Cycle Toggle ── */}
+        {/* ── Billing Cycle Toggle (4 Durations: 3M, 6M, 1Y, Lifetime) ── */}
         <div className="pt-4 flex items-center justify-center">
-          <div className="bg-muted p-1.5 rounded-2xl flex items-center border border-border shadow-inner">
+          <div className="bg-muted/90 p-1.5 rounded-2xl flex flex-wrap sm:flex-nowrap items-center justify-center gap-1.5 border border-border shadow-inner max-w-full">
             <button
-              onClick={() => setBillingCycle('monthly')}
-              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
-                billingCycle === 'monthly'
-                  ? 'bg-card text-foreground shadow-sm'
+              onClick={() => setBillingCycle('3months')}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                billingCycle === '3months'
+                  ? 'bg-card text-foreground shadow-sm border border-border/50'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Monthly Billing
+              3 Months
             </button>
+
+            <button
+              onClick={() => setBillingCycle('6months')}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                billingCycle === '6months'
+                  ? 'bg-card text-foreground shadow-sm border border-border/50'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              6 Months
+              <span className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                Save 25%
+              </span>
+            </button>
+
             <button
               onClick={() => setBillingCycle('yearly')}
-              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 billingCycle === 'yearly'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Annual Billing
-              <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide">
-                Save Up To 17%
+              1 Year
+              <span className={`${billingCycle === 'yearly' ? 'bg-amber-400 text-slate-950' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'} text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wide`}>
+                Popular
+              </span>
+            </button>
+
+            <button
+              onClick={() => setBillingCycle('lifetime')}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                billingCycle === 'lifetime'
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-amber-500 text-white shadow-md'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-300" />
+              Lifetime
+              <span className={`${billingCycle === 'lifetime' ? 'bg-white text-purple-900' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'} text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wide`}>
+                One-Time
               </span>
             </button>
           </div>
@@ -498,8 +559,9 @@ export default function Upgrade() {
           <h2 className="text-xl font-black mt-4 text-foreground">MartGPT Plus</h2>
           
           {(() => {
-            const base = billingCycle === 'yearly' ? prices.plus.yearly.price : prices.plus.monthly.price;
-            const period = billingCycle === 'yearly' ? prices.plus.yearly.period : prices.plus.monthly.period;
+            const cfg = prices.plus[billingCycle];
+            const base = cfg.price;
+            const period = cfg.period;
             const { final, discount } = getCalculatedPrice(base);
             return (
               <div>
@@ -514,12 +576,10 @@ export default function Upgrade() {
                   <p className="mt-1 text-[11px] font-bold text-emerald-500">
                     Promo Saved: ₹{discount} OFF
                   </p>
-                ) : billingCycle === 'yearly' ? (
-                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
-                    {prices.plus.yearly.save}
-                  </p>
                 ) : (
-                  <p className="mt-1 text-[11px] text-muted-foreground">Cancel anytime</p>
+                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
+                    {cfg.save}
+                  </p>
                 )}
               </div>
             );
@@ -549,7 +609,7 @@ export default function Upgrade() {
           
           <Button 
             onClick={() => {
-              const cfg = billingCycle === 'yearly' ? prices.plus.yearly : prices.plus.monthly;
+              const cfg = prices.plus[billingCycle];
               handleUpgrade(cfg.days, cfg.price, 'MartGPT Plus');
             }} 
             disabled={isPlus || loading} 
@@ -572,8 +632,9 @@ export default function Upgrade() {
           <h2 className="text-xl font-black mt-4 text-foreground">MartGPT Pro</h2>
           
           {(() => {
-            const base = billingCycle === 'yearly' ? prices.pro.yearly.price : prices.pro.monthly.price;
-            const period = billingCycle === 'yearly' ? prices.pro.yearly.period : prices.pro.monthly.period;
+            const cfg = prices.pro[billingCycle];
+            const base = cfg.price;
+            const period = cfg.period;
             const { final, discount } = getCalculatedPrice(base);
             return (
               <div>
@@ -588,12 +649,10 @@ export default function Upgrade() {
                   <p className="mt-1 text-[11px] font-bold text-emerald-500">
                     Promo Saved: ₹{discount} OFF
                   </p>
-                ) : billingCycle === 'yearly' ? (
-                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
-                    {prices.pro.yearly.save}
-                  </p>
                 ) : (
-                  <p className="mt-1 text-[11px] text-muted-foreground">Cancel anytime</p>
+                  <p className="mt-1 text-[11px] font-bold text-emerald-500">
+                    {cfg.save}
+                  </p>
                 )}
               </div>
             );
@@ -626,7 +685,7 @@ export default function Upgrade() {
           
           <Button 
             onClick={() => {
-              const cfg = billingCycle === 'yearly' ? prices.pro.yearly : prices.pro.monthly;
+              const cfg = prices.pro[billingCycle];
               handleUpgrade(cfg.days, cfg.price, 'MartGPT Pro');
             }} 
             disabled={isPro || loading} 
@@ -658,8 +717,9 @@ export default function Upgrade() {
           </h2>
           
           {(() => {
-            const base = billingCycle === 'yearly' ? prices.ultra.yearly.price : prices.ultra.monthly.price;
-            const period = billingCycle === 'yearly' ? prices.ultra.yearly.period : prices.ultra.monthly.period;
+            const cfg = prices.ultra[billingCycle];
+            const base = cfg.price;
+            const period = cfg.period;
             const { final, discount } = getCalculatedPrice(base);
             return (
               <div>
@@ -676,12 +736,10 @@ export default function Upgrade() {
                   <p className="mt-1 text-[11px] font-bold text-emerald-400">
                     🎉 Promo Discount: ₹{discount} OFF applied!
                   </p>
-                ) : billingCycle === 'yearly' ? (
-                  <p className="mt-1 text-[11px] font-bold text-amber-400">
-                    {prices.ultra.yearly.save}
-                  </p>
                 ) : (
-                  <p className="mt-1 text-[11px] text-muted-foreground">Complete freedom, cancel anytime</p>
+                  <p className="mt-1 text-[11px] font-bold text-amber-400">
+                    {cfg.save}
+                  </p>
                 )}
               </div>
             );
@@ -722,7 +780,7 @@ export default function Upgrade() {
           
           <Button 
             onClick={() => {
-              const cfg = billingCycle === 'yearly' ? prices.ultra.yearly : prices.ultra.monthly;
+              const cfg = prices.ultra[billingCycle];
               handleUpgrade(cfg.days, cfg.price, 'MartGPT Ultra Pro');
             }} 
             disabled={isUltraPro || loading} 

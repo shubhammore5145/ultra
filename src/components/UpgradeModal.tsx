@@ -94,7 +94,7 @@ export function UpgradeModal() {
         {/* Pricing snippet & Action Buttons */}
         <div className="pt-2 space-y-3">
           <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-            <span>Plans start at just <strong>₹199/month</strong></span>
+            <span>Plans start at just <strong>₹499 (3 Months)</strong></span>
             <span className="text-emerald-500 font-bold">Use code DIWALI50 for 50% OFF!</span>
           </div>
 

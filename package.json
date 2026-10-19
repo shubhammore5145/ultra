@@ -8,7 +8,8 @@
   },
   "scripts": {
     "postinstall": "cd backend && npm install",
-    "dev": "vite --host",
+    "dev": "node scripts/dev.cjs",
+    "dev:vite": "vite --host",
     "dev:all": "node scripts/dev.cjs",
     "server": "node backend/server.js",
     "build": "vite build",

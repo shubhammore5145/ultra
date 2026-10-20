@@ -73,7 +73,7 @@ export default function Login() {
       return 'Google साइन इन विंडो बंद करण्यात आली.';
     }
     if (err?.message && (err.message.includes('Failed to fetch') || err.message.includes('not reachable') || err.message.includes('No response'))) {
-      return 'बॅकएंड सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड सर्व्हर (Port 5000) चालू असल्याची खात्री करा.';
+      return 'सर्व्हर किंवा इंटरनेट कनेक्शनमध्ये अडचण आली आहे. कृपया इंटरनेट तपासा किंवा पुन्हा प्रयत्न करा.';
     }
     return err?.message || 'लॉगिन अयशस्वी झाले. कृपया पुन्हा प्रयत्न करा.';
   };

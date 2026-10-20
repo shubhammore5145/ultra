@@ -139,7 +139,76 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
   }
 
-  // 7. Me / Auth
+  // 7. Login Fallback
+  if (endpoint.startsWith('/auth/login')) {
+    const body = JSON.parse(options.body as string);
+    const cleanEmail = (body.email || '').trim().toLowerCase();
+    const { data: users, error: uErr } = await supabase.from('users').select('*').ilike('email', cleanEmail).limit(1);
+    if (uErr || !users || users.length === 0) {
+      throw new Error('या ईमेलने नोंदणीकृत युझर सापडला नाही. कृपया आधी Sign Up करा.');
+    }
+    const user = users[0];
+    const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
+    const shop = shops?.[0] || { shopId: user.shopId, name: 'माझे किराणा', plan: 'free' };
+    delete user.password;
+    const clientToken = 'sb_' + btoa(JSON.stringify({ uid: user.uid, shopId: user.shopId, exp: Date.now() + 7 * 86400000 }));
+    return { token: clientToken, user, shop };
+  }
+
+  // 8. Firebase Sync Fallback
+  if (endpoint.startsWith('/auth/firebase-sync')) {
+    const body = JSON.parse(options.body as string);
+    const cleanEmail = (body.email || '').trim().toLowerCase();
+    const uid = body.uid;
+    const displayName = body.displayName || cleanEmail.split('@')[0];
+
+    // Find user in Supabase
+    let user: any = null;
+    const { data: byUid } = await supabase.from('users').select('*').eq('uid', uid).limit(1);
+    if (byUid && byUid.length > 0) {
+      user = byUid[0];
+    } else {
+      const { data: byEmail } = await supabase.from('users').select('*').ilike('email', cleanEmail).limit(1);
+      if (byEmail && byEmail.length > 0) {
+        user = byEmail[0];
+        await supabase.from('users').update({ uid }).eq('email', cleanEmail).catch(() => {});
+        user.uid = uid;
+      }
+    }
+
+    if (user) {
+      const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
+      const shop = shops?.[0] || { shopId: user.shopId, name: 'माझे किराणा', plan: 'free' };
+      delete user.password;
+      const clientToken = 'sb_' + btoa(JSON.stringify({ uid: user.uid, shopId: user.shopId, exp: Date.now() + 7 * 86400000 }));
+      return { token: clientToken, user, shop };
+    }
+
+    // New user in Supabase
+    const newShopId = body.shopId || 'shop_' + Date.now().toString(36);
+    const shopObj = {
+      shopId: newShopId,
+      name: body.shopName || (displayName ? `${displayName} किराणा` : 'माझे किराणा स्टोअर'),
+      ownerName: body.ownerName || displayName,
+      email: cleanEmail,
+      plan: 'free'
+    };
+    await supabase.from('shops').insert(shopObj).catch(() => {});
+
+    const userObj = {
+      uid,
+      email: cleanEmail,
+      displayName,
+      role: body.role || 'admin',
+      shopId: newShopId
+    };
+    await supabase.from('users').insert(userObj).catch(() => {});
+
+    const clientToken = 'sb_' + btoa(JSON.stringify({ uid, shopId: newShopId, exp: Date.now() + 7 * 86400000 }));
+    return { token: clientToken, user: userObj, shop: shopObj };
+  }
+
+  // 9. Me
   if (endpoint.startsWith('/auth/me')) {
     const rawUser = localStorage.getItem('auth_user');
     const rawShop = localStorage.getItem('auth_shop');

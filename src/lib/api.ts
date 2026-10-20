@@ -256,7 +256,12 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data.error || `API Request Failed with status ${response.status}`);
+    console.warn(`Backend returned status ${response.status} for ${endpoint}, trying direct Supabase fallback`);
+    try {
+      return await fallbackSupabase(endpoint, options);
+    } catch (_fallbackErr) {
+      throw new Error(data.error || `API Request Failed with status ${response.status}`);
+    }
   }
 
   return data;

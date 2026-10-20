@@ -1,10 +1,157 @@
+import { supabase } from './supabase';
+
 // Use relative path for API so it works perfectly with Vite proxy or production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Helper to get token
 const getToken = () => localStorage.getItem('auth_token');
 
-// Generic Fetch Wrapper
+const getShopId = () => {
+  try {
+    const raw = localStorage.getItem('auth_shop');
+    return raw ? JSON.parse(raw)?.shopId : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+// Direct Supabase Fallback when backend is unreachable or on serverless
+async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Promise<any> {
+  const method = (options.method || 'GET').toUpperCase();
+  const shopId = getShopId();
+
+  // 1. Products
+  if (endpoint.startsWith('/products')) {
+    if (method === 'GET') {
+      const q = supabase.from('products').select('*');
+      const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
+      if (error) throw new Error(error.message);
+      return data || [];
+    }
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('products').upsert({ ...body, shopId: body.shopId || shopId });
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+    if (method === 'PUT') {
+      const id = endpoint.split('/products/')[1];
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('products').update(body).eq('id', id);
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+    if (method === 'DELETE') {
+      const id = endpoint.split('/products/')[1];
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+      return { success: true };
+    }
+  }
+
+  // 2. Customers
+  if (endpoint.startsWith('/customers')) {
+    if (method === 'GET') {
+      const q = supabase.from('customers').select('*');
+      const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
+      if (error) throw new Error(error.message);
+      return data || [];
+    }
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('customers').upsert({ ...body, shopId: body.shopId || shopId });
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+    if (method === 'PUT') {
+      const id = endpoint.split('/customers/')[1];
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('customers').update(body).eq('id', id);
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+  }
+
+  // 3. Transactions
+  if (endpoint.startsWith('/transactions')) {
+    if (method === 'GET') {
+      const q = supabase.from('transactions').select('*').order('createdAt', { ascending: false });
+      const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
+      if (error) throw new Error(error.message);
+      return data || [];
+    }
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('transactions').insert({ ...body, shopId: body.shopId || shopId });
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+  }
+
+  // 4. Public Receipt
+  if (endpoint.startsWith('/public/receipt/')) {
+    const id = endpoint.split('/public/receipt/')[1];
+    const { data: tx } = await supabase.from('transactions').select('*').or(`id.eq.${id},id.ilike.%${id}`).limit(1);
+    if (!tx || tx.length === 0) throw new Error('Receipt not found');
+    const t = tx[0];
+    const { data: sh } = await supabase.from('shops').select('*').eq('shopId', t.shopId).limit(1);
+    const { data: cu } = t.customerId ? await supabase.from('customers').select('*').eq('id', t.customerId).limit(1) : { data: [] };
+    return {
+      ...t,
+      shopName: sh?.[0]?.name,
+      shopPhone: sh?.[0]?.phone,
+      shopAddress: sh?.[0]?.address,
+      shopGstNumber: sh?.[0]?.gstNumber,
+      customerName: cu?.[0]?.name,
+      customerPhone: cu?.[0]?.phone
+    };
+  }
+
+  // 5. Expenses
+  if (endpoint.startsWith('/expenses')) {
+    if (method === 'GET') {
+      const q = supabase.from('expenses').select('*').order('createdAt', { ascending: false });
+      const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
+      if (error) throw new Error(error.message);
+      return data || [];
+    }
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('expenses').insert({ ...body, shopId: body.shopId || shopId });
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+  }
+
+  // 6. Udhar
+  if (endpoint.startsWith('/udhar')) {
+    if (method === 'GET') {
+      const q = supabase.from('udhar_transactions').select('*').order('createdAt', { ascending: false });
+      const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
+      if (error) throw new Error(error.message);
+      return data || [];
+    }
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const { data, error } = await supabase.from('udhar_transactions').insert({ ...body, shopId: body.shopId || shopId });
+      if (error) throw new Error(error.message);
+      return { success: true, data };
+    }
+  }
+
+  // 7. Me / Auth
+  if (endpoint.startsWith('/auth/me')) {
+    const rawUser = localStorage.getItem('auth_user');
+    const rawShop = localStorage.getItem('auth_shop');
+    if (rawUser && rawShop) {
+      return { user: JSON.parse(rawUser), shop: JSON.parse(rawShop) };
+    }
+  }
+
+  throw new Error(`Endpoint ${endpoint} not available in direct cloud mode.`);
+}
+
+// Generic Fetch Wrapper with Automatic Supabase Fallback
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const token = getToken();
   const headers = {
@@ -13,10 +160,16 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    console.warn(`Backend fetch failed for ${endpoint}, switching to direct Supabase cloud:`, err.message);
+    return fallbackSupabase(endpoint, options);
+  }
 
   let data: any = {};
   const text = await response.text();
@@ -24,18 +177,13 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     try {
       data = JSON.parse(text);
     } catch (_err) {
-      if (!response.ok) {
-        throw new Error(`Server Error (${response.status}): Backend returned non-JSON response.`);
-      }
-      throw new Error(`Invalid JSON received from server: ${text.slice(0, 100)}`);
+      // If server returned HTML (e.g. Vercel /index.html rewrite)
+      console.warn(`Non-JSON response from ${endpoint}, falling back to direct Supabase cloud`);
+      return fallbackSupabase(endpoint, options);
     }
   } else {
     // Empty response received
-    if (!response.ok) {
-      throw new Error(`Backend Error (${response.status}): No response from API server.`);
-    }
-    // If status is 200 with empty body (typical when static hosting returns empty on unmatched POST routes)
-    throw new Error('Backend API is not reachable on this domain. If running on Render, ensure you deployed as a "Web Service" with "npm start" so the Node.js backend is active.');
+    return fallbackSupabase(endpoint, options);
   }
 
   if (!response.ok) {
@@ -98,50 +246,9 @@ export const api = {
   coupons: {
     validate: (data: { code: string; planName: string; price: number }) => fetchAPI('/coupons/validate', { method: 'POST', body: JSON.stringify(data) })
   },
-  whatsapp: {
-    status: () => fetchAPI('/whatsapp/status', { method: 'GET' }),
-    start: () => fetchAPI('/whatsapp/start', { method: 'POST' }),
-    logout: () => fetchAPI('/whatsapp/logout', { method: 'POST' }),
-    send: (phone: string, message: string) => fetchAPI('/whatsapp/send', { method: 'POST', body: JSON.stringify({ phone, message }) }),
-    sendBulkReminder: (customers: any[], shopName?: string) => fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName }) }),
-    sendNightlySummary: (data: { shopId?: string; targetPhone?: string }) => fetchAPI('/whatsapp/nightly-summary', { method: 'POST', body: JSON.stringify(data) })
-  },
-  superadmin: {
-    getStats: (pin?: string) => {
-      const stored = localStorage.getItem('superadmin_pin');
-      const key = pin || stored;
-      return fetchAPI('/superadmin/stats', {
-        headers: key ? { 'x-superadmin-key': key } : {}
-      });
-    },
-    getShops: (pin?: string) => {
-      const stored = localStorage.getItem('superadmin_pin');
-      const key = pin || stored;
-      return fetchAPI('/superadmin/shops', {
-        headers: key ? { 'x-superadmin-key': key } : {}
-      });
-    },
-    updatePlan: (shopId: string, data: { plan: string; durationDays?: number; customExpiryDate?: string }, pin?: string) => {
-      const stored = localStorage.getItem('superadmin_pin');
-      const key = pin || stored;
-      return fetchAPI(`/superadmin/shops/${shopId}/plan`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-        headers: key ? { 'x-superadmin-key': key } : {}
-      });
-    },
-    deleteShop: (shopId: string, pin?: string) => {
-      const stored = localStorage.getItem('superadmin_pin');
-      const key = pin || stored;
-      return fetchAPI(`/superadmin/shops/${shopId}`, {
-        method: 'DELETE',
-        headers: key ? { 'x-superadmin-key': key } : {}
-      });
-    }
-  },
   notifications: {
-    list: () => fetchAPI('/notifications', { method: 'GET' }),
-    markRead: (id: string) => fetchAPI(`/notifications/${id}/read`, { method: 'PUT' }),
-    markAllRead: () => fetchAPI('/notifications/action/read-all', { method: 'PUT' })
+    list: (unreadOnly?: boolean) => fetchAPI('/notifications' + (unreadOnly ? '?unreadOnly=true' : ''), { method: 'GET' }),
+    markAsRead: (id: string) => fetchAPI(`/notifications/${id}/read`, { method: 'POST' }),
+    markAllAsRead: () => fetchAPI('/notifications/read-all', { method: 'POST' })
   }
 };

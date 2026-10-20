@@ -24,13 +24,14 @@ const authMiddleware = (req, res, next) => {
 router.get('/public/receipt/:id', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT t.*, s.name as shopName, s.phone as shopPhone, s.address as shopAddress, 
+      `SELECT t.*, s.name as shopName, s.phone as shopPhone, s.address as shopAddress, s.gstNumber as shopGstNumber,
               c.name as customerName, c.phone as customerPhone 
        FROM transactions t 
        LEFT JOIN shops s ON t.shopId = s.shopId 
        LEFT JOIN customers c ON t.customerId = c.id 
-       WHERE t.id = ?`,
-      [req.params.id]
+       WHERE t.id = ? OR t.id LIKE ?
+       ORDER BY t.createdAt DESC LIMIT 1`,
+      [req.params.id, `%${req.params.id}`]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Receipt not found' });
     res.json(rows[0]);
@@ -411,15 +412,15 @@ router.get('/shops', async (req, res) => {
 });
 
 router.put('/shops', async (req, res) => {
-  const { name, ownerName, phone, email, address, upiId, publicUrl, settings } = req.body;
+  const { name, ownerName, phone, email, address, upiId, publicUrl, settings, gstNumber } = req.body;
   try {
     const serializedSettings = typeof settings === 'object' && settings !== null 
       ? JSON.stringify(settings) 
       : (settings || null);
 
     await pool.query(
-      'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, upiId=?, publicUrl=?, settings=? WHERE shopId=?',
-      [name, ownerName, phone, email, address, upiId, publicUrl || null, serializedSettings, req.user.shopId]
+      'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, gstNumber=?, upiId=?, publicUrl=?, settings=? WHERE shopId=?',
+      [name, ownerName, phone, email, address, gstNumber || null, upiId, publicUrl || null, serializedSettings, req.user.shopId]
     );
     res.json({ success: true });
   } catch (err) {

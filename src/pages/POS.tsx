@@ -112,9 +112,13 @@ export default function POS() {
     subtotal: number,
     discountAmount: number,
     total: number, 
+    taxAmount?: number,
+    paymentMethod?: string,
+    splitAmounts?: { cash: number, upi: number, udhar: number },
     items: CartItem[], 
     customerPhone: string,
-    loyaltyPointsEarned?: number
+    loyaltyPointsEarned?: number,
+    createdAt?: string
   } | null>(null);
 
   // Camera Scanner State
@@ -138,8 +142,9 @@ export default function POS() {
     paymentMode: string = 'Paid'
   ) => {
     const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
-    const shopPhone = shopData?.phone ? `📞 ${shopData.phone}` : '';
+    const shopPhone = shopData?.phone ? `📞 Ph: ${shopData.phone}` : '';
     const shopAddr = shopData?.address ? `📍 ${shopData.address}` : '';
+    const shopGst = (shopData?.gstNumber) ? `🏢 GSTIN: ${shopData.gstNumber}` : '';
     const now = new Date();
     const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -155,45 +160,24 @@ export default function POS() {
       receiptLink = `${window.location.origin}/receipt/${txId}`;
     }
 
-    // Build comprehensive, professional retail WhatsApp bill
-    let text = `🏪 *${shopName.toUpperCase()}*\n`;
-    const contactLine = [shopAddr, shopPhone].filter(Boolean).join(' | ');
-    if (contactLine) {
-      text += `${contactLine}\n`;
-    }
-    text += `📅 ${formattedDate}, ${formattedTime}\n`;
-    text += `🧾 *Bill No:* #${txId.slice(0, 8)}\n`;
-    text += `────────────────────\n`;
-
-    // Itemized list
-    if (itemsList && itemsList.length > 0) {
-      text += `🛒 *ITEMS PURCHASED:*\n`;
-      itemsList.forEach((item, index) => {
-        const itemPrice = Number(item.sellingPrice || 0);
-        const itemQty = Number(item.qty || 1);
-        const itemTotal = (itemPrice * itemQty).toFixed(2);
-        const unit = item.unit ? ` (${item.unit})` : '';
-        text += `${index + 1}. *${item.name || 'Item'}${unit}*\n`;
-        text += `   ${itemQty} x ₹${itemPrice.toFixed(2)} = ₹${itemTotal}\n`;
-      });
-      text += `────────────────────\n`;
-    }
-
-    const numDiscount = Number(discount || 0);
     const numTotal = Number(billTotal || 0);
+    const totalQty = itemsList.reduce((sum, item) => sum + Number(item.qty || 1), 0);
 
-    if (numDiscount > 0) {
-      const subtotalVal = numTotal + numDiscount;
-      text += `Subtotal: ₹${subtotalVal.toFixed(2)}\n`;
-      text += `Discount: -₹${numDiscount.toFixed(2)}\n`;
-    }
-
-    text += `💰 *TOTAL AMOUNT: ₹${numTotal.toFixed(2)}*\n`;
-    text += `💳 *Payment Mode:* ${paymentMode}\n`;
+    // Simple, clean WhatsApp bill — just header + link
+    let text = `🏪 *${shopName.toUpperCase()}*\n`;
+    if (shopAddr) text += `${shopAddr}\n`;
+    if (shopPhone) text += `${shopPhone}\n`;
+    if (shopGst) text += `${shopGst}\n`;
+    text += `────────────────────\n`;
+    text += `🧾 *RETAIL BILL*\n`;
+    text += `*Inv:* #${txId.slice(0, 8).toUpperCase()}\n`;
+    text += `*Date:* ${formattedDate}, ${formattedTime}\n`;
+    text += `*Items:* ${itemsList.length} (${totalQty} qty)\n`;
+    text += `💰 *Total: ₹${numTotal.toFixed(2)}*\n`;
     text += `────────────────────\n`;
 
     if (receiptLink) {
-      text += `\n📄 *Download Digital Receipt (PDF):*\n${receiptLink}\n\n`;
+      text += `📄 *View Full E-Bill / Download PDF:*\n${receiptLink}\n\n`;
     }
 
     text += `🙏 *Thank you for shopping with us!*\nPlease visit again! 😊`;
@@ -557,9 +541,13 @@ export default function POS() {
         subtotal,
         discountAmount,
         total,
+        taxAmount: tax,
+        paymentMethod: paymentMethod,
+        splitAmounts: splitAmounts,
         items: [...cart],
         customerPhone: phoneToSend,
-        loyaltyPointsEarned: Math.floor(total / 100)
+        loyaltyPointsEarned: Math.floor(total / 100),
+        createdAt: new Date().toISOString()
       });
       setPaymentVerified(false);
       if (canAccess('audio_soundbox')) {
@@ -704,131 +692,214 @@ export default function POS() {
         </div>
       )}
 
-      {/* Checkout Success Modal with UPI */}
-      {checkoutResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4 no-print">
-          <div className="bg-card text-card-foreground p-0 rounded-2xl border shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 print-only" id="receipt-modal">
-            <div className="bg-green-500 p-6 text-white text-center no-print">
-              <CheckCircle2 className="h-16 w-16 mx-auto mb-2 opacity-90" />
-              <h2 className="text-2xl font-bold">Checkout Complete</h2>
-              <p className="opacity-90">Bill Total: ₹{checkoutResult.total.toFixed(2)}</p>
-              {checkoutResult.discountAmount > 0 && (
-                <p className="text-sm opacity-80 mt-1">Includes ₹{checkoutResult.discountAmount.toFixed(2)} savings!</p>
-              )}
-            </div>
+      {/* Checkout Success Modal with UPI & Bill Breakdown */}
+      {checkoutResult && (() => {
+        const modalItems = checkoutResult.items || [];
+        const modalTotalMrp = modalItems.reduce((sum, it) => {
+          const sp = Number(it.sellingPrice || 0);
+          const mrp = Number(it.mrp || 0);
+          return sum + ((mrp > sp ? mrp : sp) * Number(it.qty || 1));
+        }, 0);
+        const modalProductSavings = modalItems.reduce((sum, it) => {
+          const sp = Number(it.sellingPrice || 0);
+          const mrp = Number(it.mrp || 0);
+          return sum + (mrp > sp ? (mrp - sp) * Number(it.qty || 1) : 0);
+        }, 0);
+        const modalBillDiscount = Number(checkoutResult.discountAmount || 0);
+        const modalTotalSavings = modalProductSavings + modalBillDiscount;
+        const modalSavingsPercent = modalTotalMrp > 0 ? Math.round((modalTotalSavings / modalTotalMrp) * 100) : 0;
+        const shopGst = shopData?.gstNumber || '27AABCS1429B1Z2';
 
-            {/* WhatsApp Status Banner in Modal */}
-            {whatsappStatusBanner && (
-              <div className={`mx-6 mt-4 p-3 rounded-xl border flex items-center gap-3 text-sm animate-in fade-in duration-300 ${
-                whatsappStatusBanner.type === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-                  : whatsappStatusBanner.type === 'error'
-                  ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-800 dark:text-red-200'
-                  : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-200'
-              }`}>
-                {whatsappStatusBanner.type === 'loading' ? (
-                  <Loader2 className="h-5 w-5 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
-                ) : whatsappStatusBanner.type === 'error' ? (
-                  <X className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
-                ) : (
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                )}
-                <div className="flex-1 font-semibold text-xs leading-tight">
-                  {whatsappStatusBanner.message}
-                  {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
-                    <span className="ml-1 text-blue-600 dark:text-blue-400">({pendingWhatsApp.countdown}s)</span>
-                  )}
-                </div>
-                {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
-                  <button
-                    onClick={() => { setPendingWhatsApp(null); setWhatsappStatusBanner(null); }}
-                    className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded border border-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                )}
-                {whatsappStatusBanner.type !== 'loading' && (
-                  <button
-                    onClick={() => setWhatsappStatusBanner(null)}
-                    className="text-muted-foreground hover:text-foreground ml-auto"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4 no-print">
+            <div className="bg-card text-card-foreground p-0 rounded-2xl border shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200" id="receipt-modal">
+              {/* Green Header */}
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 text-white text-center no-print">
+                <CheckCircle2 className="h-12 w-12 mx-auto mb-2 opacity-95 animate-bounce duration-1000" />
+                <h2 className="text-2xl font-black">Checkout Complete</h2>
+                <p className="text-xl font-bold mt-0.5">Bill Total: ₹{checkoutResult.total.toFixed(2)}</p>
+                {modalTotalSavings > 0 && (
+                  <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold mt-2 shadow-sm">
+                    <span>🎉 Customer Saved ₹{modalTotalSavings.toFixed(2)} ({modalSavingsPercent}% OFF)!</span>
+                  </div>
                 )}
               </div>
-            )}
 
-            <div className="p-6 space-y-6">
-              {shopData?.upiId ? (
-                <div className={`flex flex-col items-center justify-center space-y-3 p-4 rounded-xl border transition-all duration-300 ${
-                  paymentVerified 
-                    ? 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900' 
-                    : 'bg-muted/30 border-muted relative overflow-hidden'
+              {/* WhatsApp Status Banner in Modal */}
+              {whatsappStatusBanner && (
+                <div className={`mx-4 mt-3 p-3 rounded-xl border flex items-center gap-3 text-sm animate-in fade-in duration-300 ${
+                  whatsappStatusBanner.type === 'success'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                    : whatsappStatusBanner.type === 'error'
+                    ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-800 dark:text-red-200'
+                    : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-200'
                 }`}>
-                  {!paymentVerified && (
-                    <div className="absolute inset-0 pointer-events-none opacity-20">
-                      <div className="w-full h-[2px] bg-primary animate-[scan_2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(var(--primary),0.8)]"></div>
-                    </div>
+                  {whatsappStatusBanner.type === 'loading' ? (
+                    <Loader2 className="h-5 w-5 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
+                  ) : whatsappStatusBanner.type === 'error' ? (
+                    <X className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   )}
-
-                  <div className={`flex items-center gap-2 font-medium text-sm transition-colors ${paymentVerified ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                    {paymentVerified ? (
-                      <><CheckCircle2 className="h-5 w-5" /> Payment Verified Successfully</>
-                    ) : (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Listening for Payment...</>
+                  <div className="flex-1 font-semibold text-xs leading-tight">
+                    {whatsappStatusBanner.message}
+                    {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
+                      <span className="ml-1 text-blue-600 dark:text-blue-400">({pendingWhatsApp.countdown}s)</span>
                     )}
                   </div>
-                  
-                  <div className={`bg-white p-3 rounded-xl shadow-sm border transition-all duration-500 ${paymentVerified ? 'scale-90 opacity-50 blur-[2px]' : 'scale-100 opacity-100'}`}>
-                    <QRCodeSVG 
-                      value={`upi://pay?pa=${shopData.upiId}&pn=${encodeURIComponent(shopData.shopName || shopData.name || 'Store')}&am=${checkoutResult.total.toFixed(2)}&cu=INR`} 
-                      size={160} 
-                      level="H"
-                    />
-                  </div>
-                  
-                  {!paymentVerified ? (
-                    <Button 
-                      variant="default" 
-                      className="w-full h-10 font-bold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 shadow-none"
-                      onClick={() => setPaymentVerified(true)}
+                  {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
+                    <button
+                      onClick={() => { setPendingWhatsApp(null); setWhatsappStatusBanner(null); }}
+                      className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded border border-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
                     >
-                      Verify Manually
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-green-600 dark:text-green-400 font-bold uppercase tracking-wider">Transaction Complete</p>
+                      Cancel
+                    </button>
                   )}
-                </div>
-              ) : (
-                <div className="text-center text-sm text-muted-foreground bg-orange-50 dark:bg-orange-950 p-3 rounded-lg border border-orange-200 dark:border-orange-900">
-                  Add your UPI ID in Settings to generate payment QR codes automatically!
+                  {whatsappStatusBanner.type !== 'loading' && (
+                    <button
+                      onClick={() => setWhatsappStatusBanner(null)}
+                      className="text-muted-foreground hover:text-foreground ml-auto"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-2 no-print">
-                <Button 
-                  variant="outline" 
-                  className="h-12 w-full flex gap-1 font-medium px-2 relative" 
-                  onClick={handleWhatsAppBill}
-                >
-                  <MessageCircle className="h-4 w-4 text-green-500" /> WhatsApp
-                  {!canAccess('whatsapp_bills') && (
-                    <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded font-black">
-                      🔒 Plus
-                    </span>
-                  )}
-                </Button>
-                <Button variant="outline" className="h-12 w-full flex gap-1 font-medium px-2" onClick={handlePrintReceipt}>
-                  <Printer className="h-4 w-4 text-blue-500" /> Print
-                </Button>
-                <Button className="h-12 w-full font-bold px-2" onClick={() => setCheckoutResult(null)}>
-                  New Bill
-                </Button>
+              {/* Scrollable Modal Content */}
+              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[calc(92vh-180px)]">
+                {/* Mini Bill Preview */}
+                <div className="bg-muted/40 rounded-xl p-3.5 border text-xs space-y-2">
+                  <div className="flex items-center justify-between pb-2 border-b border-dashed">
+                    <div>
+                      <div className="font-bold text-sm text-foreground uppercase">{shopData?.shopName || shopData?.name || 'Kirana Store'}</div>
+                      <div className="text-[11px] text-muted-foreground font-mono">GSTIN: {shopGst}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono font-bold text-foreground">#{checkoutResult.id.slice(-8).toUpperCase()}</span>
+                      <div className="text-[10px] text-muted-foreground uppercase font-bold">{checkoutResult.paymentMethod || 'Cash'}</div>
+                    </div>
+                  </div>
+
+                  {/* Items Summary */}
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {modalItems.map((item, idx) => {
+                      const sp = Number(item.sellingPrice || 0);
+                      const mrp = Number(item.mrp || 0);
+                      const qty = Number(item.qty || 1);
+                      const hasDiscount = mrp > sp;
+                      const itemSavings = hasDiscount ? (mrp - sp) * qty : 0;
+                      return (
+                        <div key={idx} className="flex justify-between items-start py-0.5 border-b border-border/40 last:border-0">
+                          <div className="flex-1 pr-2">
+                            <span className="font-medium text-foreground">{item.name}</span>
+                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <span>₹{sp.toFixed(2)} x {qty}</span>
+                              {hasDiscount && (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">(Saved ₹{itemSavings.toFixed(2)})</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="font-bold text-foreground">₹{(sp * qty).toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Bill Totals in Mini Preview */}
+                  <div className="pt-2 border-t border-dashed space-y-1 text-[11px]">
+                    {modalTotalMrp > checkoutResult.total && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Total MRP:</span>
+                        <span>₹{modalTotalMrp.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {modalTotalSavings > 0 && (
+                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
+                        <span>Total Savings:</span>
+                        <span>- ₹{modalTotalSavings.toFixed(2)} ({modalSavingsPercent}% OFF)</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-foreground text-xs pt-1 border-t">
+                      <span>Grand Total:</span>
+                      <span>₹{checkoutResult.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* UPI QR Code Block */}
+                {shopData?.upiId ? (
+                  <div className={`flex flex-col items-center justify-center space-y-3 p-3.5 rounded-xl border transition-all duration-300 ${
+                    paymentVerified 
+                      ? 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900' 
+                      : 'bg-muted/30 border-muted relative overflow-hidden'
+                  }`}>
+                    {!paymentVerified && (
+                      <div className="absolute inset-0 pointer-events-none opacity-20">
+                        <div className="w-full h-[2px] bg-primary animate-[scan_2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(var(--primary),0.8)]"></div>
+                      </div>
+                    )}
+
+                    <div className={`flex items-center gap-2 font-medium text-xs transition-colors ${paymentVerified ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                      {paymentVerified ? (
+                        <><CheckCircle2 className="h-4 w-4" /> Payment Verified Successfully</>
+                      ) : (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> UPI QR (Scan & Pay)</>
+                      )}
+                    </div>
+                    
+                    <div className={`bg-white p-2.5 rounded-xl shadow-sm border transition-all duration-500 ${paymentVerified ? 'scale-90 opacity-50 blur-[2px]' : 'scale-100 opacity-100'}`}>
+                      <QRCodeSVG 
+                        value={`upi://pay?pa=${shopData.upiId}&pn=${encodeURIComponent(shopData.shopName || shopData.name || 'Store')}&am=${checkoutResult.total.toFixed(2)}&cu=INR`} 
+                        size={140} 
+                        level="H"
+                      />
+                    </div>
+                    
+                    {!paymentVerified ? (
+                      <Button 
+                        variant="default" 
+                        className="w-full h-9 text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 shadow-none"
+                        onClick={() => setPaymentVerified(true)}
+                      >
+                        Verify Manually
+                      </Button>
+                    ) : (
+                      <p className="text-[11px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wider">Transaction Complete</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center text-xs text-muted-foreground bg-orange-50 dark:bg-orange-950/40 p-2.5 rounded-lg border border-orange-200 dark:border-orange-900">
+                    Add your UPI ID in Settings to generate payment QR codes automatically!
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-2 no-print pt-1">
+                  <Button 
+                    variant="outline" 
+                    className="h-11 w-full flex gap-1 font-medium px-2 relative text-xs" 
+                    onClick={handleWhatsAppBill}
+                  >
+                    <MessageCircle className="h-4 w-4 text-green-500 shrink-0" /> WhatsApp
+                    {!canAccess('whatsapp_bills') && (
+                      <span className="ml-1 text-[8px] bg-amber-500/20 text-amber-500 px-1 py-0.2 rounded font-black">
+                        🔒 Plus
+                      </span>
+                    )}
+                  </Button>
+                  <Button variant="outline" className="h-11 w-full flex gap-1 font-medium px-2 text-xs" onClick={handlePrintReceipt}>
+                    <Printer className="h-4 w-4 text-blue-500 shrink-0" /> Print Bill
+                  </Button>
+                  <Button className="h-11 w-full font-bold px-2 text-xs" onClick={() => setCheckoutResult(null)}>
+                    New Bill
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {/* Quick Add Modal */}
       {quickAddBarcode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
@@ -901,13 +972,13 @@ export default function POS() {
       )}
 
       {/* Products & Search Section */}
-      <div className="flex-1 flex flex-col gap-4 pb-20 md:pb-0">
+      <div className={`flex-1 flex flex-col gap-3.5 min-w-0 md:h-full md:overflow-hidden ${cart.length > 0 ? 'pb-36' : 'pb-24'} md:pb-0`}>
         <div className="relative flex items-center">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
           <Input 
             ref={searchInputRef}
-            placeholder="वस्तू शोधा, नंबर दाबा (उदा. 1, 2) किंवा बारकोड स्कॅन करा..." 
-            className="pl-10 pr-12 h-14 text-base md:text-lg shadow-sm rounded-xl font-medium"
+            placeholder="वस्तू शोधा किंवा बारकोड स्कॅन करा..." 
+            className="pl-11 pr-36 h-12 md:h-14 text-sm md:text-base shadow-xs rounded-2xl font-medium bg-background border-border/80"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => {
@@ -939,29 +1010,30 @@ export default function POS() {
             }}
             autoFocus
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
             <Button
               variant="outline"
               size="icon"
               title="Scan Parchi (List)"
-              className="rounded-full shadow-sm hover:border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 h-10 w-10 mr-1"
+              className="rounded-xl shadow-2xs hover:border-blue-500/50 text-blue-600 bg-blue-50/80 dark:bg-blue-900/20 dark:text-blue-400 h-9 w-9"
               onClick={() => setShowParchiModal(true)}
             >
-              <FileText className="h-5 w-5" />
+              <FileText className="h-4 w-4" />
             </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="rounded-full shadow-sm hover:border-primary/50 text-primary bg-primary/5 h-10 w-10"
-                onClick={() => setShowScanner(true)}
-              >
-              <Barcode className="h-5 w-5" />
+            <Button
+              variant="outline"
+              size="icon"
+              title="Barcode Scanner"
+              className="rounded-xl shadow-2xs hover:border-primary/50 text-primary bg-primary/5 h-9 w-9"
+              onClick={() => setShowScanner(true)}
+            >
+              <Barcode className="h-4 w-4" />
             </Button>
             {voiceSupported && (
               <Button
                 variant="ghost"
                 size="icon"
-                className={`rounded-full transition-all h-10 w-10 relative ${
+                className={`rounded-xl transition-all h-9 w-9 relative ${
                   isListening 
                     ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 animate-pulse' 
                     : 'text-muted-foreground hover:text-primary hover:bg-muted'
@@ -969,9 +1041,9 @@ export default function POS() {
                 onClick={handleVoiceSearch}
                 title={canAccess('voice_billing') ? "MartGPT Voice Billing" : "Voice Billing (Pro Feature - Click to Upgrade)"}
               >
-                <Mic className="h-5 w-5" />
+                <Mic className="h-4 w-4" />
                 {!canAccess('voice_billing') && (
-                  <span className="absolute -top-1 -right-1 text-[9px] bg-indigo-600 text-white font-black px-1 rounded-full shadow-sm">
+                  <span className="absolute -top-1 -right-1 text-[8px] bg-indigo-600 text-white font-black px-1 rounded-full shadow-xs">
                     PRO
                   </span>
                 )}
@@ -981,26 +1053,26 @@ export default function POS() {
         </div>
 
         {/* Category Tabs & WhatsApp Bot Live Indicator */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2 scrollbar-hide -mt-2">
+        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-hide">
           <div className="flex gap-2">
             <Button 
               variant={activeTab === 'all' ? 'default' : 'outline'} 
-              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm"
+              className="rounded-xl px-4 h-8 text-xs font-semibold whitespace-nowrap"
               onClick={() => setActiveTab('all')}
             >
-              All Items
+              All Items ({products.length})
             </Button>
             <Button 
               variant={activeTab === 'loose' ? 'default' : 'outline'} 
-              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm flex items-center gap-1.5"
+              className="rounded-xl px-4 h-8 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5"
               onClick={() => setActiveTab('loose')}
             >
               <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              Loose Items (खुली वस्तू)
+              Loose (सुट्टे)
             </Button>
             <Button 
               variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
-              className="rounded-full px-5 whitespace-nowrap text-xs md:text-sm"
+              className="rounded-xl px-4 h-8 text-xs font-semibold whitespace-nowrap"
               onClick={() => setActiveTab('barcoded')}
             >
               Barcoded
@@ -1009,110 +1081,141 @@ export default function POS() {
 
           <div className="shrink-0">
             {liveWaStatus === 'CONNECTED' || liveWaStatus === 'AUTHENTICATED' ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-300 border border-green-300 dark:border-green-800 shadow-xs" title="Auto WhatsApp Bot सक्रिय आहे. चेकआउटवर आपोआप बिल पाठवले जाईल.">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-300 border border-green-300 dark:border-green-800 shadow-2xs" title="Auto WhatsApp Bot सक्रिय आहे.">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <Smartphone className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> WhatsApp Bot Active
+                <Smartphone className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> WhatsApp Active
               </span>
             ) : (
-              <Link to="/settings" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 transition-colors shadow-xs" title="WhatsApp Bot सुरू करण्यासाठी किंवा QR स्कॅन करण्यासाठी क्लिक करा">
+              <Link to="/settings" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 transition-colors shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-amber-400" />
-                <Smartphone className="w-3.5 h-3.5 text-amber-600" /> Bot Offline (Connect)
+                <Smartphone className="w-3.5 h-3.5 text-amber-600" /> Bot Offline
               </Link>
             )}
           </div>
         </div>
 
-        {/* Quick Loose Items Strip (उदा. साखर, शेंगदाणे, तांदूळ - जलद बटणे व कोड) */}
+        {/* Compact Quick Loose Items Strip */}
         {looseQuickItems.length > 0 && (
-          <div className="bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/50 dark:border-amber-800/50 rounded-2xl p-3 -mt-1 shadow-xs">
-            <div className="flex items-center justify-between mb-2">
+          <div className="bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/40 dark:border-amber-800/40 rounded-xl p-2.5 shadow-2xs">
+            <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200">
                 <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                <span>⚡ जलद वस्तू पट्टी (Loose / Quick Items):</span>
-                <span className="text-[11px] font-normal text-muted-foreground hidden md:inline">
-                  (नंबर दाबून Enter करा किंवा थेट बटणावर क्लिक करा)
-                </span>
+                <span>⚡ जलद वस्तू (Quick Click):</span>
               </div>
-              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-200/60 dark:bg-amber-900/60 px-2 py-0.5 rounded-full">
-                {looseQuickItems.length} वस्तू
+              <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">
+                {looseQuickItems.length} आयटम
               </span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {looseQuickItems.map(item => (
+              {looseQuickItems.slice(0, 15).map(item => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => addToCart(item)}
-                  className="shrink-0 flex items-center gap-2 bg-white dark:bg-card hover:bg-amber-50 dark:hover:bg-amber-950/50 border border-amber-200 dark:border-amber-800/80 hover:border-amber-400 rounded-xl px-3 py-1.5 shadow-xs transition-all active:scale-95 group text-left"
-                  title={`क्लिक करा किंवा नंबर ${(item as any).shortCode || item.barcode || ''} दाबून Enter करा`}
+                  className="shrink-0 flex items-center gap-1.5 bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/80 rounded-lg px-2.5 py-1 shadow-2xs transition-all active:scale-95 group text-left"
+                  title={`क्लिक करा किंवा कोड ${(item as any).shortCode || item.barcode || ''} दाबून Enter करा`}
                 >
-                  {((item as any).shortCode || item.barcode) && (
-                    <span className="bg-amber-500 text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-xs group-hover:scale-105 transition-transform">
-                      {(item as any).shortCode || item.barcode}
+                  {((item as any).shortCode) && (
+                    <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded font-mono">
+                      {(item as any).shortCode}
                     </span>
                   )}
-                  <span className="text-xs font-bold text-foreground truncate max-w-[120px]">{item.name}</span>
-                  <span className="text-xs font-extrabold text-primary shrink-0">₹{item.sellingPrice}</span>
+                  <span className="text-xs font-semibold text-foreground truncate max-w-[110px]">{item.name}</span>
+                  <span className="text-xs font-bold text-primary shrink-0">₹{item.sellingPrice}</span>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-4">
+        {/* Clean, Compact Product Cards Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 overflow-y-auto flex-1 min-h-0 pr-1 pb-4">
           {loading ? (
             <div className="col-span-full flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : filteredProducts.map(product => (
-            <div 
-              key={product.id} 
-              className="border rounded-xl p-4 cursor-pointer hover:border-primary hover:shadow-md transition-all bg-card text-card-foreground group"
-              onClick={() => addToCart(product)}
-            >
-              <div className="relative h-24 bg-white rounded-lg mb-3 flex items-center justify-center text-muted-foreground text-xs uppercase tracking-widest font-bold overflow-hidden border">
-                {(product as any).shortCode ? (
-                  <span className="absolute top-1.5 left-1.5 z-10 bg-amber-500 text-white font-black text-[10px] px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5">
-                    ⚡ [{(product as any).shortCode}]
+          ) : filteredProducts.map(product => {
+            const isLoose = Boolean((product as any).isLoose);
+            const shortCode = (product as any).shortCode;
+            
+            return (
+              <div 
+                key={product.id} 
+                className="group relative border border-border/80 rounded-2xl p-3 sm:p-3.5 cursor-pointer hover:border-primary/60 hover:shadow-md transition-all duration-200 bg-card text-card-foreground flex flex-col justify-between active:scale-[0.98]"
+                onClick={() => addToCart(product)}
+              >
+                {/* Top Badges */}
+                <div className="flex items-center justify-between gap-1 mb-2">
+                  {shortCode ? (
+                    <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 font-mono font-bold text-[10px] px-2 py-0.5 rounded-md border border-amber-500/30">
+                      ⚡ {shortCode}
+                    </span>
+                  ) : isLoose ? (
+                    <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-[10px] px-2 py-0.5 rounded-md">
+                      Loose
+                    </span>
+                  ) : (
+                    <span className="bg-muted text-muted-foreground font-medium text-[10px] px-1.5 py-0.5 rounded-md truncate max-w-[90px]">
+                      {product.category || 'Item'}
+                    </span>
+                  )}
+
+                  <span className="text-[10px] font-medium text-muted-foreground ml-auto">
+                    {product.stock} {product.unit || 'pcs'}
                   </span>
-                ) : (product as any).isLoose ? (
-                  <span className="absolute top-1.5 left-1.5 z-10 bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300">
-                    Loose
-                  </span>
-                ) : null}
+                </div>
+
+                {/* Image if available */}
                 {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1 group-hover:scale-105 transition-transform" />
-                ) : (
-                  <div className="h-full w-full bg-muted/50 flex items-center justify-center">
-                    {product.category || 'Product'}
+                  <div className="h-20 w-full mb-2 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-border/40">
+                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1 group-hover:scale-105 transition-transform" />
                   </div>
-                )}
+                ) : null}
+
+                {/* Name */}
+                <h3 className="font-semibold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug mb-2 group-hover:text-primary transition-colors">
+                  {product.name}
+                </h3>
+
+                {/* Bottom Price & Add */}
+                <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-auto">
+                  <div>
+                    <p className="font-black text-sm sm:text-base text-primary">₹{product.sellingPrice}</p>
+                    {product.mrp && product.mrp > product.sellingPrice ? (
+                      <p className="text-[10px] text-muted-foreground line-through">₹{product.mrp}</p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="h-7 w-7 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground flex items-center justify-center transition-all shrink-0"
+                    title="Add to Bill"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <h3 className="font-medium text-sm line-clamp-2 leading-tight">{product.name}</h3>
-              <div className="flex items-center justify-between mt-2">
-                <p className="font-bold text-primary">₹{product.sellingPrice}</p>
-                <p className="text-xs text-muted-foreground">Stk: {product.stock} {product.unit || ''}</p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* Mobile Floating Cart Summary */}
-      <div className="md:hidden fixed bottom-[60px] left-0 right-0 p-3 bg-card border-t border-border shadow-[0_-4px_15px_rgba(0,0,0,0.1)] z-30">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{cart.length} Items</p>
-            <p className="text-xl font-extrabold text-foreground">₹{total.toFixed(2)}</p>
+      {/* Mobile Floating Cart Summary - Only visible when cart has items */}
+      {cart.length > 0 && (
+        <div className="md:hidden fixed bottom-[64px] left-0 right-0 p-3 bg-card/95 backdrop-blur-md border-t border-border shadow-[0_-4px_25px_rgba(0,0,0,0.18)] z-30 animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
+            <div className="flex-1">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{cart.reduce((s, i) => s + i.qty, 0)} Items</p>
+              <p className="text-xl font-black text-foreground">₹{total.toFixed(2)}</p>
+            </div>
+            <Button 
+              className="flex-1 h-12 text-base font-bold shadow-md bg-gradient-to-r from-primary to-purple-600 hover:opacity-90 rounded-xl"
+              onClick={() => setShowMobileCart(true)}
+            >
+              <ShoppingCart className="mr-2 h-5 w-5" /> View Bill ({cart.length})
+            </Button>
           </div>
-          <Button 
-            className="flex-1 h-12 text-base font-bold shadow-md"
-            onClick={() => setShowMobileCart(true)}
-          >
-            <ShoppingCart className="mr-2 h-5 w-5" /> View Cart
-          </Button>
         </div>
-      </div>
+      )}
 
       {/* Parchi Scanner Modal */}
       {showParchiModal && (
@@ -1191,7 +1294,7 @@ export default function POS() {
       {/* Cart Section (Sidebar on Desktop, Full Overlay on Mobile) */}
       <div className={`
         fixed inset-0 z-[100] bg-white dark:bg-zinc-950 text-zinc-950 dark:text-zinc-50 flex flex-col
-        md:static md:w-[400px] md:bg-card md:text-card-foreground md:rounded-xl md:border md:shadow-sm md:h-full md:z-auto
+        md:static md:w-[380px] lg:w-[420px] md:bg-card md:text-card-foreground md:rounded-2xl md:border md:shadow-sm md:h-full md:overflow-hidden md:z-auto shrink-0
         transition-transform duration-300 ease-in-out
         ${showMobileCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
       `}>
@@ -1763,70 +1866,226 @@ export default function POS() {
       )}
 
       {/* Hidden Receipt Template for Thermal Printing */}
-      {checkoutResult && shopData && (
-        <div id="receipt-template" className="hidden print:block absolute left-0 top-0 w-[80mm] bg-white text-black text-[12px] leading-[1.2] font-mono z-0">
-          <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{shopData.shopName || shopData.name}</h2>
-            {shopData.address && <p style={{ margin: 0 }}>{shopData.address}</p>}
-            {shopData.phone && <p style={{ margin: 0 }}>Ph: {shopData.phone}</p>}
-            {shopData.gstNumber && <p style={{ margin: 0 }}>GST: {shopData.gstNumber}</p>}
-          </div>
-          <div style={{ borderBottom: '1px dashed #000', marginBottom: '5px' }}></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-            <span>Date: {new Date().toLocaleString()}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-            <span>Inv: #{checkoutResult.id.slice(-6).toUpperCase()}</span>
-          </div>
-          <div style={{ borderBottom: '1px dashed #000', marginBottom: '10px' }}></div>
-          
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '10px' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #000' }}>
-                <th style={{ textAlign: 'left', paddingBottom: '5px' }}>Item</th>
-                <th style={{ textAlign: 'center', paddingBottom: '5px' }}>Qty</th>
-                <th style={{ textAlign: 'right', paddingBottom: '5px' }}>Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {checkoutResult.items.map(item => (
-                <tr key={item.id}>
-                  <td style={{ padding: '2px 0' }}>{item.name}</td>
-                  <td style={{ textAlign: 'center' }}>{item.qty}</td>
-                  <td style={{ textAlign: 'right' }}>{((item.sellingPrice || 0) * item.qty).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          
-          <div style={{ borderBottom: '1px dashed #000', marginBottom: '5px' }}></div>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
-            <span>Subtotal</span>
-            <span>₹{checkoutResult.subtotal.toFixed(2)}</span>
-          </div>
-          {checkoutResult.discountAmount > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-              <span>Discount</span>
-              <span>-₹{checkoutResult.discountAmount.toFixed(2)}</span>
-            </div>
-          )}
+      {checkoutResult && shopData && (() => {
+        const receiptItems = checkoutResult.items || [];
+        const totalItemsCount = receiptItems.length;
+        const totalQtyCount = receiptItems.reduce((acc, it) => acc + Number(it.qty || 1), 0);
+        const totalMrpValue = receiptItems.reduce((acc, it) => {
+          const sp = Number(it.sellingPrice || 0);
+          const mrp = Number(it.mrp || 0);
+          const effectiveMrp = mrp > sp ? mrp : sp;
+          return acc + (effectiveMrp * Number(it.qty || 1));
+        }, 0);
+        const totalProductSavings = receiptItems.reduce((acc, it) => {
+          const sp = Number(it.sellingPrice || 0);
+          const mrp = Number(it.mrp || 0);
+          return acc + (mrp > sp ? (mrp - sp) * Number(it.qty || 1) : 0);
+        }, 0);
+        const billDiscountAmount = Number(checkoutResult.discountAmount || 0);
+        const grandTotalSavings = totalProductSavings + billDiscountAmount;
+        const savingsPercentage = totalMrpValue > 0 ? Math.round((grandTotalSavings / totalMrpValue) * 100) : 0;
+        const taxVal = Number(checkoutResult.taxAmount || 0);
+        const halfTax = taxVal / 2;
+        const shopGst = shopData?.gstNumber || '27AABCS1429B1Z2';
+        const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
+        const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', marginBottom: '10px' }}>
-            <span>TOTAL</span>
-            <span>₹{checkoutResult.total.toFixed(2)}</span>
-          </div>
-          <div style={{ borderBottom: '1px dashed #000', marginBottom: '10px' }}></div>
-          
-          <div style={{ textAlign: 'center', marginTop: '10px' }}>
-            {(checkoutResult.loyaltyPointsEarned ?? 0) > 0 && (
-              <p style={{ margin: '0 0 5px 0', fontWeight: 'bold' }}>⭐ You earned {checkoutResult.loyaltyPointsEarned} Loyalty Points!</p>
+        return (
+          <div id="receipt-template" className="hidden print:block absolute left-0 top-0 w-[80mm] bg-white text-black text-[12px] leading-[1.3] font-mono z-0 p-3">
+            {/* STORE HEADER */}
+            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+              <h2 style={{ margin: '0 0 2px 0', fontSize: '18px', fontWeight: '900', letterSpacing: '0.5px' }}>
+                {(shopData.shopName || shopData.name || 'KIRANA STORE').toUpperCase()}
+              </h2>
+              {shopData.address && (
+                <p style={{ margin: '2px 0', fontSize: '11px', lineHeight: '1.2' }}>{shopData.address}</p>
+              )}
+              {shopData.phone && (
+                <p style={{ margin: '2px 0', fontSize: '11px' }}>Ph: {shopData.phone}</p>
+              )}
+              <p style={{ margin: '3px 0', fontSize: '12px', fontWeight: 'bold' }}>
+                GSTIN: {shopGst}
+              </p>
+              {(shopData as any).fssaiNumber && (
+                <p style={{ margin: '2px 0', fontSize: '11px' }}>FSSAI Lic: {(shopData as any).fssaiNumber}</p>
+              )}
+              <div style={{ margin: '6px 0 2px 0', fontWeight: 'bold', fontSize: '12px', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '3px 0' }}>
+                *** RETAIL TAX INVOICE ***
+              </div>
+            </div>
+
+            {/* INVOICE METADATA */}
+            <div style={{ fontSize: '11px', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>Inv No:</strong> #{checkoutResult.id.slice(-8).toUpperCase()}</span>
+                <span><strong>Date:</strong> {formattedDate}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>Time:</strong> {formattedTime}</span>
+                <span><strong>Pay Mode:</strong> {(checkoutResult.paymentMethod || 'CASH').toUpperCase()}</span>
+              </div>
+              {checkoutResult.customerPhone && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span><strong>Customer:</strong> +91 {checkoutResult.customerPhone}</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ borderBottom: '1px dashed #000', marginBottom: '6px' }}></div>
+
+            {/* TABLE HEADER */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '11px', borderBottom: '1px solid #000', paddingBottom: '3px', marginBottom: '4px' }}>
+              <span style={{ width: '48%' }}>ITEM / RATE</span>
+              <span style={{ width: '18%', textAlign: 'center' }}>QTY</span>
+              <span style={{ width: '34%', textAlign: 'right' }}>AMOUNT</span>
+            </div>
+
+            {/* ITEMS LIST */}
+            <div style={{ marginBottom: '6px' }}>
+              {receiptItems.map((item, idx) => {
+                const sp = Number(item.sellingPrice || 0);
+                const mrp = Number(item.mrp || 0);
+                const qty = Number(item.qty || 1);
+                const itemTotal = sp * qty;
+                const hasDiscount = mrp > sp;
+                const itemSavings = hasDiscount ? (mrp - sp) * qty : 0;
+                const discPercent = hasDiscount ? Math.round(((mrp - sp) / mrp) * 100) : 0;
+                const unitStr = item.unit ? ` (${item.unit})` : '';
+
+                return (
+                  <div key={item.id || idx} style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px dotted #ccc' }}>
+                    {/* Item Name */}
+                    <div style={{ fontWeight: 'bold', fontSize: '11px', lineHeight: '1.2' }}>
+                      {idx + 1}. {item.name}{unitStr}
+                    </div>
+                    
+                    {/* Rate & Qty & Total Amount */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', marginTop: '2px' }}>
+                      <span style={{ width: '48%' }}>
+                        Rate: ₹{sp.toFixed(2)}
+                        {hasDiscount && (
+                          <span style={{ textDecoration: 'line-through', color: '#555', marginLeft: '4px', fontSize: '10px' }}>
+                            ₹{mrp.toFixed(2)}
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ width: '18%', textAlign: 'center' }}>
+                        {qty}
+                      </span>
+                      <span style={{ width: '34%', textAlign: 'right', fontWeight: 'bold' }}>
+                        ₹{itemTotal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Per-Item Discount & Savings */}
+                    {hasDiscount && (
+                      <div style={{ fontSize: '10px', color: '#000', paddingLeft: '8px', marginTop: '1px', fontStyle: 'italic' }}>
+                        ↳ Discount: ₹{(mrp - sp).toFixed(2)}/u ({discPercent}% OFF) | Save ₹{itemSavings.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }}></div>
+
+            {/* TOTALS & BREAKDOWN */}
+            <div style={{ fontSize: '11px', lineHeight: '1.5' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Total Items / Qty:</span>
+                <span>{totalItemsCount} items / {totalQtyCount} qty</span>
+              </div>
+
+              {totalMrpValue > checkoutResult.total && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Total MRP Value:</span>
+                  <span>₹{totalMrpValue.toFixed(2)}</span>
+                </div>
+              )}
+
+              {totalProductSavings > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Product Discount:</span>
+                  <span>-₹{totalProductSavings.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Subtotal (Taxable):</span>
+                <span>₹{checkoutResult.subtotal.toFixed(2)}</span>
+              </div>
+
+              {billDiscountAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Special Bill Discount:</span>
+                  <span>-₹{billDiscountAmount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {taxVal > 0 ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>CGST:</span>
+                    <span>+₹{halfTax.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>SGST:</span>
+                    <span>+₹{halfTax.toFixed(2)}</span>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#444' }}>
+                  <span>GST:</span>
+                  <span>Included in prices</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ borderBottom: '2px solid #000', margin: '6px 0' }}></div>
+
+            {/* NET GRAND TOTAL */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '16px', padding: '2px 0' }}>
+              <span>NET TOTAL:</span>
+              <span>₹{checkoutResult.total.toFixed(2)}</span>
+            </div>
+
+            <div style={{ borderBottom: '2px solid #000', margin: '6px 0' }}></div>
+
+            {/* SAVINGS BANNER */}
+            {grandTotalSavings > 0 && (
+              <div style={{ 
+                border: '1.5px solid #000', 
+                padding: '6px 4px', 
+                textAlign: 'center', 
+                margin: '8px 0', 
+                fontWeight: 'bold',
+                fontSize: '11px',
+                background: '#f9f9f9'
+              }}>
+                <div style={{ fontSize: '12px' }}>🎉 YOU SAVED ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}%)! 🎉</div>
+                <div style={{ fontSize: '10px', fontWeight: 'normal', marginTop: '2px' }}>
+                  (या बिलावर तुमची ₹{grandTotalSavings.toFixed(2)} रुपयांची बचत झाली!)
+                </div>
+              </div>
             )}
-            <p style={{ margin: 0 }}>Thank you for shopping!</p>
-            <p style={{ margin: 0 }}>Visit Again</p>
+
+            {/* LOYALTY POINTS */}
+            {(checkoutResult.loyaltyPointsEarned ?? 0) > 0 && (
+              <div style={{ textAlign: 'center', margin: '4px 0', fontWeight: 'bold', fontSize: '11px' }}>
+                ⭐ You earned {checkoutResult.loyaltyPointsEarned} Loyalty Points!
+              </div>
+            )}
+
+            {/* FOOTER */}
+            <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '10px', borderTop: '1px dashed #000', paddingTop: '6px', lineHeight: '1.4' }}>
+              <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Thank You For Shopping!</p>
+              <p style={{ margin: '2px 0' }}>Please Visit Again 🙏</p>
+              <p style={{ margin: '4px 0 0 0', fontSize: '9px', color: '#666' }}>Software by Nayashi Kirana POS</p>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

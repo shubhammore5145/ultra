@@ -180,6 +180,7 @@ export default function Settings() {
         ownerName: formData.ownerName,
         phone: formData.phone,
         address: formData.address,
+        gstNumber: formData.gstNumber?.trim() || null,
         upiId: formData.upiId,
         publicUrl: formData.publicUrl.trim().replace(/\/$/, ''), // remove trailing slash
         settings: {

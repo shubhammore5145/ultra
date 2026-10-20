@@ -113,10 +113,13 @@ async function connect() {
 
       // Handle QR code generation
       if (qr) {
+        const wasWaitingForQr = clientStatus === 'NEEDS_QR';
         clientStatus = 'NEEDS_QR';
         try {
           qrCodeDataUrl = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
-          console.log('[WhatsApp] Fresh QR code generated — ready to scan.');
+          if (!wasWaitingForQr) {
+            console.log('[WhatsApp] QR code generated — available in Settings UI.');
+          }
         } catch (e) {
           console.error('[WhatsApp] QR generation error:', e.message);
         }

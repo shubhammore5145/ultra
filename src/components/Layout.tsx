@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Menu, LogOut, Crown, Zap, Sparkles, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
@@ -13,6 +13,8 @@ export default function Layout() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isPosPage = location.pathname === '/pos' || location.pathname === '/';
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -174,8 +176,8 @@ export default function Layout() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto bg-background">
-          <div className="p-4 pb-24 md:p-6 md:pb-6 max-w-7xl mx-auto w-full">
+        <main className={`flex-1 bg-background ${isPosPage ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+          <div className={`${isPosPage ? 'p-3 pb-24 md:p-4 md:pb-4 max-w-[1600px] h-full flex flex-col min-h-0' : 'p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1`}>
             <Outlet />
           </div>
         </main>

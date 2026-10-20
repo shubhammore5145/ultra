@@ -210,6 +210,29 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
 
   // 9. Me
   if (endpoint.startsWith('/auth/me')) {
+    const token = getToken();
+    if (token) {
+      let uid: string | null = null;
+      if (token.startsWith('sb_')) {
+        try {
+          const payload = JSON.parse(atob(token.slice(3)));
+          uid = payload.uid;
+        } catch (e) {}
+      }
+      if (uid) {
+        try {
+          const { data: users } = await supabase.from('users').select('*').eq('uid', uid).limit(1);
+          if (users && users.length > 0) {
+            const user = users[0];
+            const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
+            const shop = shops?.[0] || { shopId: user.shopId, name: 'माझे किराणा', plan: 'free' };
+            localStorage.setItem('auth_user', JSON.stringify(user));
+            localStorage.setItem('auth_shop', JSON.stringify(shop));
+            return { user, shop };
+          }
+        } catch (e) {}
+      }
+    }
     const rawUser = localStorage.getItem('auth_user');
     const rawShop = localStorage.getItem('auth_shop');
     if (rawUser && rawShop) {

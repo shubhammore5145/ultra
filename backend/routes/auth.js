@@ -132,25 +132,43 @@ router.get('/me', async (req, res) => {
     if (!authHeader) return res.status(401).json({ error: 'No token provided' });
     
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    let uid, shopId, role;
+    if (token.startsWith('sb_')) {
+      const payload = JSON.parse(Buffer.from(token.slice(3), 'base64').toString('utf8'));
+      uid = payload.uid;
+      shopId = payload.shopId;
+    } else {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      uid = decoded.uid;
+      shopId = decoded.shopId;
+      role = decoded.role;
+    }
     
-    const [users] = await pool.query('SELECT uid, email, displayName, role, shopId FROM users WHERE uid = ?', [decoded.uid]);
-    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+    let [users] = await pool.query('SELECT uid, email, displayName, role, shopId FROM users WHERE uid = ?', [uid]);
+    if (!users || users.length === 0) {
+      try {
+        const supabase = require('../supabase');
+        const { data: sbUsers } = await supabase.from('users').select('*').eq('uid', uid).limit(1);
+        if (sbUsers && sbUsers.length > 0) {
+          users = sbUsers;
+        }
+      } catch (e) {}
+    }
+    if (!users || users.length === 0) return res.status(404).json({ error: 'User not found' });
     
     const user = users[0];
-    let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [decoded.shopId]);
-    let shop = shops[0] || null;
-    if (!shop && decoded.shopId) {
+    const targetShopId = user.shopId || shopId;
+    let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [targetShopId]);
+    let shop = shops?.[0] || null;
+
+    if (!shop) {
       try {
-        await pool.query(
-          'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
-          [decoded.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'free']
-        );
-        const [createdShops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [decoded.shopId]);
-        shop = createdShops[0] || null;
-      } catch (err) {
-        console.warn('Fallback shop auto-creation in /me:', err.message);
-      }
+        const supabase = require('../supabase');
+        const { data: sbShops } = await supabase.from('shops').select('*').eq('shopId', targetShopId).limit(1);
+        if (sbShops && sbShops.length > 0) {
+          shop = sbShops[0];
+        }
+      } catch (e) {}
     }
     
     res.json({ user, shop });

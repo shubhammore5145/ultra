@@ -23,7 +23,8 @@ const authMiddleware = (req, res, next) => {
 // --- PUBLIC ROUTES (No Auth Required) ---
 router.get('/public/receipt/:id', async (req, res) => {
   try {
-    const [rows] = await pool.query(
+    const rawId = req.params.id;
+    let [rows] = await pool.query(
       `SELECT t.*, s.name as shopName, s.phone as shopPhone, s.address as shopAddress, s.gstNumber as shopGstNumber,
               c.name as customerName, c.phone as customerPhone 
        FROM transactions t 
@@ -31,10 +32,42 @@ router.get('/public/receipt/:id', async (req, res) => {
        LEFT JOIN customers c ON t.customerId = c.id 
        WHERE t.id = ? OR t.id LIKE ?
        ORDER BY t.createdAt DESC LIMIT 1`,
-      [req.params.id, `%${req.params.id}`]
+      [rawId, `%${rawId}%`]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'Receipt not found' });
-    res.json(rows[0]);
+
+    if (rows && rows.length > 0) {
+      return res.json(rows[0]);
+    }
+
+    // Fallback to Supabase cloud if not found in local SQLite/pool
+    try {
+      const supabase = require('../supabase');
+      const { data: txList } = await supabase
+        .from('transactions')
+        .select('*')
+        .or(`id.eq.${rawId},id.ilike.%${rawId}%`)
+        .order('createdAt', { ascending: false })
+        .limit(1);
+
+      if (txList && txList.length > 0) {
+        const t = txList[0];
+        const { data: sh } = await supabase.from('shops').select('*').eq('shopId', t.shopId).limit(1);
+        const { data: cu } = t.customerId ? await supabase.from('customers').select('*').eq('id', t.customerId).limit(1) : { data: [] };
+        return res.json({
+          ...t,
+          shopName: sh?.[0]?.name || sh?.[0]?.shopName || 'माझे किराणा',
+          shopPhone: sh?.[0]?.phone || '',
+          shopAddress: sh?.[0]?.address || '',
+          shopGstNumber: sh?.[0]?.gstNumber || '',
+          customerName: cu?.[0]?.name || '',
+          customerPhone: cu?.[0]?.phone || ''
+        });
+      }
+    } catch (sbErr) {
+      console.warn('Supabase public receipt fallback query warning:', sbErr.message);
+    }
+
+    res.status(404).json({ error: 'Receipt not found' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

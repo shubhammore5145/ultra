@@ -151,14 +151,9 @@ export default function POS() {
 
     // Determine public URL for digital receipt link
     const customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    let receiptLink: string | null = null;
-    if (customPublicUrl) {
-      receiptLink = `${customPublicUrl}/receipt/${txId}`;
-    } else if (!isLocalhost) {
-      receiptLink = `${window.location.origin}/receipt/${txId}`;
-    }
+    const receiptLink = customPublicUrl 
+      ? `${customPublicUrl}/receipt/${txId}` 
+      : `${window.location.origin}/receipt/${txId}`;
 
     const numTotal = Number(billTotal || 0);
     const totalQty = itemsList.reduce((sum, item) => sum + Number(item.qty || 1), 0);
@@ -514,6 +509,30 @@ export default function POS() {
       });
       
       const phoneToSend = cleanPhone(customerPhone);
+
+      // Cache full receipt in localStorage for instant offline access
+      try {
+        const fullReceiptObj = {
+          id: txId,
+          subtotal,
+          discountAmount,
+          totalAmount: total,
+          taxAmount: tax,
+          items: [...cart],
+          paymentMethod,
+          splitAmounts,
+          customerId: finalCustomerId,
+          customerName: customerName || '',
+          customerPhone: phoneToSend,
+          shopName: shopData?.shopName || shopData?.name || 'माझे किराणा',
+          shopPhone: shopData?.phone || '',
+          shopAddress: shopData?.address || '',
+          shopGstNumber: shopData?.gstNumber || '',
+          createdAt: new Date().toISOString()
+        };
+        localStorage.setItem(`receipt_${txId}`, JSON.stringify(fullReceiptObj));
+        localStorage.setItem(`receipt_${txId.slice(0, 8)}`, JSON.stringify(fullReceiptObj));
+      } catch (cacheErr) {}
 
       // Save result for the success modal
       setCheckoutResult({

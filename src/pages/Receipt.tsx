@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Printer, Download, Store, IndianRupee, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { supabase } from '../lib/supabase';
 
 export default function Receipt() {
   const { id } = useParams();
@@ -11,30 +12,104 @@ export default function Receipt() {
 
   useEffect(() => {
     const fetchReceipt = async () => {
+      const cleanId = String(id || '').trim();
+      if (!cleanId) {
+        setError('Invalid receipt ID');
+        setLoading(false);
+        return;
+      }
+
+      // Helper to parse items safely
+      const normalizeData = (data: any) => {
+        if (!data) return null;
+        let items = data.items;
+        if (typeof items === 'string') {
+          try { items = JSON.parse(items); } catch (e) { items = []; }
+        }
+        if (!Array.isArray(items)) items = [];
+        return { ...data, items };
+      };
+
+      // 1. Try Backend API first
       try {
         const API_URL = import.meta.env.VITE_API_URL || '/api';
-        const res = await fetch(`${API_URL}/public/receipt/${id}`);
-        if (!res.ok) throw new Error('Receipt not found');
-        const data = await res.json();
-        
-        // Ensure items is parsed if it's a string from DB
-        if (typeof data.items === 'string') {
-          try {
-            data.items = JSON.parse(data.items);
-          } catch (e) {
-            console.error('Failed to parse items json');
-            data.items = [];
+        const res = await fetch(`${API_URL}/public/receipt/${cleanId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (data.id || data.totalAmount || data.total)) {
+            setReceipt(normalizeData(data));
+            setLoading(false);
+            return;
           }
-        } else if (!Array.isArray(data.items)) {
-          data.items = [];
         }
-        
-        setReceipt(data);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      } catch (backendErr) {
+        console.warn('Backend receipt fetch failed, trying direct Supabase cloud...', backendErr);
       }
+
+      // 2. Direct Supabase Cloud Fallback
+      try {
+        const { data: txList, error: sbErr } = await supabase
+          .from('transactions')
+          .select('*')
+          .or(`id.eq.${cleanId},id.ilike.%${cleanId}%`)
+          .order('createdAt', { ascending: false })
+          .limit(1);
+
+        if (txList && txList.length > 0) {
+          const t = txList[0];
+          // Also fetch shop details
+          let sh: any = {};
+          if (t.shopId) {
+            const { data: shopList } = await supabase
+              .from('shops')
+              .select('*')
+              .eq('shopId', t.shopId)
+              .limit(1);
+            sh = shopList?.[0] || {};
+          }
+
+          // Fetch customer details if exists
+          let cu: any = {};
+          if (t.customerId) {
+            const { data: custList } = await supabase
+              .from('customers')
+              .select('*')
+              .eq('id', t.customerId)
+              .limit(1);
+            cu = custList?.[0] || {};
+          }
+
+          const combined = {
+            ...t,
+            shopName: sh.name || sh.shopName || 'माझे किराणा',
+            shopPhone: sh.phone || '',
+            shopAddress: sh.address || '',
+            shopGstNumber: sh.gstNumber || '',
+            customerName: cu.name || '',
+            customerPhone: cu.phone || ''
+          };
+
+          setReceipt(normalizeData(combined));
+          setLoading(false);
+          return;
+        }
+      } catch (sbErr: any) {
+        console.warn('Direct Supabase receipt fetch error:', sbErr.message);
+      }
+
+      // 3. LocalStorage Fallback (if cached on same device)
+      try {
+        const localCached = localStorage.getItem(`receipt_${cleanId}`);
+        if (localCached) {
+          const parsed = JSON.parse(localCached);
+          setReceipt(normalizeData(parsed));
+          setLoading(false);
+          return;
+        }
+      } catch (localErr) {}
+
+      setError('Receipt not found');
+      setLoading(false);
     };
 
     if (id) fetchReceipt();

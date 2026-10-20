@@ -289,11 +289,11 @@ export default function Settings() {
               <Input 
                 value={formData.publicUrl}
                 onChange={e => setFormData({...formData, publicUrl: e.target.value})}
-                placeholder="e.g. https://s-mart-ed1z.onrender.com"
+                placeholder="e.g. https://ultra-u3ej.onrender.com"
                 className="bg-background border-muted font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Enter your live deployed URL (e.g. <code>https://s-mart-ed1z.onrender.com</code>). Customers will receive this link on WhatsApp to view and download their PDF bills.
+                Enter your live deployed URL (e.g. <code>https://ultra-u3ej.onrender.com</code>). Customers will receive this link on WhatsApp to view and download their PDF bills.
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">

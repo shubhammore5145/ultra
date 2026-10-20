@@ -150,10 +150,15 @@ export default function POS() {
     const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     // Determine public URL for digital receipt link
-    const customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
-    const receiptLink = customPublicUrl 
-      ? `${customPublicUrl}/receipt/${txId}` 
-      : `${window.location.origin}/receipt/${txId}`;
+    let customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
+    if (customPublicUrl && customPublicUrl.includes('vercel.app')) {
+      customPublicUrl = 'https://ultra-u3ej.onrender.com';
+    }
+    if (!customPublicUrl && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      customPublicUrl = window.location.origin;
+    }
+    const finalBaseUrl = customPublicUrl || 'https://ultra-u3ej.onrender.com';
+    const receiptLink = `${finalBaseUrl}/receipt/${txId}`;
 
     const numTotal = Number(billTotal || 0);
     const totalQty = itemsList.reduce((sum, item) => sum + Number(item.qty || 1), 0);

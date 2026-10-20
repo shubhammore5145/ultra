@@ -17,9 +17,14 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 pool.testConnection().catch(e => console.warn('Vercel DB init notice:', e.message));
 
 app.use('/api/auth', authRoutes);
-app.use('/api', apiRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api', apiRoutes);
+
+app.use('/auth', authRoutes);
+app.use('/superadmin', superAdminRoutes);
+app.use('/notifications', notificationsRoutes);
+app.use('/', apiRoutes);
 
 app.get('/api/whatsapp/status', (req, res) => {
   res.json({

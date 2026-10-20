@@ -43,7 +43,8 @@ if (process.env.DATABASE_URL || pgPassword) {
 function getSQLiteDb() {
   if (sqliteDb) return sqliteDb;
 
-  const dataDir = path.join(__dirname, 'data');
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION);
+  const dataDir = isVercel ? '/tmp/kirana-data' : path.join(__dirname, 'data');
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
@@ -386,6 +387,56 @@ function toPostgresSql(sql) {
   return sql.replace(/\?/g, () => '$' + (index++));
 }
 
+async function warmUpCacheFromSupabase() {
+  try {
+    const db = getSQLiteDb();
+    const countCheck = db.prepare('SELECT count(*) as c FROM products').get();
+    if (countCheck && countCheck.c > 0) return; // Cache already populated
+
+    const [shopsRes, prodsRes, usersRes, custsRes] = await Promise.all([
+      supabase.from('shops').select('*'),
+      supabase.from('products').select('*'),
+      supabase.from('users').select('*'),
+      supabase.from('customers').select('*')
+    ]);
+
+    if (shopsRes.data) {
+      for (const s of shopsRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO shops (shopId, name, ownerName, phone, email, address, gstNumber, upiId, publicUrl, plan, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(s.shopId, s.name, s.ownerName, s.phone, s.email, s.address, s.gstNumber, s.upiId, s.publicUrl, s.plan, JSON.stringify(s.settings || {}));
+        } catch (e) {}
+      }
+    }
+    if (prodsRes.data) {
+      for (const p of prodsRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(p.id, p.shopId, p.name, p.category, p.brand, p.unit, p.purchasePrice, p.sellingPrice, p.mrp, p.gst, p.stock, p.minStock, p.sku, p.barcode, p.shortCode, p.isLoose ? 1 : 0, p.imageUrl);
+        } catch (e) {}
+      }
+    }
+    if (usersRes.data) {
+      for (const u of usersRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO users (uid, email, password, displayName, role, shopId) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(u.uid, u.email, u.password, u.displayName, u.role, u.shopId);
+        } catch (e) {}
+      }
+    }
+    if (custsRes.data) {
+      for (const c of custsRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO customers (id, shopId, name, phone, email, address, balance, visits, totalSpent, loyaltyPoints, aadharNumber) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(c.id, c.shopId, c.name, c.phone, c.email, c.address, c.balance, c.visits, c.totalSpent, c.loyaltyPoints, c.aadharNumber);
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('Cache warm-up notice:', err.message);
+  }
+}
+
 const pool = {
   async testConnection() {
     console.log('⚡ Initializing database adapter (Supabase / SQLite)...');
@@ -410,6 +461,8 @@ const pool = {
       if (!error) {
         isSupabaseApiReady = true;
         console.log('✅ Supabase REST API connection verified with dyuimjageamopkodfplk.supabase.co');
+        // Warm up local cache asynchronously from Supabase
+        warmUpCacheFromSupabase().catch(() => {});
         return true;
       } else if (error.code === 'PGRST205') {
         console.warn('\n⚠️ Supabase Notice: Tables are not created yet in your Supabase project.');

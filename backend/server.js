@@ -55,15 +55,31 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
 
 function extractShopId(req) {
-  if (req.query?.shopId) return req.query.shopId;
-  if (req.body?.shopId) return req.body.shopId;
-  if (req.headers['x-shop-id']) return req.headers['x-shop-id'];
+  if (req.query?.shopId && req.query.shopId !== 'undefined' && req.query.shopId !== 'null') {
+    return String(req.query.shopId).trim();
+  }
+  if (req.body?.shopId && req.body.shopId !== 'undefined' && req.body.shopId !== 'null') {
+    return String(req.body.shopId).trim();
+  }
+  if (req.headers['x-shop-id'] && req.headers['x-shop-id'] !== 'undefined' && req.headers['x-shop-id'] !== 'null') {
+    return String(req.headers['x-shop-id']).trim();
+  }
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const decoded = jwt.decode(authHeader.split(' ')[1]);
-      if (decoded?.shopId) return decoded.shopId;
-    } catch (e) {}
+    const rawToken = authHeader.split(' ')[1];
+    if (rawToken) {
+      if (rawToken.startsWith('sb_')) {
+        try {
+          const jsonStr = Buffer.from(rawToken.slice(3), 'base64').toString('utf8');
+          const payload = JSON.parse(jsonStr);
+          if (payload?.shopId) return String(payload.shopId).trim();
+        } catch (e) {}
+      }
+      try {
+        const decoded = jwt.decode(rawToken);
+        if (decoded?.shopId) return String(decoded.shopId).trim();
+      } catch (e) {}
+    }
   }
   return 'default';
 }
@@ -417,13 +433,15 @@ function startKeepAlive() {
 app.listen(port, () => {
   console.log(`🚀 MartGPT Server running on http://localhost:${port}`);
 
-  // Auto-initialize WhatsApp bot
+  // Auto-restore saved WhatsApp bot sessions for shops that have connected
   setTimeout(() => {
     try {
-      console.log('Auto-initializing WhatsApp bot (Baileys)...');
-      whatsappBot.initializeWhatsApp();
+      console.log('Restoring saved WhatsApp sessions for connected shops...');
+      if (typeof whatsappBot.restoreAllSavedSessions === 'function') {
+        whatsappBot.restoreAllSavedSessions();
+      }
     } catch (e) {
-      console.error('Failed to auto-start WhatsApp bot:', e.message);
+      console.error('Failed to auto-restore WhatsApp bot sessions:', e.message);
     }
   }, 2000);
 

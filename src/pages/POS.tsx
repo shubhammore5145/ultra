@@ -193,44 +193,20 @@ export default function POS() {
     });
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const res = await fetch('/api/whatsapp/send-bill', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone, 
-          message: text, 
-          billNo: txId.slice(0, 8),
-          shopId: shopData?.shopId || 'default'
-        }),
-        signal: controller.signal
+      await api.whatsapp.sendBill(phone, text, txId.slice(0, 8), shopData?.shopId);
+      const successMsg = `WhatsApp bill sent to +91 ${phone}! ✅`;
+      setWhatsappStatusBanner({
+        type: 'success',
+        message: successMsg
       });
-      clearTimeout(timeout);
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        const successMsg = `WhatsApp bill sent to +91 ${phone}! ✅`;
-        setWhatsappStatusBanner({
-          type: 'success',
-          message: successMsg
-        });
-        setFloatingNotification(successMsg);
-        setTimeout(() => setFloatingNotification(''), 7000);
-        setTimeout(() => setWhatsappStatusBanner(null), 6000);
-      } else {
-        const errMsg = data.error || 'Failed to send WhatsApp bill';
-        setWhatsappStatusBanner({
-          type: 'error',
-          message: `⚠️ ${errMsg}`
-        });
-      }
+      setFloatingNotification(successMsg);
+      setTimeout(() => setFloatingNotification(''), 7000);
+      setTimeout(() => setWhatsappStatusBanner(null), 6000);
     } catch (err: any) {
+      const errMsg = err.message || 'Failed to send WhatsApp bill';
       setWhatsappStatusBanner({
         type: 'error',
-        message: `⚠️ Error sending WhatsApp bill: ${err.message}`
+        message: `⚠️ ${errMsg}`
       });
     }
   };
@@ -239,9 +215,7 @@ export default function POS() {
   useEffect(() => {
     const checkWa = async () => {
       try {
-        const sid = shopData?.shopId ? `?shopId=${encodeURIComponent(shopData.shopId)}` : '';
-        const res = await fetch(`/api/whatsapp/status${sid}`);
-        const data = await res.json();
+        const data = await api.whatsapp.status(shopData?.shopId);
         setLiveWaStatus(data.status || 'DISCONNECTED');
       } catch {
         setLiveWaStatus('DISCONNECTED');
@@ -250,7 +224,7 @@ export default function POS() {
     checkWa();
     const interval = setInterval(checkWa, 7000);
     return () => clearInterval(interval);
-  }, []);
+  }, [shopData?.shopId]);
 
   // WhatsApp countdown timer for auto-sending
   useEffect(() => {

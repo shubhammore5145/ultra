@@ -67,9 +67,8 @@ export default function Settings() {
 
   const fetchWhatsappStatus = async () => {
     try {
-      const sid = shopData?.shopId ? `?shopId=${encodeURIComponent(shopData.shopId)}` : '';
-      const res = await fetch(`/api/whatsapp/status${sid}`);
-      const data = await res.json();
+      if (!shopData?.shopId) return;
+      const data = await api.whatsapp.status(shopData.shopId);
       setWhatsappStatus(data);
     } catch (err) {
       console.error('Error fetching WA status', err);
@@ -112,15 +111,7 @@ export default function Settings() {
     }
     setStartingWhatsapp(true);
     try {
-      const res = await fetch('/api/whatsapp/start', { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopId: shopData?.shopId || 'default' })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to start bot');
-      }
+      await api.whatsapp.start(shopData?.shopId);
       for (let i = 0; i < 4; i++) {
         await new Promise(r => setTimeout(r, 1200));
         await fetchWhatsappStatus();
@@ -134,11 +125,7 @@ export default function Settings() {
 
   const handleLogoutWhatsapp = async () => {
     try {
-      await fetch('/api/whatsapp/logout', { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopId: shopData?.shopId || 'default' })
-      });
+      await api.whatsapp.logout(shopData?.shopId);
       fetchWhatsappStatus();
     } catch (err) {
       alert('Failed to logout WhatsApp bot.');
@@ -157,21 +144,12 @@ export default function Settings() {
     setTestSending(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/whatsapp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: testPhone,
-          shopId: shopData?.shopId || 'default',
-          message: `🏪 *${formData.shopName || 'Kirana Store'}*\n\n✅ *WhatsApp Bot Test Successful!*\nआपला किराणा ऑटो व्हॉट्सअॅप बॉट यशस्वीरित्या काम करत आहे.`
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setTestResult('व्हॉट्सअॅप चाचणी मेसेज यशस्वीरित्या पाठवला! ✅');
-      } else {
-        setTestResult(`त्रुटी: ${data.error || 'Failed to send'}`);
-      }
+      await api.whatsapp.send(
+        testPhone,
+        `🏪 *${formData.shopName || 'Kirana Store'}*\n\n✅ *WhatsApp Bot Test Successful!*\nआपला किराणा ऑटो व्हॉट्सअॅप बॉट यशस्वीरित्या काम करत आहे.`,
+        shopData?.shopId
+      );
+      setTestResult('व्हॉट्सअॅप चाचणी मेसेज यशस्वीरित्या पाठवला! ✅');
     } catch (e: any) {
       setTestResult(`त्रुटी: ${e.message}`);
     } finally {

@@ -317,9 +317,30 @@ async function logout(shopId = 'default') {
   console.log(`[WhatsApp - Shop ${shopId}] Logged out and session cleared.`);
 }
 
+function restoreAllSavedSessions() {
+  try {
+    const baseDir = path.join(__dirname, '.baileys_auth');
+    if (!fs.existsSync(baseDir)) return;
+    const items = fs.readdirSync(baseDir, { withFileTypes: true });
+    for (const item of items) {
+      if (item.isDirectory()) {
+        const shopId = item.name;
+        if (hasSavedCredentials(shopId)) {
+          console.log(`[WhatsApp] Auto-restoring saved session for shop: ${shopId}`);
+          initializeWhatsApp(shopId);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[WhatsApp] Error restoring saved sessions:', err.message);
+  }
+}
+
 module.exports = {
   initializeWhatsApp,
   getStatus,
   sendMessage,
-  logout
+  logout,
+  restoreAllSavedSessions
 };
+

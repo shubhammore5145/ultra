@@ -217,15 +217,21 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
   }
 
+  if (endpoint.startsWith('/whatsapp')) {
+    throw new Error('WhatsApp Bot चालवण्यासाठी Node.js बॅकएंड सर्व्हर चालू असणे आवश्यक आहे. कृपया Render वर Web Service तयार करा किंवा लोकलवर सर्व्हर चालू ठेवा.');
+  }
+
   throw new Error(`Endpoint ${endpoint} not available in direct cloud mode.`);
 }
 
 // Generic Fetch Wrapper with Automatic Supabase Fallback
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const token = getToken();
+  const shopId = getShopId();
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(shopId ? { 'x-shop-id': shopId } : {}),
     ...options.headers,
   };
 
@@ -324,5 +330,32 @@ export const api = {
     list: (unreadOnly?: boolean) => fetchAPI('/notifications' + (unreadOnly ? '?unreadOnly=true' : ''), { method: 'GET' }),
     markAsRead: (id: string) => fetchAPI(`/notifications/${id}/read`, { method: 'POST' }),
     markAllAsRead: () => fetchAPI('/notifications/read-all', { method: 'POST' })
+  },
+  whatsapp: {
+    status: (shopId?: string) => {
+      const sid = shopId || getShopId();
+      return fetchAPI('/whatsapp/status' + (sid ? `?shopId=${encodeURIComponent(sid)}` : ''), { method: 'GET' });
+    },
+    start: (shopId?: string) => {
+      const sid = shopId || getShopId();
+      return fetchAPI('/whatsapp/start', { method: 'POST', body: JSON.stringify({ shopId: sid }) });
+    },
+    logout: (shopId?: string) => {
+      const sid = shopId || getShopId();
+      return fetchAPI('/whatsapp/logout', { method: 'POST', body: JSON.stringify({ shopId: sid }) });
+    },
+    send: (phone: string, message: string, shopId?: string) => {
+      const sid = shopId || getShopId();
+      return fetchAPI('/whatsapp/send', { method: 'POST', body: JSON.stringify({ phone, message, shopId: sid }) });
+    },
+    sendBill: (phone: string, message: string, billNo?: string, shopId?: string) => {
+      const sid = shopId || getShopId();
+      return fetchAPI('/whatsapp/send-bill', { method: 'POST', body: JSON.stringify({ phone, message, billNo, shopId: sid }) });
+    },
+    sendBulkReminder: (customers: any[], shopName?: string, shopId?: string) => {
+      const sid = shopId || getShopId();
+      return fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName, shopId: sid }) });
+    }
   }
 };
+

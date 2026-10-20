@@ -1,75 +1,45 @@
-const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
+const { supabase, supabaseUrl, supabaseKey } = require('./supabase');
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
 require('dotenv').config();
 
-let poolConfig = {};
-
-const isRenderProduction = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_INSTANCE_ID);
-
-if (process.env.DATABASE_URL) {
-  poolConfig = {
-    uri: process.env.DATABASE_URL
-  };
-} else if (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') {
-  // Explicit remote host configured
-  poolConfig = {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'Shubham16@',
-    database: process.env.DB_NAME || 'nayashi_kirana',
-    connectTimeout: 15000,
-  };
-} else if (isRenderProduction || !process.env.DB_HOST || process.env.DB_HOST === 'gateway01.ap-northeast-1.prod.aws.tidbcloud.com') {
-  // On Render production (or when DB_HOST is empty), default directly to TiDB Cloud permanent database!
-  poolConfig = {
-    host: 'gateway01.ap-northeast-1.prod.aws.tidbcloud.com',
-    port: 4000,
-    user: 'Q6jneq1m3b8AAAP.root',
-    password: 'kPfHD6VZ6LWtSsi3',
-    database: 'nayashi_kirana',
-    connectTimeout: 15000,
-  };
-} else {
-  // Local development fallback
-  poolConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'Shubham16@',
-    database: process.env.DB_NAME || 'nayashi_kirana',
-    connectTimeout: 15000,
-  };
-}
-
-// Enable SSL whenever connecting to TiDB or remote host
-if (poolConfig.host && poolConfig.host !== 'localhost' && poolConfig.host !== '127.0.0.1') {
-  poolConfig.ssl = { rejectUnauthorized: false };
-}
-
-poolConfig.waitForConnections = true;
-poolConfig.connectionLimit = 10;
-poolConfig.maxIdle = 10;
-poolConfig.idleTimeout = 60000;
-poolConfig.enableKeepAlive = true;
-poolConfig.keepAliveInitialDelay = 10000;
-poolConfig.queueLimit = 0;
-
-let mysqlPool = null;
-try {
-  mysqlPool = mysql.createPool(poolConfig);
-} catch (e) {
-  console.warn('MySQL pool initialization error:', e.message);
-}
-
-let isMySQLReady = false;
+let pgPool = null;
+let isPostgresReady = false;
+let isSupabaseApiReady = false;
 let isFallbackActive = false;
 let sqliteDb = null;
 
-// Initialize embedded SQLite database when cloud MySQL is unreachable
+// Initialize PostgreSQL client if direct connection string or credentials are present
+const pgPassword = process.env.SUPABASE_DB_PASSWORD || process.env.POSTGRES_PASSWORD;
+const pgHost = process.env.POSTGRES_HOST || 'db.dyuimjageamopkodfplk.supabase.co';
+const pgDatabase = process.env.POSTGRES_DB || 'postgres';
+const pgUser = process.env.POSTGRES_USER || 'postgres';
+const pgPort = process.env.POSTGRES_PORT ? parseInt(process.env.POSTGRES_PORT) : 5432;
+
+if (process.env.DATABASE_URL || pgPassword) {
+  try {
+    const { Pool } = require('pg');
+    pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      host: !process.env.DATABASE_URL ? pgHost : undefined,
+      port: !process.env.DATABASE_URL ? pgPort : undefined,
+      database: !process.env.DATABASE_URL ? pgDatabase : undefined,
+      user: !process.env.DATABASE_URL ? pgUser : undefined,
+      password: !process.env.DATABASE_URL ? pgPassword : undefined,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000,
+      max: 10
+    });
+  } catch (e) {
+    console.warn('PostgreSQL pool creation notice:', e.message);
+  }
+}
+
+// Embedded SQLite Database for 100% offline uptime & zero data loss
 function getSQLiteDb() {
   if (sqliteDb) return sqliteDb;
 
@@ -133,6 +103,8 @@ function getSQLiteDb() {
         minStock REAL,
         sku TEXT,
         barcode TEXT,
+        shortCode TEXT,
+        isLoose INTEGER DEFAULT 0,
         expiryDate TEXT,
         imageUrl TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
@@ -232,13 +204,20 @@ function getSQLiteDb() {
         readBy TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS promo_codes (
+        code TEXT PRIMARY KEY,
+        discountPercent REAL DEFAULT 0,
+        flatDiscount REAL DEFAULT 0,
+        planType TEXT,
+        maxUses INTEGER DEFAULT 100,
+        usedCount INTEGER DEFAULT 0,
+        validUntil TEXT,
+        active INTEGER DEFAULT 1,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
-    // Run non-destructive column migrations for SQLite
-    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN shortCode TEXT;'); } catch (e) {}
-    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isLoose INTEGER DEFAULT 0;'); } catch (e) {}
-
-    console.log('⚡ Embedded SQLite database ready at:', dbPath);
     return sqliteDb;
   } catch (err) {
     console.error('Error initializing embedded SQLite fallback:', err);
@@ -267,7 +246,103 @@ function runSQLiteQuery(sql, params = []) {
   } else {
     const stmt = db.prepare(sql);
     const res = stmt.run(...cleanParams);
+
+    // Automatically sync all INSERT, UPDATE, DELETE operations directly to Supabase cloud!
+    syncMutationToSupabase(sql, cleanParams).catch(err => {
+      console.warn('Supabase sync notice:', err.message);
+    });
+
     return [{ affectedRows: res.changes, insertId: Number(res.lastInsertRowid) }];
+  }
+}
+
+const TABLE_PRIMARY_KEYS = {
+  shops: 'shopId',
+  users: 'uid',
+  products: 'id',
+  customers: 'id',
+  transactions: 'id',
+  expenses: 'id',
+  udhar_transactions: 'id',
+  suppliers: 'id',
+  purchases: 'id',
+  notifications: 'id',
+  promo_codes: 'code'
+};
+
+async function syncMutationToSupabase(sql, params = []) {
+  if (!isSupabaseApiReady) return;
+  const trimmed = sql.trim();
+  const lower = trimmed.toLowerCase();
+
+  try {
+    // 1. DELETE
+    if (lower.startsWith('delete from')) {
+      const match = trimmed.match(/DELETE\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+(.+)/i);
+      if (match) {
+        const table = match[1].toLowerCase();
+        const pk = TABLE_PRIMARY_KEYS[table] || 'id';
+        const id = params[0];
+        if (id) {
+          await supabase.from(table).delete().eq(pk, id);
+        }
+      }
+      return;
+    }
+
+    // 2. INSERT
+    if (lower.startsWith('insert into')) {
+      const match = trimmed.match(/INSERT\s+INTO\s+([a-zA-Z0-9_]+)\s*\(([^)]+)\)/i);
+      if (match) {
+        const table = match[1].toLowerCase();
+        const cols = match[2].split(',').map(c => c.trim().replace(/["`]/g, ''));
+        const row = {};
+        cols.forEach((col, idx) => {
+          let val = params[idx];
+          if (val === undefined) val = null;
+          if (col === 'isLoose' || col === 'active') val = Boolean(val);
+          if ((col === 'settings' || col === 'items' || col === 'readBy') && typeof val === 'string') {
+            try { val = JSON.parse(val); } catch (e) {}
+          }
+          if ((col === 'imageUrl' || col === 'photoUrl') && typeof val === 'string' && val.length > 500000) {
+            val = null;
+          }
+          row[col] = val;
+        });
+        await supabase.from(table).upsert(row);
+      }
+      return;
+    }
+
+    // 3. UPDATE
+    if (lower.startsWith('update')) {
+      const match = trimmed.match(/UPDATE\s+([a-zA-Z0-9_]+)\s+SET\s+/i);
+      if (match) {
+        const table = match[1].toLowerCase();
+        const pk = TABLE_PRIMARY_KEYS[table] || 'id';
+        const lastParam = params[params.length - 1];
+        if (lastParam) {
+          const db = getSQLiteDb();
+          const stmt = db.prepare(`SELECT * FROM ${table} WHERE ${pk} = ?`);
+          const row = stmt.get(lastParam);
+          if (row) {
+            const formatted = { ...row };
+            for (const [k, v] of Object.entries(formatted)) {
+              if (k === 'isLoose' || k === 'active') formatted[k] = Boolean(v);
+              if ((k === 'settings' || k === 'items' || k === 'readBy') && typeof v === 'string') {
+                try { formatted[k] = JSON.parse(v); } catch (e) {}
+              }
+              if ((k === 'imageUrl' || k === 'photoUrl') && typeof v === 'string' && v.length > 500000) {
+                formatted[k] = null;
+              }
+            }
+            await supabase.from(table).upsert(formatted);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Supabase sync background notice:`, err.message);
   }
 }
 
@@ -301,155 +376,121 @@ function createSQLiteConnection() {
         inTransaction = false;
       }
     },
-    release() {
-      // No external connection to release
-    }
+    release() {}
   };
+}
+
+// Convert MySQL syntax `?` parameters to PostgreSQL `$1, $2, ...`
+function toPostgresSql(sql) {
+  let index = 1;
+  return sql.replace(/\?/g, () => '$' + (index++));
 }
 
 const pool = {
   async testConnection() {
-    if (process.env.DB_ADAPTER === 'sqlite') {
-      console.log('⚡ DB_ADAPTER=sqlite specified. Using embedded SQLite database.');
-      isFallbackActive = true;
-      getSQLiteDb();
-      return true;
-    }
+    console.log('⚡ Initializing database adapter (Supabase / SQLite)...');
 
-    try {
-      if (!mysqlPool) throw new Error('MySQL pool not initialized');
-      const conn = await mysqlPool.getConnection();
-      console.log(`Connected to MySQL database [${process.env.DB_NAME || 'nayashi_kirana'}] on [${process.env.DB_HOST || 'localhost'}]`);
-      
-      // Auto-migrate products columns if needed
-      try { await conn.query('ALTER TABLE products ADD COLUMN shortCode VARCHAR(100)'); } catch (e) {}
-      try { await conn.query('ALTER TABLE products ADD COLUMN isLoose TINYINT(1) DEFAULT 0'); } catch (e) {}
+    // 1. Check direct PostgreSQL connection if configured
+    if (pgPool) {
       try {
-        await conn.query(`
-          CREATE TABLE IF NOT EXISTS notifications (
-            id VARCHAR(64) PRIMARY KEY,
-            shopId VARCHAR(64) NULL,
-            title VARCHAR(255) NOT NULL,
-            message TEXT NOT NULL,
-            type VARCHAR(50) DEFAULT 'info',
-            channel VARCHAR(50) DEFAULT 'system',
-            actionUrl VARCHAR(255) NULL,
-            isRead TINYINT(1) DEFAULT 0,
-            readBy TEXT NULL,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-      } catch (e) {}
-
-      conn.release();
-      isMySQLReady = true;
-      return true;
-    } catch (err) {
-      console.warn(`MySQL connection unavailable (${err.code || err.message}). Switching automatically to embedded SQLite fallback database.`);
-      isFallbackActive = true;
-      getSQLiteDb();
-      return false;
+        const client = await pgPool.connect();
+        const res = await client.query('SELECT NOW()');
+        client.release();
+        isPostgresReady = true;
+        console.log('✅ Connected directly to Supabase PostgreSQL at:', pgHost);
+        return true;
+      } catch (pgErr) {
+        console.warn('Supabase direct PostgreSQL connection not active:', pgErr.message);
+      }
     }
+
+    // 2. Test Supabase API access
+    try {
+      const { data, error } = await supabase.from('shops').select('shopId').limit(1);
+      if (!error) {
+        isSupabaseApiReady = true;
+        console.log('✅ Supabase REST API connection verified with dyuimjageamopkodfplk.supabase.co');
+        return true;
+      } else if (error.code === 'PGRST205') {
+        console.warn('\n⚠️ Supabase Notice: Tables are not created yet in your Supabase project.');
+        console.log('👉 Open Supabase Dashboard -> SQL Editor, paste `supabase_schema.sql` and click "RUN".');
+        console.log('👉 Then run: node backend/sync_to_supabase.cjs to sync all products & data!\n');
+      } else {
+        console.warn('Supabase API response notice:', error.message);
+      }
+    } catch (sbErr) {
+      console.warn('Supabase check notice:', sbErr.message);
+    }
+
+    // 3. Fallback to embedded SQLite database for zero-downtime offline support
+    console.log('⚡ Embedded SQLite database active for local operations.');
+    isFallbackActive = true;
+    getSQLiteDb();
+    return true;
   },
 
-  async query(sql, params) {
-    if (isFallbackActive) {
-      return runSQLiteQuery(sql, params);
-    }
-
-    if (isMySQLReady && mysqlPool) {
+  async query(sql, params = []) {
+    // If PostgreSQL pool is ready, query PostgreSQL directly
+    if (isPostgresReady && pgPool) {
       try {
-        return await mysqlPool.query(sql, params);
+        const pgSql = toPostgresSql(sql);
+        const res = await pgPool.query(pgSql, params);
+        if (sql.trim().toLowerCase().startsWith('select')) {
+          return [res.rows];
+        }
+        return [{ affectedRows: res.rowCount, insertId: 0 }];
       } catch (err) {
-        if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST') {
-          try {
-            return await mysqlPool.query(sql, params);
-          } catch (retryErr) {
-            console.warn(`MySQL retry query failed (${retryErr.code || retryErr.message}).`);
-            if (retryErr.code === 'ECONNREFUSED' || retryErr.code === 'ETIMEDOUT') {
-              isFallbackActive = true;
-              isMySQLReady = false;
-              return runSQLiteQuery(sql, params);
-            }
-            throw retryErr;
-          }
-        }
-        if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'PROTOCOL_CONNECTION_LOST') {
-          console.warn(`MySQL connection dropped (${err.code}). Auto-switching to embedded SQLite.`);
-          isFallbackActive = true;
-          isMySQLReady = false;
-          return runSQLiteQuery(sql, params);
-        }
-        throw err;
-      }
-    }
-
-    // Undetermined state: try MySQL first
-    try {
-      if (!mysqlPool) throw new Error('No MySQL pool');
-      const res = await mysqlPool.query(sql, params);
-      isMySQLReady = true;
-      return res;
-    } catch (err) {
-      if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST') {
-        try {
-          return await mysqlPool.query(sql, params);
-        } catch (e) {}
-      }
-      if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND' || (err.message && err.message.includes('ECONNREFUSED'))) {
-        console.warn(`MySQL connection failed (${err.code || err.message}). Auto-switching to embedded SQLite.`);
-        isFallbackActive = true;
-        isMySQLReady = false;
+        console.warn('PostgreSQL query error, falling back to local database:', err.message);
         return runSQLiteQuery(sql, params);
       }
-      throw err;
     }
+
+    // Standard queries run against embedded SQLite engine
+    return runSQLiteQuery(sql, params);
   },
 
   async getConnection() {
-    if (isFallbackActive) {
-      return createSQLiteConnection();
-    }
-
-    if (isMySQLReady && mysqlPool) {
+    if (isPostgresReady && pgPool) {
       try {
-        return await mysqlPool.getConnection();
+        const client = await pgPool.connect();
+        return {
+          async query(sql, params = []) {
+            const pgSql = toPostgresSql(sql);
+            const res = await client.query(pgSql, params);
+            if (sql.trim().toLowerCase().startsWith('select')) {
+              return [res.rows];
+            }
+            return [{ affectedRows: res.rowCount, insertId: 0 }];
+          },
+          async beginTransaction() {
+            await client.query('BEGIN');
+          },
+          async commit() {
+            await client.query('COMMIT');
+          },
+          async rollback() {
+            await client.query('ROLLBACK');
+          },
+          release() {
+            client.release();
+          }
+        };
       } catch (err) {
-        if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
-          console.warn(`MySQL getConnection lost (${err.code}). Switching to SQLite connection.`);
-          isFallbackActive = true;
-          isMySQLReady = false;
-          return createSQLiteConnection();
-        }
-        throw err;
+        console.warn('Postgres connection failed, using local connection:', err.message);
       }
     }
 
-    try {
-      if (!mysqlPool) throw new Error('No MySQL pool');
-      const conn = await mysqlPool.getConnection();
-      isMySQLReady = true;
-      return conn;
-    } catch (err) {
-      if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
-        console.warn(`MySQL getConnection failed (${err.code || err.message}). Switching to SQLite connection.`);
-        isFallbackActive = true;
-        isMySQLReady = false;
-        return createSQLiteConnection();
-      }
-      throw err;
-    }
+    return createSQLiteConnection();
   },
 
   getStatus() {
     return {
-      adapter: isFallbackActive ? 'sqlite' : (isMySQLReady ? 'mysql_cloud' : 'trying_mysql'),
-      isMySQLReady,
-      isFallbackActive,
-      dbHost: poolConfig.host || 'unknown',
-      dbName: poolConfig.database || 'nayashi_kirana',
-      dbUser: poolConfig.user || 'root',
-      hasPassword: Boolean(poolConfig.password)
+      adapter: isPostgresReady ? 'supabase_postgres' : (isSupabaseApiReady ? 'supabase_api' : 'sqlite_active'),
+      isSupabaseApiReady,
+      isPostgresReady,
+      isFallbackActive: !isPostgresReady,
+      supabaseUrl,
+      supabaseKeyConfigured: Boolean(supabaseKey)
     };
   }
 };

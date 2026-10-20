@@ -67,7 +67,8 @@ export default function Settings() {
 
   const fetchWhatsappStatus = async () => {
     try {
-      const res = await fetch('/api/whatsapp/status');
+      const sid = shopData?.shopId ? `?shopId=${encodeURIComponent(shopData.shopId)}` : '';
+      const res = await fetch(`/api/whatsapp/status${sid}`);
       const data = await res.json();
       setWhatsappStatus(data);
     } catch (err) {
@@ -111,7 +112,11 @@ export default function Settings() {
     }
     setStartingWhatsapp(true);
     try {
-      const res = await fetch('/api/whatsapp/start', { method: 'POST' });
+      const res = await fetch('/api/whatsapp/start', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shopData?.shopId || 'default' })
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || 'Failed to start bot');
@@ -129,7 +134,11 @@ export default function Settings() {
 
   const handleLogoutWhatsapp = async () => {
     try {
-      await fetch('/api/whatsapp/logout', { method: 'POST' });
+      await fetch('/api/whatsapp/logout', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shopData?.shopId || 'default' })
+      });
       fetchWhatsappStatus();
     } catch (err) {
       alert('Failed to logout WhatsApp bot.');
@@ -153,6 +162,7 @@ export default function Settings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: testPhone,
+          shopId: shopData?.shopId || 'default',
           message: `🏪 *${formData.shopName || 'Kirana Store'}*\n\n✅ *WhatsApp Bot Test Successful!*\nआपला किराणा ऑटो व्हॉट्सअॅप बॉट यशस्वीरित्या काम करत आहे.`
         })
       });

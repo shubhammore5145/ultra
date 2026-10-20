@@ -51,46 +51,68 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// --- WhatsApp Bot Routes ---
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
+
+function extractShopId(req) {
+  if (req.query?.shopId) return req.query.shopId;
+  if (req.body?.shopId) return req.body.shopId;
+  if (req.headers['x-shop-id']) return req.headers['x-shop-id'];
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.decode(authHeader.split(' ')[1]);
+      if (decoded?.shopId) return decoded.shopId;
+    } catch (e) {}
+  }
+  return 'default';
+}
+
+// --- WhatsApp Bot Routes (Isolated per Shop) ---
 app.get('/api/whatsapp/status', (req, res) => {
-  res.json(whatsappBot.getStatus());
+  const shopId = extractShopId(req);
+  res.json(whatsappBot.getStatus(shopId));
 });
 
 app.post('/api/whatsapp/start', (req, res) => {
-  whatsappBot.initializeWhatsApp();
-  res.json({ success: true, message: 'WhatsApp initialization started' });
+  const shopId = extractShopId(req);
+  whatsappBot.initializeWhatsApp(shopId);
+  res.json({ success: true, message: `WhatsApp initialization started for shop ${shopId}` });
 });
 
-app.post('/api/whatsapp/logout', (req, res) => {
-  whatsappBot.logout();
-  res.json({ success: true, message: 'WhatsApp logged out' });
+app.post('/api/whatsapp/logout', async (req, res) => {
+  const shopId = extractShopId(req);
+  await whatsappBot.logout(shopId);
+  res.json({ success: true, message: `WhatsApp logged out for shop ${shopId}` });
 });
 
 app.post('/api/whatsapp/send', async (req, res) => {
+  const shopId = extractShopId(req);
   const { phone, message } = req.body;
   if (!phone || !message) {
     return res.status(400).json({ error: 'Phone and message are required' });
   }
   try {
-    await whatsappBot.sendMessage(phone, message);
+    await whatsappBot.sendMessage(phone, message, shopId);
     res.json({ success: true, message: 'Message sent successfully' });
   } catch (error) {
-    console.error('WhatsApp send error:', error.message);
+    console.error(`WhatsApp send error for shop ${shopId}:`, error.message);
     res.status(500).json({ error: error.message || 'Failed to send message' });
   }
 });
 
 // Bulk WhatsApp Reminder for Udhar Customers
 app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
+  const shopId = extractShopId(req);
   const { customers, shopName } = req.body;
   if (!customers || !Array.isArray(customers) || customers.length === 0) {
     return res.status(400).json({ error: 'Customers array is required' });
   }
 
-  const botStatus = whatsappBot.getStatus();
-  if (botStatus.status !== 'CONNECTED' && botStatus.status !== 'AUTHENTICATED') {
+  const botStatus = whatsappBot.getStatus(shopId);
+  if (botStatus.status !== 'CONNECTED') {
     return res.status(400).json({ 
-      error: 'WhatsApp Bot कनेक्ट नाहीये. कृपया Settings मध्ये जाऊन WhatsApp QR कोड स्कॅन करा.',
+      error: 'आपल्या दुकानाचा WhatsApp Bot कनेक्ट नाहीये. कृपया Settings मध्ये जाऊन स्वतःचा WhatsApp QR कोड स्कॅन करा.',
       notConnected: true 
     });
   }
@@ -115,13 +137,12 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
     const message = `🙏 *नमस्ते ${c.name} जी,*\n\n*${currentShopName}* कडून नम्र आठवण:\nआपल्याकडे उधारी बाकी: *₹${rawBalance.toFixed(2)}* आहे.\n\nकृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.\n\nधन्यवाद! 💐`;
 
     try {
-      await whatsappBot.sendMessage(c.phone, message);
+      await whatsappBot.sendMessage(c.phone, message, shopId);
       results.sent++;
       results.details.push({ name: c.name, phone: c.phone, status: 'sent' });
-      // 800ms delay between messages to prevent spam detection
       await new Promise(r => setTimeout(r, 800));
     } catch (err) {
-      console.error(`WhatsApp bulk reminder error for ${c.name} (${c.phone}):`, err.message);
+      console.error(`WhatsApp bulk reminder error for shop ${shopId} ${c.name} (${c.phone}):`, err.message);
       results.failed++;
       results.details.push({ name: c.name, phone: c.phone, status: 'failed', error: err.message });
     }
@@ -131,15 +152,16 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
 });
 
 app.post('/api/whatsapp/send-bill', async (req, res) => {
+  const shopId = extractShopId(req);
   const { phone, message, billNo } = req.body;
   if (!phone || !message) {
     return res.status(400).json({ error: 'Phone and message are required' });
   }
   try {
-    await whatsappBot.sendMessage(phone, message);
+    await whatsappBot.sendMessage(phone, message, shopId);
     res.json({ success: true, message: `WhatsApp bill #${billNo || ''} sent to +91 ${phone}` });
   } catch (error) {
-    console.error('WhatsApp send-bill error:', error.message);
+    console.error(`WhatsApp send-bill error for shop ${shopId}:`, error.message);
     res.status(500).json({ error: error.message || 'Failed to send WhatsApp bill' });
   }
 });

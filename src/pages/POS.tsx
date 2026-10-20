@@ -199,7 +199,12 @@ export default function POS() {
       const res = await fetch('/api/whatsapp/send-bill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, message: text, billNo: txId.slice(0, 8) }),
+        body: JSON.stringify({ 
+          phone, 
+          message: text, 
+          billNo: txId.slice(0, 8),
+          shopId: shopData?.shopId || 'default'
+        }),
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -230,11 +235,12 @@ export default function POS() {
     }
   };
 
-  // Poll WhatsApp Bot status for live indicator
+  // Poll WhatsApp Bot status for live indicator (specific to this shop)
   useEffect(() => {
     const checkWa = async () => {
       try {
-        const res = await fetch('/api/whatsapp/status');
+        const sid = shopData?.shopId ? `?shopId=${encodeURIComponent(shopData.shopId)}` : '';
+        const res = await fetch(`/api/whatsapp/status${sid}`);
         const data = await res.json();
         setLiveWaStatus(data.status || 'DISCONNECTED');
       } catch {

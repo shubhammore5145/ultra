@@ -11,18 +11,47 @@ const path = require('path');
 const fs = require('fs');
 const qrcode = require('qrcode');
 
-// ─── State ────────────────────────────────────────────────────────────────────
-let sock = null;
-let qrCodeDataUrl = null;
-let clientStatus = 'DISCONNECTED'; // DISCONNECTED | INITIALIZING | NEEDS_QR | PAIRING | CONNECTING | CONNECTED
-let clientInfo = null;
-let lastError = null;
-let reconnectTimer = null;
-let isConnecting = false;
+// ─── Multi-Tenant Session Store (One WhatsApp per Shop) ─────────────────────
+const sessions = new Map();
 
-const AUTH_DIR = path.join(__dirname, '.baileys_auth');
+function getAuthDir(shopId = 'default') {
+  const cleanId = String(shopId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const baseDir = path.join(__dirname, '.baileys_auth');
+  const shopDir = path.join(baseDir, cleanId);
+  if (!fs.existsSync(shopDir)) {
+    fs.mkdirSync(shopDir, { recursive: true });
+  }
+  return shopDir;
+}
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+function hasSavedCredentials(shopId = 'default') {
+  try {
+    const credsPath = path.join(getAuthDir(shopId), 'creds.json');
+    return fs.existsSync(credsPath);
+  } catch {
+    return false;
+  }
+}
+
+function getSessionState(shopId = 'default') {
+  const cleanId = String(shopId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (!sessions.has(cleanId)) {
+    sessions.set(cleanId, {
+      shopId: cleanId,
+      sock: null,
+      qrCodeDataUrl: null,
+      clientStatus: hasSavedCredentials(cleanId) ? 'CONNECTING' : 'DISCONNECTED',
+      clientInfo: null,
+      lastError: null,
+      reconnectTimer: null,
+      isConnecting: false,
+      authDir: getAuthDir(cleanId)
+    });
+  }
+  return sessions.get(cleanId);
+}
+
+// Format 10-digit Indian phone number
 function formatPhoneNumber(phone) {
   let clean = String(phone || '').replace(/\D/g, '');
   if (clean.length === 10) clean = '91' + clean;
@@ -30,66 +59,53 @@ function formatPhoneNumber(phone) {
   return clean;
 }
 
-// Check if credentials already exist
-function hasSavedCredentials() {
-  try {
-    const credsPath = path.join(AUTH_DIR, 'creds.json');
-    return fs.existsSync(credsPath);
-  } catch {
-    return false;
-  }
-}
+// ─── Core: connectPerShop ───────────────────────────────────────────────────
+async function connectShop(shopId = 'default') {
+  const session = getSessionState(shopId);
 
-// ─── Core: connect ────────────────────────────────────────────────────────────
-async function connect() {
-  if (isConnecting) {
-    console.log('[WhatsApp] Connection attempt already in progress, skipping duplicate.');
+  if (session.isConnecting) {
+    console.log(`[WhatsApp - Shop ${shopId}] Connection attempt in progress, skipping duplicate.`);
     return;
   }
 
-  // Clear any pending reconnect
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
   }
 
-  isConnecting = true;
+  session.isConnecting = true;
 
   try {
-    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
-
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const authDir = getAuthDir(shopId);
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({
       version: [2, 3000, 1015901307],
       isLatest: true
     }));
 
-    if (clientStatus !== 'PAIRING') {
-      clientStatus = hasSavedCredentials() ? 'CONNECTING' : 'INITIALIZING';
+    if (session.clientStatus !== 'PAIRING') {
+      session.clientStatus = hasSavedCredentials(shopId) ? 'CONNECTING' : 'INITIALIZING';
     }
+    session.lastError = null;
 
-    lastError = null;
+    console.log(`[WhatsApp - Shop ${shopId}] Connecting via Baileys v${version.join('.')}...`);
 
-    console.log(`[WhatsApp] Connecting via Baileys v${version.join('.')} (Latest: ${isLatest})...`);
-
-    // Clean, silent pino logger to avoid terminal buffer dumps
     const silentLogger = pino({ level: 'silent' });
 
-    // Cleanly terminate previous socket if any exists
-    if (sock) {
+    if (session.sock) {
       try {
-        sock.ev.removeAllListeners();
-        sock.ws?.close();
+        session.sock.ev.removeAllListeners();
+        session.sock.ws?.close();
       } catch {}
-      sock = null;
+      session.sock = null;
     }
 
-    sock = makeWASocket({
+    const sock = makeWASocket({
       version,
       auth: state,
       logger: silentLogger,
       printQRInTerminal: false,
-      browser: Browsers.ubuntu('Chrome'), // Standard reliable browser identification
+      browser: Browsers.ubuntu(`MartGPT-${shopId}`),
       connectTimeoutMs: 60000,
       defaultQueryTimeoutMs: 60000,
       keepAliveIntervalMs: 25000,
@@ -98,49 +114,48 @@ async function connect() {
       syncFullHistory: false
     });
 
-    // Save credentials whenever updated (awaited to ensure disk persistence on Windows)
+    session.sock = sock;
+
+    // Save credentials when updated
     sock.ev.on('creds.update', async () => {
       try {
         await saveCreds();
       } catch (err) {
-        console.error('[WhatsApp] Error saving credentials:', err.message);
+        console.error(`[WhatsApp - Shop ${shopId}] Error saving credentials:`, err.message);
       }
     });
 
-    // ── Connection events ──────────────────────────────────────────────────────
+    // Handle connection events
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      // Handle QR code generation
+      // QR Code update
       if (qr) {
-        const wasWaitingForQr = clientStatus === 'NEEDS_QR';
-        clientStatus = 'NEEDS_QR';
+        session.clientStatus = 'NEEDS_QR';
         try {
-          qrCodeDataUrl = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
-          if (!wasWaitingForQr) {
-            console.log('[WhatsApp] QR code generated — available in Settings UI.');
-          }
+          session.qrCodeDataUrl = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
+          console.log(`[WhatsApp - Shop ${shopId}] QR code generated — ready in Settings.`);
         } catch (e) {
-          console.error('[WhatsApp] QR generation error:', e.message);
+          console.error(`[WhatsApp - Shop ${shopId}] QR generation error:`, e.message);
         }
       }
 
-      // Handle successful connection
+      // Connection Open (Success)
       if (connection === 'open') {
-        clientStatus = 'CONNECTED';
-        qrCodeDataUrl = null;
-        lastError = null;
+        session.clientStatus = 'CONNECTED';
+        session.qrCodeDataUrl = null;
+        session.lastError = null;
         const me = sock?.user;
         if (me) {
-          clientInfo = {
+          session.clientInfo = {
             phone: me.id?.split(':')[0] || me.id?.split('@')[0] || '',
-            pushname: me.name || me.notify || 'MartGPT Store'
+            pushname: me.name || me.notify || `Shop ${shopId}`
           };
-          console.log(`[WhatsApp] ✅ Connected successfully as: ${clientInfo.pushname} (+${clientInfo.phone})`);
+          console.log(`[WhatsApp - Shop ${shopId}] ✅ Connected as: ${session.clientInfo.pushname} (+${session.clientInfo.phone})`);
         }
       }
 
-      // Handle disconnection / reconnect
+      // Connection Closed / Reconnect
       if (connection === 'close') {
         const statusCode = (lastDisconnect?.error instanceof Boom)
           ? lastDisconnect.error.output?.statusCode
@@ -150,10 +165,10 @@ async function connect() {
         const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
         const isReplaced = statusCode === DisconnectReason.connectionReplaced || statusCode === 440;
 
-        console.log(`[WhatsApp] Connection closed. StatusCode: ${statusCode} | LoggedOut: ${isLoggedOut} | RestartRequired: ${isRestartRequired} | Replaced: ${isReplaced}`);
+        console.log(`[WhatsApp - Shop ${shopId}] Connection closed. StatusCode: ${statusCode} | LoggedOut: ${isLoggedOut} | Restart: ${isRestartRequired}`);
 
-        const oldSock = sock;
-        sock = null;
+        const oldSock = session.sock;
+        session.sock = null;
         if (oldSock) {
           try {
             oldSock.ev.removeAllListeners();
@@ -162,157 +177,146 @@ async function connect() {
         }
 
         if (isLoggedOut) {
-          // Explicit logout
-          clientStatus = 'DISCONNECTED';
-          clientInfo = null;
-          qrCodeDataUrl = null;
-          lastError = 'Session logged out. Please scan QR again.';
-          try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
-          console.log('[WhatsApp] Session wiped. Please scan QR again.');
+          session.clientStatus = 'DISCONNECTED';
+          session.clientInfo = null;
+          session.qrCodeDataUrl = null;
+          session.lastError = 'Session logged out. Please scan QR again.';
+          try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (e) {}
+          console.log(`[WhatsApp - Shop ${shopId}] Session cleared.`);
         } else if (isReplaced) {
-          // Replaced by another active session: do not spam reconnect
-          clientStatus = 'DISCONNECTED';
-          lastError = 'Connection replaced by another session.';
-          console.log('[WhatsApp] Another session replaced this connection. Stopped reconnect loop.');
+          session.clientStatus = 'DISCONNECTED';
+          session.lastError = 'Connection replaced by another session.';
         } else if (isRestartRequired) {
-          // KEY FIX FOR 1-TIME SCAN:
-          // Baileys sends restartRequired (515) right after QR scan to reload new credentials.
-          // Give 1200ms for Windows filesystem to flush creds.json completely before reconnecting.
-          console.log('[WhatsApp] QR scanned & paired! Finalizing credentials and reconnecting...');
-          clientStatus = 'PAIRING';
-          qrCodeDataUrl = null;
-          lastError = null;
-          if (reconnectTimer) clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(async () => {
-            isConnecting = false;
-            try {
-              await connect();
-            } catch (err) {
-              console.error('[WhatsApp] Reconnect after pairing error:', err.message);
-            }
+          console.log(`[WhatsApp - Shop ${shopId}] QR scanned & paired! Finalizing credentials...`);
+          session.clientStatus = 'PAIRING';
+          session.qrCodeDataUrl = null;
+          session.lastError = null;
+          if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
+          session.reconnectTimer = setTimeout(async () => {
+            session.isConnecting = false;
+            try { await connectShop(shopId); } catch (e) {}
           }, 1200);
         } else {
-          // Temporary network drop or handshake retry
-          clientStatus = 'CONNECTING';
-          console.log('[WhatsApp] Reconnecting in 3s...');
-          if (reconnectTimer) clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(async () => {
-            isConnecting = false;
-            try {
-              await connect();
-            } catch (err) {
-              console.error('[WhatsApp] Reconnect error:', err.message);
-            }
+          session.clientStatus = 'CONNECTING';
+          if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
+          session.reconnectTimer = setTimeout(async () => {
+            session.isConnecting = false;
+            try { await connectShop(shopId); } catch (e) {}
           }, 3000);
         }
       }
     });
 
   } catch (err) {
-    console.error('[WhatsApp] Connection failure:', err.message);
-    lastError = err.message || String(err);
-    clientStatus = 'DISCONNECTED';
-    sock = null;
+    console.error(`[WhatsApp - Shop ${shopId}] Connection failure:`, err.message);
+    session.lastError = err.message || String(err);
+    session.clientStatus = 'DISCONNECTED';
+    session.sock = null;
   } finally {
-    isConnecting = false;
+    session.isConnecting = false;
   }
 }
 
-// Wait for socket to become ready (handles brief reconnects during sales)
-async function waitForReady(timeoutMs = 12000) {
-  if (clientStatus === 'CONNECTED' && sock) return true;
-  
-  // If disconnected and not reconnecting, try to reconnect
-  if (clientStatus === 'DISCONNECTED' && !isConnecting && hasSavedCredentials()) {
-    console.log('[WhatsApp] waitForReady: Auto-reconnecting...');
-    connect().catch(() => {});
+// Wait for socket to become ready
+async function waitForReady(shopId = 'default', timeoutMs = 12000) {
+  const session = getSessionState(shopId);
+  if (session.clientStatus === 'CONNECTED' && session.sock) return true;
+
+  if (session.clientStatus === 'DISCONNECTED' && !session.isConnecting && hasSavedCredentials(shopId)) {
+    connectShop(shopId).catch(() => {});
   }
-  
+
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     await new Promise(r => setTimeout(r, 300));
-    if (clientStatus === 'CONNECTED' && sock) return true;
+    if (session.clientStatus === 'CONNECTED' && session.sock) return true;
   }
   return false;
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-function initializeWhatsApp() {
-  if (clientStatus === 'CONNECTED' || clientStatus === 'PAIRING' || isConnecting) {
-    console.log('[WhatsApp] Client already active or connecting. Status:', clientStatus);
+// ─── Public Multi-Tenant APIs ────────────────────────────────────────────────
+function initializeWhatsApp(shopId = 'default') {
+  const session = getSessionState(shopId);
+  if (session.clientStatus === 'CONNECTED' || session.clientStatus === 'PAIRING' || session.isConnecting) {
     return;
   }
-  connect().catch(err => {
-    lastError = err.message || String(err);
-    clientStatus = 'DISCONNECTED';
-    console.error('[WhatsApp] Connect error:', lastError);
+  connectShop(shopId).catch(err => {
+    session.lastError = err.message || String(err);
+    session.clientStatus = 'DISCONNECTED';
   });
 }
 
-function getStatus() {
+function getStatus(shopId = 'default') {
+  const session = getSessionState(shopId);
   return {
-    status: clientStatus,
-    qr: qrCodeDataUrl,
-    info: clientInfo,
-    error: lastError,
-    hasSavedSession: hasSavedCredentials()
+    shopId,
+    status: session.clientStatus,
+    qr: session.qrCodeDataUrl,
+    info: session.clientInfo,
+    error: session.lastError,
+    hasSavedSession: hasSavedCredentials(shopId)
   };
 }
 
-async function sendMessage(phoneNumber, message, maxRetries = 3) {
-  // If socket is momentarily reconnecting, wait up to 12s
-  const isReady = await waitForReady(12000);
-  if (!isReady || !sock || clientStatus !== 'CONNECTED') {
-    throw new Error(`WhatsApp bot is not connected. Current status: ${clientStatus}. Please connect in Settings.`);
+async function sendMessage(phoneNumber, message, shopId = 'default', maxRetries = 3) {
+  const session = getSessionState(shopId);
+
+  // If shop does not have saved credentials or is not connected
+  if (!hasSavedCredentials(shopId) && session.clientStatus !== 'CONNECTED') {
+    throw new Error(`या दुकानाचा (${shopId}) WhatsApp अजून जोडलेला नाही. कृपया Settings -> WhatsApp मध्ये जाऊन स्वतःचा WhatsApp QR स्कॅन करा.`);
+  }
+
+  const isReady = await waitForReady(shopId, 12000);
+  if (!isReady || !session.sock || session.clientStatus !== 'CONNECTED') {
+    throw new Error(`WhatsApp bot (${shopId}) कनेक्ट नाहीये (Status: ${session.clientStatus}). कृपया Settings मधून री-कनेक्ट करा.`);
   }
 
   const clean = formatPhoneNumber(phoneNumber);
   if (clean.length < 10) throw new Error('Invalid phone number: ' + phoneNumber);
-
   const jid = clean + '@s.whatsapp.net';
 
   let attempt = 0;
   while (attempt <= maxRetries) {
     try {
-      if (!sock || clientStatus !== 'CONNECTED') {
-        // Socket died between retries, wait for reconnect
-        const reconnected = await waitForReady(8000);
+      if (!session.sock || session.clientStatus !== 'CONNECTED') {
+        const reconnected = await waitForReady(shopId, 8000);
         if (!reconnected) throw new Error('Connection lost during send');
       }
-      await sock.sendMessage(jid, { text: message });
-      console.log(`[WhatsApp] Message successfully delivered to ${jid}`);
+      await session.sock.sendMessage(jid, { text: message });
+      console.log(`[WhatsApp - Shop ${shopId}] Message delivered to ${jid}`);
       return { success: true, jid };
     } catch (err) {
       attempt++;
-      console.warn(`[WhatsApp] Send attempt ${attempt} failed for ${jid}: ${err.message}`);
+      console.warn(`[WhatsApp - Shop ${shopId}] Send attempt ${attempt} failed for ${jid}: ${err.message}`);
       if (attempt > maxRetries) {
         throw new Error(`Failed to send WhatsApp message after ${maxRetries} retries: ${err.message}`);
       }
-      // Exponential backoff: 1.5s, 3s, 4.5s
       await new Promise(r => setTimeout(r, 1500 * attempt));
     }
   }
 }
 
-async function logout() {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+async function logout(shopId = 'default') {
+  const session = getSessionState(shopId);
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
   }
-  if (sock) {
-    try { await sock.logout(); } catch (e) {}
-    sock = null;
+  if (session.sock) {
+    try { await session.sock.logout(); } catch (e) {}
+    session.sock = null;
   }
-  clientStatus = 'DISCONNECTED';
-  qrCodeDataUrl = null;
-  clientInfo = null;
-  lastError = null;
-  isConnecting = false;
-  try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) {}
-  console.log('[WhatsApp] Logged out and session cleared completely.');
+  session.clientStatus = 'DISCONNECTED';
+  session.qrCodeDataUrl = null;
+  session.clientInfo = null;
+  session.lastError = null;
+  session.isConnecting = false;
+  try {
+    fs.rmSync(session.authDir, { recursive: true, force: true });
+  } catch (e) {}
+  console.log(`[WhatsApp - Shop ${shopId}] Logged out and session cleared.`);
 }
 
-// Bot is initialized by server.js on startup
 module.exports = {
   initializeWhatsApp,
   getStatus,

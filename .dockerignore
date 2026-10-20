@@ -5,6 +5,8 @@ dist
 .wwebjs_auth
 backend/.wwebjs_auth
 backend/.wwebjs_cache
+.baileys_auth
+backend/.baileys_auth
 *.log
 .env
 backend/.env

@@ -1,10 +1,4 @@
-FROM node:20-bullseye-slim
-
-# Only install essential system libraries (no Chrome needed with Baileys!)
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:22-slim
 
 WORKDIR /app
 
@@ -12,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY backend/package*.json ./backend/
 
-# Install all dependencies (postinstall will also install backend)
+# Install all dependencies (postinstall will also install backend dependencies)
 RUN npm install
 
 # Copy application source

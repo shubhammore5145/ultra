@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: martgpt-app
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        value: super_secret_jwt_key_123
+      - key: SUPABASE_URL
+        value: https://dyuimjageamopkodfplk.supabase.co
+      - key: SUPABASE_KEY
+        value: sb_publishable_ww5ZWKvl_uH-fzQKylCGeA_TlRDI52V
+      - key: DB_HOST
+        value: gateway01.ap-northeast-1.prod.aws.tidbcloud.com
+      - key: DB_PORT
+        value: "4000"
+      - key: DB_USER
+        value: Q6jneq1m3b8AAAP.root
+      - key: DB_PASSWORD
+        value: kPfHD6VZ6LWtSsi3
+      - key: DB_NAME
+        value: nayashi_kirana
+      - key: DB_SSL
+        value: "true"

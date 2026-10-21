@@ -11,9 +11,30 @@ const authMiddleware = (req, res, next) => {
   if (!authHeader) return res.status(401).json({ error: 'No token' });
   
   const token = authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+
+  // 1. Support Supabase direct client token
+  if (token.startsWith('sb_')) {
+    try {
+      const payload = JSON.parse(Buffer.from(token.slice(3), 'base64').toString('utf8'));
+      req.user = { 
+        uid: payload.uid, 
+        shopId: payload.shopId || req.headers['x-shop-id'] || 'default', 
+        role: payload.role || 'admin' 
+      };
+      return next();
+    } catch (e) {
+      console.warn('Failed to parse sb_ token:', e.message);
+    }
+  }
+
+  // 2. Standard JWT token
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded; // { uid, shopId, role }
+    if (req.headers['x-shop-id'] && !req.user.shopId) {
+      req.user.shopId = req.headers['x-shop-id'];
+    }
     next();
   } catch (error) {
     res.status(401).json({ error: 'Invalid token' });
@@ -147,17 +168,17 @@ router.get('/products', async (req, res) => {
 });
 
 router.post('/products', async (req, res) => {
-  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose } = req.body;
+  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate } = req.body;
   try {
     await pool.query(
-      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0]
+      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, expiryDate || null]
     );
   } catch (err) {
     console.warn('Fallback product insert:', err.message);
     await pool.query(
-      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode || null, imageUrl || null]
+      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0]
     );
   }
   res.json({ success: true });
@@ -165,7 +186,7 @@ router.post('/products', async (req, res) => {
 
 router.put('/products/:id', async (req, res) => {
   try {
-    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose } = req.body;
+    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate } = req.body;
     
     // Fetch existing product to fill missing fields
     const [existingRows] = await pool.query('SELECT * FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
@@ -175,23 +196,24 @@ router.put('/products/:id', async (req, res) => {
     
     try {
       await pool.query(
-        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=? WHERE id=? AND shopId=?',
+        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=?, expiryDate=? WHERE id=? AND shopId=?',
         [
-          name ?? p.name, 
-          category ?? p.category, 
-          brand ?? p.brand, 
-          unit ?? p.unit, 
-          purchasePrice ?? p.purchasePrice, 
-          sellingPrice ?? p.sellingPrice, 
-          mrp ?? p.mrp, 
-          gst ?? p.gst, 
-          stock ?? p.stock, 
-          minStock ?? p.minStock, 
-          sku ?? p.sku, 
-          barcode ?? p.barcode, 
-          imageUrl ?? p.imageUrl, 
+          name !== undefined ? name : p.name, 
+          category !== undefined ? category : p.category, 
+          brand !== undefined ? brand : p.brand, 
+          unit !== undefined ? unit : p.unit, 
+          purchasePrice !== undefined ? purchasePrice : p.purchasePrice, 
+          sellingPrice !== undefined ? sellingPrice : p.sellingPrice, 
+          mrp !== undefined ? mrp : p.mrp, 
+          gst !== undefined ? gst : p.gst, 
+          stock !== undefined ? stock : p.stock, 
+          minStock !== undefined ? minStock : p.minStock, 
+          sku !== undefined ? sku : p.sku, 
+          barcode !== undefined ? barcode : p.barcode, 
+          imageUrl !== undefined ? imageUrl : p.imageUrl, 
           shortCode !== undefined ? shortCode : (p.shortCode || null),
           isLoose !== undefined ? (isLoose ? 1 : 0) : (p.isLoose ? 1 : 0),
+          expiryDate !== undefined ? (expiryDate || null) : (p.expiryDate || null),
           req.params.id, 
           req.user.shopId
         ]
@@ -199,21 +221,23 @@ router.put('/products/:id', async (req, res) => {
     } catch (err) {
       console.warn('Fallback product update:', err.message);
       await pool.query(
-        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=? WHERE id=? AND shopId=?',
+        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=? WHERE id=? AND shopId=?',
         [
-          name ?? p.name, 
-          category ?? p.category, 
-          brand ?? p.brand, 
-          unit ?? p.unit, 
-          purchasePrice ?? p.purchasePrice, 
-          sellingPrice ?? p.sellingPrice, 
-          mrp ?? p.mrp, 
-          gst ?? p.gst, 
-          stock ?? p.stock, 
-          minStock ?? p.minStock, 
-          sku ?? p.sku, 
-          barcode ?? p.barcode, 
-          imageUrl ?? p.imageUrl, 
+          name !== undefined ? name : p.name, 
+          category !== undefined ? category : p.category, 
+          brand !== undefined ? brand : p.brand, 
+          unit !== undefined ? unit : p.unit, 
+          purchasePrice !== undefined ? purchasePrice : p.purchasePrice, 
+          sellingPrice !== undefined ? sellingPrice : p.sellingPrice, 
+          mrp !== undefined ? mrp : p.mrp, 
+          gst !== undefined ? gst : p.gst, 
+          stock !== undefined ? stock : p.stock, 
+          minStock !== undefined ? minStock : p.minStock, 
+          sku !== undefined ? sku : p.sku, 
+          barcode !== undefined ? barcode : p.barcode, 
+          imageUrl !== undefined ? imageUrl : p.imageUrl, 
+          shortCode !== undefined ? shortCode : (p.shortCode || null),
+          isLoose !== undefined ? (isLoose ? 1 : 0) : (p.isLoose ? 1 : 0),
           req.params.id, 
           req.user.shopId
         ]
@@ -275,20 +299,33 @@ router.post('/customers', async (req, res) => {
 router.put('/customers/:id', async (req, res) => {
   const { name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
   try {
-    try {
-      await pool.query(
-        'UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address), balance = COALESCE(?, balance), aadharNumber = COALESCE(?, aadharNumber), photoUrl = COALESCE(?, photoUrl), aadharPhotoUrl = COALESCE(?, aadharPhotoUrl) WHERE id = ? AND shopId = ?',
-        [name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl, req.params.id, req.user.shopId]
-      );
-    } catch {
-      try {
-        await pool.query('ALTER TABLE customers ADD COLUMN aadharPhotoUrl LONGTEXT');
-      } catch {}
-      await pool.query(
-        'UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address), balance = COALESCE(?, balance), aadharNumber = COALESCE(?, aadharNumber), photoUrl = COALESCE(?, photoUrl) WHERE id = ? AND shopId = ?',
-        [name, phone, address, balance, aadharNumber, photoUrl, req.params.id, req.user.shopId]
-      );
-    }
+    const [existingRows] = await pool.query('SELECT * FROM customers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    if (existingRows.length === 0) return res.status(404).json({ error: 'Customer not found' });
+    const c = existingRows[0];
+
+    await pool.query(
+      'UPDATE customers SET name=?, phone=?, address=?, balance=?, aadharNumber=?, photoUrl=?, aadharPhotoUrl=? WHERE id=? AND shopId=?',
+      [
+        name !== undefined ? name : c.name,
+        phone !== undefined ? phone : c.phone,
+        address !== undefined ? address : c.address,
+        balance !== undefined ? balance : c.balance,
+        aadharNumber !== undefined ? aadharNumber : c.aadharNumber,
+        photoUrl !== undefined ? photoUrl : c.photoUrl,
+        aadharPhotoUrl !== undefined ? aadharPhotoUrl : c.aadharPhotoUrl,
+        req.params.id,
+        req.user.shopId
+      ]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/customers/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM customers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -517,20 +554,6 @@ router.delete('/staff/:uid', async (req, res) => {
   }
 });
 
-// --- CUSTOMERS UPDATE ---
-router.put('/customers/:id', async (req, res) => {
-  const { name, phone, address, aadharNumber, photoUrl } = req.body;
-  try {
-    await pool.query(
-      'UPDATE customers SET name=?, phone=?, address=?, aadharNumber=COALESCE(?, aadharNumber), photoUrl=COALESCE(?, photoUrl) WHERE id=? AND shopId=?',
-      [name, phone, address, aadharNumber || null, photoUrl || null, req.params.id, req.user.shopId]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Customer full passbook/ledger statement
 router.get('/customers/:id/ledger', async (req, res) => {
   try {
@@ -548,16 +571,6 @@ router.get('/customers/:id/ledger', async (req, res) => {
     res.json(combined);
   } catch (error) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-// --- EXPENSES DELETE ---
-router.delete('/expenses/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM expenses WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 

@@ -64,11 +64,12 @@ export default function Customers() {
 
     try {
       if (editingId) {
-        await api.customers.update(editingId, formData);
+        await api.customers.update(editingId, { shopId: shopData.shopId, ...formData });
         setCustomers(customers.map(c => c.id === editingId ? { ...c, ...formData } : c));
       } else {
         await api.customers.create({
           id: crypto.randomUUID(),
+          shopId: shopData.shopId,
           ...formData,
           createdAt: new Date().toISOString()
         });

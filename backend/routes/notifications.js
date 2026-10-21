@@ -11,8 +11,12 @@ function getAuthContext(req) {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
+      if (token.startsWith('sb_')) {
+        const payload = JSON.parse(Buffer.from(token.slice(3), 'base64').toString('utf8'));
+        return { shopId: payload.shopId || req.headers['x-shop-id'] || null, uid: payload.uid, role: payload.role || 'admin' };
+      }
       const decoded = jwt.verify(token, JWT_SECRET);
-      return { shopId: decoded.shopId, uid: decoded.uid, role: decoded.role };
+      return { shopId: decoded.shopId || req.headers['x-shop-id'] || null, uid: decoded.uid, role: decoded.role };
     }
   } catch (err) {}
   

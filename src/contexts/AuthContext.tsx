@@ -24,9 +24,24 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<any>(null);
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [shopData, setShopData] = useState<Shop | null>(null);
+  const [user, setUser] = useState<any>(() => {
+    try {
+      const raw = localStorage.getItem('auth_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [userData, setUserData] = useState<UserData | null>(() => {
+    try {
+      const raw = localStorage.getItem('auth_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [shopData, setShopData] = useState<Shop | null>(() => {
+    try {
+      const raw = localStorage.getItem('auth_shop');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
 
   // Helper to ensure shopData is always available if shop or user has shopId
@@ -48,14 +63,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = (token: string, u: UserData, s?: Shop) => {
     localStorage.setItem('auth_token', token);
-    setUser(u); // minimal user
+    localStorage.setItem('auth_user', JSON.stringify(u));
+    setUser(u);
     setUserData(u);
     const resolvedShop = resolveShop(u, s);
-    if (resolvedShop) setShopData(resolvedShop);
+    if (resolvedShop) {
+      setShopData(resolvedShop);
+      localStorage.setItem('auth_shop', JSON.stringify(resolvedShop));
+    }
   };
 
   const logout = () => {
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    localStorage.removeItem('auth_shop');
     try {
       signOut(auth);
     } catch (_e) {}
@@ -72,9 +93,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const res = await api.auth.me();
           setUser(res.user);
           setUserData(res.user);
+          localStorage.setItem('auth_user', JSON.stringify(res.user));
           const resolvedShop = resolveShop(res.user, res.shop);
           if (resolvedShop) {
             setShopData(resolvedShop);
+            localStorage.setItem('auth_shop', JSON.stringify(resolvedShop));
           }
         } catch (error) {
           console.error('Session expired or invalid:', error);

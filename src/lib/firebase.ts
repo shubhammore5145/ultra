@@ -10,6 +10,17 @@ import {
   updateProfile,
   onAuthStateChanged
 } from 'firebase/auth';
+import {
+  getDatabase,
+  ref,
+  get,
+  set,
+  update,
+  remove,
+  onValue,
+  child,
+  push
+} from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDQYsUZPOuBH_CwvOZXh-u0o1WA8x6oeuY",
@@ -25,6 +36,7 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+export const rtdb = getDatabase(app);
 
 export {
   signInWithEmailAndPassword,
@@ -33,5 +45,14 @@ export {
   signOut,
   signInWithPopup,
   updateProfile,
-  onAuthStateChanged
+  onAuthStateChanged,
+  getDatabase,
+  ref,
+  get,
+  set,
+  update,
+  remove,
+  onValue,
+  child,
+  push
 };

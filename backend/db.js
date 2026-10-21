@@ -124,6 +124,7 @@ function getSQLiteDb() {
         loyaltyPoints INTEGER DEFAULT 0,
         aadharNumber TEXT,
         photoUrl TEXT,
+        aadharPhotoUrl TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -219,6 +220,11 @@ function getSQLiteDb() {
       );
     `);
 
+    try { sqliteDb.exec('ALTER TABLE customers ADD COLUMN aadharPhotoUrl TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN expiryDate TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isLoose INTEGER DEFAULT 0;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN shortCode TEXT;'); } catch (e) {}
+
     return sqliteDb;
   } catch (err) {
     console.error('Error initializing embedded SQLite fallback:', err);
@@ -271,21 +277,82 @@ const TABLE_PRIMARY_KEYS = {
   promo_codes: 'code'
 };
 
+const SUPABASE_TABLE_COLUMNS = {
+  shops: new Set(['shopId', 'name', 'ownerName', 'phone', 'email', 'address', 'gstNumber', 'upiId', 'publicUrl', 'plan', 'planExpiry', 'settings', 'receiptHeader', 'receiptFooter', 'receiptPaperSize', 'fssaiNumber', 'invoiceTerms', 'createdAt']),
+  products: new Set(['id', 'shopId', 'name', 'category', 'brand', 'unit', 'purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'sku', 'barcode', 'shortCode', 'isLoose', 'expiryDate', 'imageUrl', 'createdAt']),
+  customers: new Set(['id', 'shopId', 'name', 'phone', 'email', 'address', 'balance', 'visits', 'totalSpent', 'loyaltyPoints', 'aadharNumber', 'photoUrl', 'createdAt']),
+  transactions: new Set(['id', 'shopId', 'subtotal', 'taxAmount', 'discountAmount', 'totalAmount', 'paymentMethod', 'customerId', 'items', 'createdAt']),
+  expenses: new Set(['id', 'shopId', 'title', 'category', 'amount', 'description', 'date', 'notes', 'addedBy', 'createdAt']),
+  udhar_transactions: new Set(['id', 'shopId', 'customerId', 'amount', 'type', 'notes', 'createdAt']),
+  suppliers: new Set(['id', 'shopId', 'name', 'contactPerson', 'phone', 'email', 'address', 'gstNumber', 'paymentTerms', 'balance', 'createdAt']),
+  purchases: new Set(['id', 'shopId', 'supplierId', 'invoiceNumber', 'date', 'purchaseDate', 'totalAmount', 'paidAmount', 'paymentStatus', 'paymentMethod', 'items', 'notes', 'createdAt']),
+  notifications: new Set(['id', 'shopId', 'title', 'message', 'type', 'channel', 'actionUrl', 'isRead', 'readBy', 'createdAt']),
+  promo_codes: new Set(['code', 'discountPercent', 'flatDiscount', 'planType', 'maxUses', 'usedCount', 'validUntil', 'active', 'createdAt'])
+};
+
+function formatRowForSupabase(table, row) {
+  const allowed = SUPABASE_TABLE_COLUMNS[table];
+  const formatted = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (allowed && !allowed.has(k)) {
+      continue;
+    }
+    let val = v;
+    if (k === 'isLoose' || k === 'active') {
+      val = Boolean(val);
+    }
+    if ((k === 'settings' || k === 'items' || k === 'readBy') && typeof val === 'string') {
+      try { val = JSON.parse(val); } catch (e) {}
+    }
+    if ((k === 'imageUrl' || k === 'photoUrl' || k === 'aadharPhotoUrl') && typeof val === 'string' && val.length > 500000) {
+      val = null;
+    }
+    // Prevent empty string from breaking PostgreSQL DATE/TIMESTAMPTZ columns
+    if ((k === 'expiryDate' || k === 'date' || k === 'purchaseDate' || k === 'validUntil' || k === 'planExpiry') && (!val || val === '')) {
+      val = null;
+    }
+    // Ensure numbers are properly converted
+    if (['purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'balance', 'totalSpent', 'subtotal', 'taxAmount', 'discountAmount', 'totalAmount', 'amount', 'visits', 'loyaltyPoints'].includes(k)) {
+      if (val !== null && val !== undefined && val !== '') {
+        const num = Number(val);
+        val = isNaN(num) ? 0 : num;
+      }
+    }
+    formatted[k] = val;
+  }
+  return formatted;
+}
+
 async function syncMutationToSupabase(sql, params = []) {
   if (!isSupabaseApiReady) return;
   const trimmed = sql.trim();
   const lower = trimmed.toLowerCase();
 
   try {
+    const db = getSQLiteDb();
+
+    // Helper to ensure shop exists in Supabase before foreign-key child tables
+    async function ensureShopInSupabase(shopId) {
+      if (!shopId) return;
+      try {
+        const shopRow = db.prepare('SELECT * FROM shops WHERE shopId = ?').get(shopId);
+        if (shopRow) {
+          const formattedShop = formatRowForSupabase('shops', shopRow);
+          await supabase.from('shops').upsert(formattedShop);
+        }
+      } catch (e) {}
+    }
+
     // 1. DELETE
     if (lower.startsWith('delete from')) {
-      const match = trimmed.match(/DELETE\s+FROM\s+([a-zA-Z0-9_]+)\s+WHERE\s+(.+)/i);
+      const match = trimmed.match(/DELETE\s+FROM\s+([a-zA-Z0-9_]+)/i);
       if (match) {
         const table = match[1].toLowerCase();
         const pk = TABLE_PRIMARY_KEYS[table] || 'id';
-        const id = params[0];
-        if (id) {
-          await supabase.from(table).delete().eq(pk, id);
+        const pkVal = params[0];
+        if (pkVal) {
+          const { error } = await supabase.from(table).delete().eq(pk, pkVal);
+          if (error) console.warn(`Supabase ${table} delete warning:`, error.message);
         }
       }
       return;
@@ -301,16 +368,14 @@ async function syncMutationToSupabase(sql, params = []) {
         cols.forEach((col, idx) => {
           let val = params[idx];
           if (val === undefined) val = null;
-          if (col === 'isLoose' || col === 'active') val = Boolean(val);
-          if ((col === 'settings' || col === 'items' || col === 'readBy') && typeof val === 'string') {
-            try { val = JSON.parse(val); } catch (e) {}
-          }
-          if ((col === 'imageUrl' || col === 'photoUrl') && typeof val === 'string' && val.length > 500000) {
-            val = null;
-          }
           row[col] = val;
         });
-        await supabase.from(table).upsert(row);
+        const formatted = formatRowForSupabase(table, row);
+        if (formatted.shopId && table !== 'shops') {
+          await ensureShopInSupabase(formatted.shopId);
+        }
+        const { error } = await supabase.from(table).upsert(formatted);
+        if (error) console.warn(`Supabase ${table} insert sync warning:`, error.message);
       }
       return;
     }
@@ -320,27 +385,26 @@ async function syncMutationToSupabase(sql, params = []) {
       const match = trimmed.match(/UPDATE\s+([a-zA-Z0-9_]+)\s+SET\s+/i);
       if (match) {
         const table = match[1].toLowerCase();
-        const pk = TABLE_PRIMARY_KEYS[table] || 'id';
-        const lastParam = params[params.length - 1];
-        if (lastParam) {
-          const db = getSQLiteDb();
-          const stmt = db.prepare(`SELECT * FROM ${table} WHERE ${pk} = ?`);
-          const row = stmt.get(lastParam);
-          if (row) {
-            const formatted = { ...row };
-            for (const [k, v] of Object.entries(formatted)) {
-              if (k === 'isLoose' || k === 'active') formatted[k] = Boolean(v);
-              if ((k === 'settings' || k === 'items' || k === 'readBy') && typeof v === 'string') {
-                try { formatted[k] = JSON.parse(v); } catch (e) {}
-              }
-              if ((k === 'imageUrl' || k === 'photoUrl') && typeof v === 'string' && v.length > 500000) {
-                formatted[k] = null;
-              }
+        const whereIndex = trimmed.toUpperCase().indexOf(' WHERE ');
+        if (whereIndex !== -1) {
+          const setPart = trimmed.substring(0, whereIndex);
+          const whereClause = trimmed.substring(whereIndex + 7);
+          const setParamCount = (setPart.match(/\?/g) || []).length;
+          const whereParams = params.slice(setParamCount);
+
+          const selectSql = `SELECT * FROM ${table} WHERE ${whereClause}`;
+          const rows = db.prepare(selectSql).all(...whereParams);
+          for (const row of rows) {
+            const formatted = formatRowForSupabase(table, row);
+            if (formatted.shopId && table !== 'shops') {
+              await ensureShopInSupabase(formatted.shopId);
             }
-            await supabase.from(table).upsert(formatted);
+            const { error } = await supabase.from(table).upsert(formatted);
+            if (error) console.warn(`Supabase ${table} update sync warning:`, error.message);
           }
         }
       }
+      return;
     }
   } catch (err) {
     console.warn(`Supabase sync background notice:`, err.message);
@@ -390,14 +454,20 @@ function toPostgresSql(sql) {
 async function warmUpCacheFromSupabase() {
   try {
     const db = getSQLiteDb();
-    const countCheck = db.prepare('SELECT count(*) as c FROM products').get();
-    if (countCheck && countCheck.c > 0) return; // Cache already populated
 
-    const [shopsRes, prodsRes, usersRes, custsRes] = await Promise.all([
+    console.log('🔄 Syncing all tables from Supabase Cloud to local cache...');
+    const [shopsRes, prodsRes, usersRes, custsRes, txsRes, expRes, udharRes, suppRes, purchRes, notifRes, promoRes] = await Promise.all([
       supabase.from('shops').select('*'),
       supabase.from('products').select('*'),
       supabase.from('users').select('*'),
-      supabase.from('customers').select('*')
+      supabase.from('customers').select('*'),
+      supabase.from('transactions').select('*').limit(1000),
+      supabase.from('expenses').select('*').limit(1000),
+      supabase.from('udhar_transactions').select('*').limit(1000),
+      supabase.from('suppliers').select('*'),
+      supabase.from('purchases').select('*').limit(1000),
+      supabase.from('notifications').select('*').limit(200),
+      supabase.from('promo_codes').select('*')
     ]);
 
     if (shopsRes.data) {
@@ -411,8 +481,8 @@ async function warmUpCacheFromSupabase() {
     if (prodsRes.data) {
       for (const p of prodsRes.data) {
         try {
-          db.prepare('INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .run(p.id, p.shopId, p.name, p.category, p.brand, p.unit, p.purchasePrice, p.sellingPrice, p.mrp, p.gst, p.stock, p.minStock, p.sku, p.barcode, p.shortCode, p.isLoose ? 1 : 0, p.imageUrl);
+          db.prepare('INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, expiryDate, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(p.id, p.shopId, p.name, p.category, p.brand, p.unit, p.purchasePrice || 0, p.sellingPrice || 0, p.mrp || 0, p.gst || 0, p.stock || 0, p.minStock || 0, p.sku, p.barcode, p.shortCode, p.isLoose ? 1 : 0, p.expiryDate || null, p.imageUrl || null);
         } catch (e) {}
       }
     }
@@ -427,11 +497,68 @@ async function warmUpCacheFromSupabase() {
     if (custsRes.data) {
       for (const c of custsRes.data) {
         try {
-          db.prepare('INSERT OR REPLACE INTO customers (id, shopId, name, phone, email, address, balance, visits, totalSpent, loyaltyPoints, aadharNumber) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .run(c.id, c.shopId, c.name, c.phone, c.email, c.address, c.balance, c.visits, c.totalSpent, c.loyaltyPoints, c.aadharNumber);
+          db.prepare('INSERT OR REPLACE INTO customers (id, shopId, name, phone, email, address, balance, visits, totalSpent, loyaltyPoints, aadharNumber, photoUrl, aadharPhotoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(c.id, c.shopId, c.name, c.phone, c.email, c.address, c.balance || 0, c.visits || 0, c.totalSpent || 0, c.loyaltyPoints || 0, c.aadharNumber, c.photoUrl, c.aadharPhotoUrl || null);
         } catch (e) {}
       }
     }
+    if (txsRes.data) {
+      for (const t of txsRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO transactions (id, shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(t.id, t.shopId, t.subtotal || 0, t.taxAmount || 0, t.discountAmount || 0, t.totalAmount || 0, t.paymentMethod, t.customerId, typeof t.items === 'string' ? t.items : JSON.stringify(t.items || []), t.createdAt);
+        } catch (e) {}
+      }
+    }
+    if (expRes.data) {
+      for (const ex of expRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO expenses (id, shopId, title, category, amount, description, date, notes, addedBy, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(ex.id, ex.shopId, ex.title, ex.category, ex.amount || 0, ex.description, ex.date, ex.notes, ex.addedBy, ex.createdAt);
+        } catch (e) {}
+      }
+    }
+    if (udharRes.data) {
+      for (const u of udharRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO udhar_transactions (id, shopId, customerId, amount, type, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .run(u.id, u.shopId, u.customerId, u.amount || 0, u.type, u.notes, u.createdAt);
+        } catch (e) {}
+      }
+    }
+    if (suppRes.data) {
+      for (const sp of suppRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO suppliers (id, shopId, name, contactPerson, phone, email, address, gstNumber, paymentTerms, balance, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(sp.id, sp.shopId, sp.name, sp.contactPerson, sp.phone, sp.email, sp.address, sp.gstNumber, sp.paymentTerms, sp.balance || 0, sp.createdAt);
+        } catch (e) {}
+      }
+    }
+    if (purchRes.data) {
+      for (const pr of purchRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO purchases (id, shopId, supplierId, invoiceNumber, date, purchaseDate, totalAmount, paidAmount, paymentStatus, paymentMethod, items, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(pr.id, pr.shopId, pr.supplierId, pr.invoiceNumber, pr.date, pr.purchaseDate, pr.totalAmount || 0, pr.paidAmount || 0, pr.paymentStatus, pr.paymentMethod, typeof pr.items === 'string' ? pr.items : JSON.stringify(pr.items || []), pr.notes, pr.createdAt);
+        } catch (e) {}
+      }
+    }
+    if (notifRes.data) {
+      for (const n of notifRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO notifications (id, shopId, title, message, type, channel, actionUrl, isRead, readBy, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(n.id, n.shopId, n.title, n.message, n.type, n.channel, n.actionUrl, n.isRead ? 1 : 0, typeof n.readBy === 'string' ? n.readBy : JSON.stringify(n.readBy || []), n.createdAt);
+        } catch (e) {}
+      }
+    }
+    if (promoRes.data) {
+      for (const pm of promoRes.data) {
+        try {
+          db.prepare('INSERT OR REPLACE INTO promo_codes (code, discountPercent, flatDiscount, planType, maxUses, usedCount, validUntil, active, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(pm.code, pm.discountPercent || 0, pm.flatDiscount || 0, pm.planType, pm.maxUses || 100, pm.usedCount || 0, pm.validUntil, pm.active ? 1 : 0, pm.createdAt);
+        } catch (e) {}
+      }
+    }
+    console.log('✅ Local SQLite cache successfully synchronized with Supabase Cloud.');
   } catch (err) {
     console.warn('Cache warm-up notice:', err.message);
   }

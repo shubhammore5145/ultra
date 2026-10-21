@@ -207,6 +207,7 @@ export default function ProductForm() {
     try {
       const finalBarcode = formData.barcode.trim() || (formData.isLoose && formData.shortCode ? formData.shortCode.trim() : '');
       const productData = {
+        shopId: shopData.shopId,
         name: formData.name,
         category: formData.category,
         brand: formData.brand,

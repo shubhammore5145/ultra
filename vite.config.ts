@@ -11,6 +11,9 @@ export default defineConfig({
       devOptions: {
         enabled: false
       },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
+      },
       manifest: {
         name: 'MartGPT',
         short_name: 'MartGPT',
@@ -37,6 +40,6 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['firebase/app', 'firebase/auth']
+    include: ['firebase/app', 'firebase/auth', 'firebase/database']
   }
 })

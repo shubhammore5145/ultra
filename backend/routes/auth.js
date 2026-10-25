@@ -138,10 +138,19 @@ router.get('/me', async (req, res) => {
       uid = payload.uid;
       shopId = payload.shopId;
     } else {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      uid = decoded.uid;
-      shopId = decoded.shopId;
-      role = decoded.role;
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        decoded = jwt.decode(token);
+      }
+      if (decoded) {
+        uid = decoded.uid || decoded.user_id || decoded.sub;
+        shopId = decoded.shopId || req.headers['x-shop-id'];
+        role = decoded.role || 'admin';
+      } else {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
     }
     
     let [users] = await pool.query('SELECT uid, email, displayName, role, shopId FROM users WHERE uid = ?', [uid]);

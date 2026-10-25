@@ -133,8 +133,15 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     if (method === 'POST') {
       const body = JSON.parse(options.body as string);
       const txRow = {
-        ...body,
+        id: body.id,
         shopId: body.shopId || shopId,
+        subtotal: Number(body.subtotal || 0),
+        taxAmount: Number(body.taxAmount || 0),
+        discountAmount: Number(body.discountAmount || 0),
+        totalAmount: Number(body.totalAmount || 0),
+        paymentMethod: body.paymentMethod || 'cash',
+        customerId: body.customerId || null,
+        items: body.items,
         createdAt: body.createdAt || new Date().toISOString()
       };
       const { data, error } = await supabase.from('transactions').insert(txRow);

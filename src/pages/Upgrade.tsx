@@ -284,7 +284,7 @@ export default function Upgrade() {
     },
     {
       q: 'Is my retail store data safe and backed up?',
-      a: 'Absolutely 100% secure. Your catalog, transactions, customers, and khata records are encrypted and continuously backed up to TiDB Serverless Cloud. Even if your phone or computer crashes, you will never lose a single transaction.'
+      a: 'Absolutely 100% secure. Your catalog, transactions, customers, and khata records are encrypted and continuously backed up to PostgreSQL Secure Cloud. Even if your phone or computer crashes, you will never lose a single transaction.'
     },
     {
       q: 'Do I need a computer or a thermal printer to use MartGPT?',
@@ -822,7 +822,7 @@ export default function Upgrade() {
               <Cloud className="h-5 w-5" />
             </div>
             <h4 className="font-bold text-xs sm:text-sm text-foreground">Realtime Cloud Backup</h4>
-            <p className="text-[11px] text-muted-foreground">Zero data loss on TiDB Cloud</p>
+            <p className="text-[11px] text-muted-foreground">Zero data loss on Cloud Database</p>
           </div>
 
           <div className="space-y-2">

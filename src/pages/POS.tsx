@@ -291,6 +291,24 @@ export default function POS() {
     if (!trimmed) return;
     const lower = trimmed.toLowerCase();
 
+    // Play supermarket scanner audio beep if enabled
+    const scannerBeepEnabled = (shopData as any)?.settings?.scannerBeep !== false;
+    if (scannerBeepEnabled) {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1750, ctx.currentTime);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.08);
+      } catch (e) {}
+    }
+
     // Check exact match on shortCode, barcode, or sku
     const product = products.find(p => 
       (p.barcode && p.barcode.trim().toLowerCase() === lower) ||
@@ -309,7 +327,7 @@ export default function POS() {
       setQuickAddPrice('');
       setShowPhysicalScannerReady(false);
     }
-  }, [products, quickAddBarcode, addToCart]);
+  }, [products, quickAddBarcode, addToCart, shopData]);
 
   const barcodeBufferRef = useRef('');
   const barcodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -556,6 +574,14 @@ export default function POS() {
       setPaymentVerified(false);
       if (canAccess('audio_soundbox')) {
         playSoundboxAlert(total, paymentMethod);
+      }
+
+      // Auto-print thermal receipt if enabled in hardware settings
+      const shouldAutoPrint = (shopData as any)?.settings?.autoPrintReceipt !== false;
+      if (shouldAutoPrint) {
+        setTimeout(() => {
+          window.print();
+        }, 500);
       }
 
       // Auto-send WhatsApp bill after configured delay if plan allows and customer phone is provided (10 digits)
@@ -1893,11 +1919,21 @@ export default function POS() {
         const shopGst = shopData?.gstNumber || '27AABCS1429B1Z2';
         const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
         const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const paperWidth = (shopData as any)?.settings?.paperSize === '58mm' || (shopData as any)?.receiptPaperSize === '58mm' ? '58mm' : '80mm';
+        const receiptCustomHeader = (shopData as any)?.settings?.receiptHeader || (shopData as any)?.receiptHeader;
+        const receiptCustomFooter = (shopData as any)?.settings?.receiptFooter || (shopData as any)?.receiptFooter;
 
         return (
-          <div id="receipt-template" className="hidden print:block absolute left-0 top-0 w-[80mm] bg-white text-black text-[12px] leading-[1.3] font-mono z-0 p-3">
+          <div 
+            id="receipt-template" 
+            className={`hidden print:block absolute left-0 top-0 bg-white text-black text-[12px] leading-[1.3] font-mono z-0 p-3 ${paperWidth === '58mm' ? 'w-[58mm]' : 'w-[80mm]'}`}
+            style={{ width: paperWidth }}
+          >
             {/* STORE HEADER */}
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+              {receiptCustomHeader && (
+                <p style={{ margin: '0 0 3px 0', fontSize: '11px', fontWeight: 'bold' }}>{receiptCustomHeader}</p>
+              )}
               <h2 style={{ margin: '0 0 2px 0', fontSize: '18px', fontWeight: '900', letterSpacing: '0.5px' }}>
                 {(shopData.shopName || shopData.name || 'KIRANA STORE').toUpperCase()}
               </h2>
@@ -1939,153 +1975,103 @@ export default function POS() {
 
             {/* TABLE HEADER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '11px', borderBottom: '1px solid #000', paddingBottom: '3px', marginBottom: '4px' }}>
-              <span style={{ width: '48%' }}>ITEM / RATE</span>
-              <span style={{ width: '18%', textAlign: 'center' }}>QTY</span>
-              <span style={{ width: '34%', textAlign: 'right' }}>AMOUNT</span>
+              <span>ITEM (MRP & RATE)</span>
+              <span>AMOUNT</span>
             </div>
 
             {/* ITEMS LIST */}
-            <div style={{ marginBottom: '6px' }}>
+            <div style={{ marginBottom: '4px' }}>
               {receiptItems.map((item, idx) => {
                 const sp = Number(item.sellingPrice || 0);
                 const mrp = Number(item.mrp || 0);
                 const qty = Number(item.qty || 1);
                 const itemTotal = sp * qty;
                 const hasDiscount = mrp > sp;
-                const itemSavings = hasDiscount ? (mrp - sp) * qty : 0;
-                const discPercent = hasDiscount ? Math.round(((mrp - sp) / mrp) * 100) : 0;
                 const unitStr = item.unit ? ` (${item.unit})` : '';
 
                 return (
-                  <div key={item.id || idx} style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px dotted #ccc' }}>
-                    {/* Item Name */}
-                    <div style={{ fontWeight: 'bold', fontSize: '11px', lineHeight: '1.2' }}>
+                  <div key={item.id || idx} style={{ padding: '3px 0', borderBottom: '1px dotted #ddd' }}>
+                    <div style={{ fontWeight: '600', fontSize: '11px', wordBreak: 'break-word', lineHeight: '1.2' }}>
                       {idx + 1}. {item.name}{unitStr}
                     </div>
-                    
-                    {/* Rate & Qty & Total Amount */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', marginTop: '2px' }}>
-                      <span style={{ width: '48%' }}>
-                        Rate: ₹{sp.toFixed(2)}
-                        {hasDiscount && (
-                          <span style={{ textDecoration: 'line-through', color: '#555', marginLeft: '4px', fontSize: '10px' }}>
-                            ₹{mrp.toFixed(2)}
-                          </span>
+                      <span style={{ color: '#333' }}>
+                        {hasDiscount ? (
+                          <>
+                            <span style={{ color: '#666', marginRight: '6px' }}>
+                              MRP: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toFixed(2)}</span>
+                            </span>
+                            <span style={{ fontWeight: 'bold', color: '#000' }}>Rate: ₹{sp.toFixed(2)}</span>
+                          </>
+                        ) : (
+                          <span style={{ fontWeight: 'bold' }}>Rate: ₹{sp.toFixed(2)}</span>
                         )}
+                        <span style={{ marginLeft: '6px', color: '#555' }}>x {qty}</span>
                       </span>
-                      <span style={{ width: '18%', textAlign: 'center' }}>
-                        {qty}
-                      </span>
-                      <span style={{ width: '34%', textAlign: 'right', fontWeight: 'bold' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '11px' }}>
                         ₹{itemTotal.toFixed(2)}
                       </span>
                     </div>
-
-                    {/* Per-Item Discount & Savings */}
-                    {hasDiscount && (
-                      <div style={{ fontSize: '10px', color: '#000', paddingLeft: '8px', marginTop: '1px', fontStyle: 'italic' }}>
-                        ↳ Discount: ₹{(mrp - sp).toFixed(2)}/u ({discPercent}% OFF) | Save ₹{itemSavings.toFixed(2)}
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
 
-            <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }}></div>
+            <div style={{ borderBottom: '1px dashed #000', margin: '4px 0' }}></div>
 
-            {/* TOTALS & BREAKDOWN */}
+            {/* TOTAL ITEMS & SUMMARY */}
             <div style={{ fontSize: '11px', lineHeight: '1.5' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Total Items / Qty:</span>
-                <span>{totalItemsCount} items / {totalQtyCount} qty</span>
+                <span>{totalItemsCount} items ({totalQtyCount} qty)</span>
               </div>
 
               {totalMrpValue > checkoutResult.total && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Total MRP Value:</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
+                  <span>Total MRP:</span>
                   <span>₹{totalMrpValue.toFixed(2)}</span>
                 </div>
               )}
 
-              {totalProductSavings > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Product Discount:</span>
-                  <span>-₹{totalProductSavings.toFixed(2)}</span>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Subtotal (Taxable):</span>
-                <span>₹{checkoutResult.subtotal.toFixed(2)}</span>
-              </div>
-
               {billDiscountAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Special Bill Discount:</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
+                  <span>Special Discount:</span>
                   <span>-₹{billDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-
-              {taxVal > 0 ? (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>CGST:</span>
-                    <span>+₹{halfTax.toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>SGST:</span>
-                    <span>+₹{halfTax.toFixed(2)}</span>
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#444' }}>
-                  <span>GST:</span>
-                  <span>Included in prices</span>
                 </div>
               )}
             </div>
 
-            <div style={{ borderBottom: '2px solid #000', margin: '6px 0' }}></div>
+            <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
 
             {/* NET GRAND TOTAL */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '16px', padding: '2px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '15px', padding: '2px 0' }}>
               <span>NET TOTAL:</span>
               <span>₹{checkoutResult.total.toFixed(2)}</span>
             </div>
 
-            <div style={{ borderBottom: '2px solid #000', margin: '6px 0' }}></div>
+            <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
 
-            {/* SAVINGS BANNER */}
+            {/* SAVINGS - CLEAN & MINIMAL */}
             {grandTotalSavings > 0 && (
               <div style={{ 
-                border: '1.5px solid #000', 
-                padding: '6px 4px', 
                 textAlign: 'center', 
-                margin: '8px 0', 
+                padding: '4px 0', 
+                fontSize: '11px', 
                 fontWeight: 'bold',
-                fontSize: '11px',
-                background: '#f9f9f9'
+                borderBottom: '1px dashed #000'
               }}>
-                <div style={{ fontSize: '12px' }}>🎉 YOU SAVED ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}%)! 🎉</div>
-                <div style={{ fontSize: '10px', fontWeight: 'normal', marginTop: '2px' }}>
-                  (या बिलावर तुमची ₹{grandTotalSavings.toFixed(2)} रुपयांची बचत झाली!)
-                </div>
-              </div>
-            )}
-
-            {/* LOYALTY POINTS */}
-            {(checkoutResult.loyaltyPointsEarned ?? 0) > 0 && (
-              <div style={{ textAlign: 'center', margin: '4px 0', fontWeight: 'bold', fontSize: '11px' }}>
-                ⭐ You earned {checkoutResult.loyaltyPointsEarned} Loyalty Points!
+                ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% बचत)
               </div>
             )}
 
             {/* FOOTER */}
-            <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '10px', borderTop: '1px dashed #000', paddingTop: '6px', lineHeight: '1.4' }}>
+            <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '10px', lineHeight: '1.3' }}>
+              {receiptCustomFooter && (
+                <p style={{ margin: '2px 0 4px 0', fontWeight: 'bold' }}>{receiptCustomFooter}</p>
+              )}
               <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Thank You For Shopping!</p>
-              <p style={{ margin: '2px 0' }}>Please Visit Again 🙏</p>
-              <p style={{ margin: '4px 0 0 0', fontSize: '9px', color: '#666' }}>Software by Nayashi Kirana POS</p>
+              <p style={{ margin: '1px 0' }}>Please Visit Again 🙏</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#777' }}>Software by Nayashi Kirana POS</p>
             </div>
           </div>
         );

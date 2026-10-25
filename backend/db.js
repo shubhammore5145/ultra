@@ -473,8 +473,27 @@ async function warmUpCacheFromSupabase() {
     if (shopsRes.data) {
       for (const s of shopsRes.data) {
         try {
-          db.prepare('INSERT OR REPLACE INTO shops (shopId, name, ownerName, phone, email, address, gstNumber, upiId, publicUrl, plan, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .run(s.shopId, s.name, s.ownerName, s.phone, s.email, s.address, s.gstNumber, s.upiId, s.publicUrl, s.plan, JSON.stringify(s.settings || {}));
+          db.prepare('INSERT OR REPLACE INTO shops (shopId, name, ownerName, phone, email, address, gstNumber, upiId, publicUrl, plan, planExpiry, settings, receiptHeader, receiptFooter, receiptPaperSize, fssaiNumber, invoiceTerms, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(
+              s.shopId, 
+              s.name, 
+              s.ownerName, 
+              s.phone || null, 
+              s.email || null, 
+              s.address || null, 
+              s.gstNumber || null, 
+              s.upiId || null, 
+              s.publicUrl || null, 
+              s.plan || 'free',
+              s.planExpiry || null,
+              typeof s.settings === 'object' ? JSON.stringify(s.settings || {}) : (s.settings || null),
+              s.receiptHeader || null,
+              s.receiptFooter || null,
+              s.receiptPaperSize || 'thermal',
+              s.fssaiNumber || null,
+              s.invoiceTerms || null,
+              s.createdAt || new Date().toISOString()
+            );
         } catch (e) {}
       }
     }

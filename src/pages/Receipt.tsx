@@ -205,8 +205,9 @@ export default function Receipt() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-zinc-200 dark:border-zinc-800 text-left text-zinc-500 dark:text-zinc-400">
-                  <th className="pb-2 font-bold">Item & Rate</th>
+                  <th className="pb-2 font-bold w-1/2">Item</th>
                   <th className="pb-2 font-bold text-center">Qty</th>
+                  <th className="pb-2 font-bold text-right">Rate</th>
                   <th className="pb-2 font-bold text-right">Amount</th>
                 </tr>
               </thead>
@@ -217,35 +218,26 @@ export default function Receipt() {
                   const qty = Number(item.qty ?? 1);
                   const total = Number(item.total ?? (price * qty));
                   const hasDiscount = mrp > price;
-                  const itemSavings = hasDiscount ? (mrp - price) * qty : 0;
-                  const discPercent = hasDiscount ? Math.round(((mrp - price) / mrp) * 100) : 0;
                   const unitStr = item.unit ? ` (${item.unit})` : '';
 
                   return (
-                    <tr key={idx} className="align-top">
+                    <tr key={idx} className="align-middle">
                       <td className="py-2.5 pr-2">
                         <div className="font-medium text-zinc-900 dark:text-zinc-100 leading-snug">
                           {idx + 1}. {item.name}{unitStr}
                         </div>
-                        <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span>Rate: ₹{price.toFixed(2)}</span>
+                        <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-2">
                           {hasDiscount && (
-                            <>
-                              <span className="line-through text-zinc-400">MRP ₹{mrp.toFixed(2)}</span>
-                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded text-[10px]">
-                                {discPercent}% OFF
-                              </span>
-                            </>
+                            <span className="line-through text-zinc-400">MRP: ₹{mrp.toFixed(2)}</span>
                           )}
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200">Rate: ₹{price.toFixed(2)}</span>
                         </div>
-                        {hasDiscount && (
-                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-                            ↳ You save: ₹{itemSavings.toFixed(2)}
-                          </div>
-                        )}
                       </td>
                       <td className="py-2.5 text-center font-medium text-zinc-800 dark:text-zinc-200">
                         {qty}
+                      </td>
+                      <td className="py-2.5 text-right text-zinc-600 dark:text-zinc-400">
+                        ₹{price.toFixed(2)}
                       </td>
                       <td className="py-2.5 text-right font-bold text-zinc-900 dark:text-zinc-100">
                         ₹{total.toFixed(2)}
@@ -275,77 +267,33 @@ export default function Receipt() {
             const billDiscount = Number(receipt.discountAmount || 0);
             const grandTotalSavings = totalProductSavings + billDiscount;
             const savingsPercent = totalMrpValue > 0 ? Math.round((grandTotalSavings / totalMrpValue) * 100) : 0;
-            const taxVal = Number(receipt.taxAmount || 0);
-            const halfTax = taxVal / 2;
             const finalTotal = Number(receipt.totalAmount || receipt.total || 0);
 
             return (
               <>
-                <div className="bg-zinc-50 dark:bg-zinc-950/60 py-4 px-6 space-y-1.5 text-xs border-t border-zinc-200 dark:border-zinc-800">
+                <div className="bg-zinc-50 dark:bg-zinc-950/60 py-3 px-6 space-y-1.5 text-xs border-t border-zinc-200 dark:border-zinc-800">
                   <div className="flex justify-between text-zinc-500">
                     <span>Total Items / Qty:</span>
-                    <span>{items.length} items / {totalQty} qty</span>
-                  </div>
-
-                  {totalMrpValue > finalTotal && (
-                    <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                      <span>Total MRP Value:</span>
-                      <span>₹{totalMrpValue.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {totalProductSavings > 0 && (
-                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-medium">
-                      <span>Product Discount:</span>
-                      <span>- ₹{totalProductSavings.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                    <span>Subtotal:</span>
-                    <span>₹{Number(receipt.subtotal || finalTotal).toFixed(2)}</span>
+                    <span>{items.length} items ({totalQty} qty)</span>
                   </div>
 
                   {billDiscount > 0 && (
                     <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-medium">
-                      <span>Special Discount:</span>
+                      <span>Discount:</span>
                       <span>- ₹{billDiscount.toFixed(2)}</span>
                     </div>
                   )}
 
-                  {taxVal > 0 ? (
-                    <>
-                      <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                        <span>CGST:</span>
-                        <span>+ ₹{halfTax.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                        <span>SGST:</span>
-                        <span>+ ₹{halfTax.toFixed(2)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex justify-between text-zinc-500 text-[11px]">
-                      <span>GST:</span>
-                      <span>Included in prices</span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-3 mt-2 border-t-2 border-zinc-900 dark:border-zinc-100 text-lg font-black text-zinc-900 dark:text-zinc-100">
+                  <div className="flex justify-between items-center pt-2.5 mt-2 border-t border-zinc-900 dark:border-zinc-100 text-base font-black text-zinc-900 dark:text-zinc-100">
                     <span>NET PAYABLE</span>
-                    <span className="flex items-center text-xl"><IndianRupee className="h-5 w-5 mr-0.5" />{finalTotal.toFixed(2)}</span>
+                    <span className="flex items-center text-lg"><IndianRupee className="h-4 w-4 mr-0.5" />{finalTotal.toFixed(2)}</span>
                   </div>
                 </div>
 
-                {/* Savings Banner */}
+                {/* Savings Banner - Clean & Minimal */}
                 {grandTotalSavings > 0 && (
-                  <div className="mx-6 my-4 p-3.5 bg-emerald-500/10 border-2 border-dashed border-emerald-500/30 rounded-xl text-center space-y-1">
-                    <div className="text-sm font-black text-emerald-700 dark:text-emerald-300">
-                      🎉 YOU SAVED ₹{grandTotalSavings.toFixed(2)} ({savingsPercent}%)! 🎉
-                    </div>
-                    <div className="text-xs text-emerald-600 dark:text-emerald-400">
-                      या बिलावर तुमची ₹{grandTotalSavings.toFixed(2)} रुपयांची बचत झाली!
-                    </div>
+                  <div className="mx-6 my-3 py-2 px-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-lg text-center font-bold text-xs text-emerald-700 dark:text-emerald-300">
+                    ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercent}% बचत)
                   </div>
                 )}
               </>

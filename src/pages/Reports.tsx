@@ -134,18 +134,20 @@ export default function Reports() {
       const items = Array.isArray(sale.items) ? sale.items : [];
       items.forEach(item => {
         const dbProduct = prodMap.get(item.id);
-        const purchasePrice = dbProduct?.purchasePrice || (item.sellingPrice * 0.85); // fallback 15% margin
-        grossProfit += ((item.sellingPrice || 0) - purchasePrice) * (item.qty || 1);
+        const itemPrice = Number(item.sellingPrice ?? (item as any).price ?? 0);
+        const itemQty = Number(item.qty || 1);
+        const purchasePrice = dbProduct?.purchasePrice || (itemPrice * 0.85); // fallback 15% margin
+        grossProfit += (itemPrice - purchasePrice) * itemQty;
 
         const existing = itemMap.get(item.id || item.name);
         if (existing) {
-          existing.qty += item.qty;
-          existing.revenue += (item.sellingPrice || 0) * item.qty;
+          existing.qty += itemQty;
+          existing.revenue += itemPrice * itemQty;
         } else {
           itemMap.set(item.id || item.name, { 
             name: item.name, 
-            qty: item.qty, 
-            revenue: (item.sellingPrice || 0) * item.qty,
+            qty: itemQty, 
+            revenue: itemPrice * itemQty,
             gstRate: Number(item.gst || dbProduct?.gst || 0)
           });
         }

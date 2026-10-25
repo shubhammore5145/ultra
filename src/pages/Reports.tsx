@@ -3,7 +3,7 @@ import {
   BarChart3, TrendingUp, DollarSign, Loader2, 
   Download, FileSpreadsheet, Banknote, 
   ShieldCheck, PieChart as PieIcon,
-  ShoppingBag
+  ShoppingBag, Printer, Search, MessageCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -26,8 +26,9 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
 
   // Filter state
-  const [activeTab, setActiveTab] = useState<'analytics' | 'payments' | 'gstr1' | 'products' | 'udharAging' | 'exports'>('analytics');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'analytics' | 'payments' | 'gstr1' | 'products' | 'udharAging' | 'exports'>('invoices');
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'thisMonth' | 'lastMonth' | 'all'>('thisMonth');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -403,6 +404,15 @@ export default function Reports() {
       {/* Navigation Tabs */}
       <div className="flex gap-2 border-b overflow-x-auto pb-1 text-sm font-semibold">
         <button
+          onClick={() => setActiveTab('invoices')}
+          className={`pb-2 px-3 border-b-2 transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'invoices' ? 'border-primary text-primary font-bold' : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          🧾 Bill History (पावती यादी)
+        </button>
+
+        <button
           onClick={() => setActiveTab('analytics')}
           className={`pb-2 px-3 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'analytics' ? 'border-primary text-primary font-bold' : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -467,6 +477,147 @@ export default function Reports() {
           📥 CSV Export Center
         </button>
       </div>
+
+      {/* ─── TAB 0: BILL HISTORY / INVOICE REGISTRY ─── */}
+      {activeTab === 'invoices' && (
+        <div className="space-y-4">
+          <div className="kirana-card p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b">
+              <div>
+                <h3 className="text-base font-bold flex items-center gap-2 text-foreground">
+                  <FileSpreadsheet className="h-5 w-5 text-primary" />
+                  Bill & Invoice Registry (सर्व पावत्यांची यादी)
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  कोणतीही जुनी पावती शोधा, पुन्हा प्रिंट करा किंवा ग्राहकाला पाठवा.
+                </p>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={invoiceSearch}
+                  onChange={e => setInvoiceSearch(e.target.value)}
+                  placeholder="Invoice # किंवा फोन नंबर..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-background text-foreground focus:ring-1 focus:ring-primary outline-hidden"
+                />
+              </div>
+            </div>
+
+            {(() => {
+              const searchedSales = filteredSales.filter(s => {
+                const term = invoiceSearch.trim().toLowerCase();
+                if (!term) return true;
+                const idMatch = String(s.id || '').toLowerCase().includes(term);
+                const phoneMatch = String((s as any).customerPhone || (s as any).phone || '').includes(term);
+                const payMatch = String(s.paymentMethod || '').toLowerCase().includes(term);
+                return idMatch || phoneMatch || payMatch;
+              });
+
+              if (searchedSales.length === 0) {
+                return (
+                  <div className="text-center py-12 text-muted-foreground text-xs">
+                    {invoiceSearch ? 'या शोधानुसार कोणतीही पावती सापडली नाही.' : 'निवडलेल्या तारखेमध्ये कोणतीही पावती उपलब्ध नाही.'}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto mt-3">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b bg-muted/40 text-muted-foreground font-semibold">
+                        <th className="py-2.5 px-3">Date & Time</th>
+                        <th className="py-2.5 px-3">Invoice #</th>
+                        <th className="py-2.5 px-3">Customer</th>
+                        <th className="py-2.5 px-3">Items</th>
+                        <th className="py-2.5 px-3">Payment</th>
+                        <th className="py-2.5 px-3 text-right">Amount</th>
+                        <th className="py-2.5 px-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {searchedSales.map((s, idx) => {
+                        const itemsArr = Array.isArray(s.items) ? s.items : [];
+                        const itemCount = itemsArr.reduce((acc: number, it: any) => acc + Number(it.qty || 1), 0);
+                        const cleanId = String(s.id || '').slice(-8).toUpperCase();
+                        const phone = (s as any).customerPhone || (s as any).phone;
+                        const dateStr = s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-IN') : '';
+                        const timeStr = s.createdAt ? new Date(s.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+
+                        return (
+                          <tr key={s.id || idx} className="hover:bg-muted/30 transition-colors">
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <div className="font-semibold text-foreground">{dateStr}</div>
+                              <div className="text-[10px] text-muted-foreground">{timeStr}</div>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-foreground">
+                              #{cleanId}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {phone ? (
+                                <span className="font-medium text-foreground">+91 {phone}</span>
+                              ) : (
+                                <span className="text-muted-foreground italic">Walk-in</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-muted-foreground">
+                              {itemsArr.length > 0 ? (
+                                <span title={itemsArr.map((it: any) => `${it.name} (${it.qty})`).join(', ')}>
+                                  {itemsArr[0]?.name} {itemsArr.length > 1 ? `+${itemsArr.length - 1} more` : ''} ({itemCount} pcs)
+                                </span>
+                              ) : (
+                                '1 bill'
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                s.paymentMethod === 'cash' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                                s.paymentMethod === 'upi' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
+                                s.paymentMethod === 'udhar' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' :
+                                'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                              }`}>
+                                {s.paymentMethod || 'CASH'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-black text-sm text-foreground">
+                              ₹{Number(s.totalAmount || (s as any).total || 0).toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <a
+                                  href={`/receipt/${s.id}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold text-primary hover:bg-primary/10 transition-colors"
+                                  title="View & Print Bill"
+                                >
+                                  <Printer className="h-3 w-3" /> Print
+                                </a>
+                                {phone && (
+                                  <a
+                                    href={`https://wa.me/91${phone}?text=${encodeURIComponent(`नमस्ते! ${shopData?.name || 'आमच्या दुकानातील'} आपले पावती बिल: ${window.location.origin}/receipt/${s.id}`)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                    title="Share on WhatsApp"
+                                  >
+                                    <MessageCircle className="h-3.5 w-3.5" />
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* ─── TAB 1: SALES TRENDS ─── */}
       {activeTab === 'analytics' && (

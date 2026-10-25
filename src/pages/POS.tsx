@@ -121,6 +121,15 @@ export default function POS() {
     createdAt?: string
   } | null>(null);
 
+  const [lastBill, setLastBill] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('pos_last_bill');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   // Camera Scanner State
   const [showScanner, setShowScanner] = useState(false);
   const [showScannerMenu, setShowScannerMenu] = useState(false);
@@ -557,8 +566,8 @@ export default function POS() {
         localStorage.setItem(`receipt_${txId.slice(0, 8)}`, JSON.stringify(fullReceiptObj));
       } catch (cacheErr) {}
 
-      // Save result for the success modal
-      setCheckoutResult({
+      // Save result for the success modal & last-bill re-print
+      const billDataToSave = {
         id: txId,
         subtotal,
         discountAmount,
@@ -570,7 +579,12 @@ export default function POS() {
         customerPhone: phoneToSend,
         loyaltyPointsEarned: Math.floor(total / 100),
         createdAt: new Date().toISOString()
-      });
+      };
+      setCheckoutResult(billDataToSave);
+      setLastBill(billDataToSave);
+      try {
+        localStorage.setItem('pos_last_bill', JSON.stringify(billDataToSave));
+      } catch (e) {}
       setPaymentVerified(false);
       if (canAccess('audio_soundbox')) {
         playSoundboxAlert(total, paymentMethod);
@@ -738,7 +752,7 @@ export default function POS() {
         const modalBillDiscount = Number(checkoutResult.discountAmount || 0);
         const modalTotalSavings = modalProductSavings + modalBillDiscount;
         const modalSavingsPercent = modalTotalMrp > 0 ? Math.round((modalTotalSavings / modalTotalMrp) * 100) : 0;
-        const shopGst = shopData?.gstNumber || '27AABCS1429B1Z2';
+        const shopGst = shopData?.gstNumber || '';
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4 no-print">
@@ -803,7 +817,7 @@ export default function POS() {
                   <div className="flex items-center justify-between pb-2 border-b border-dashed">
                     <div>
                       <div className="font-bold text-sm text-foreground uppercase">{shopData?.shopName || shopData?.name || 'Kirana Store'}</div>
-                      <div className="text-[11px] text-muted-foreground font-mono">GSTIN: {shopGst}</div>
+                      {shopGst ? <div className="text-[11px] text-muted-foreground font-mono">GSTIN: {shopGst}</div> : null}
                     </div>
                     <div className="text-right">
                       <span className="font-mono font-bold text-foreground">#{checkoutResult.id.slice(-8).toUpperCase()}</span>
@@ -1333,9 +1347,21 @@ export default function POS() {
           <h2 className="font-bold text-xl flex items-center gap-2">
             <ShoppingCart className="h-6 w-6 text-primary" /> Checkout
           </h2>
-          <Button variant="ghost" size="icon" onClick={() => setShowMobileCart(false)} className="rounded-full bg-muted/50">
-            <X className="h-6 w-6" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {lastBill && cart.length === 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setCheckoutResult(lastBill)}
+                className="text-xs h-8 border-primary/40 text-primary hover:bg-primary/10 flex items-center gap-1 font-semibold"
+              >
+                <Printer className="h-3.5 w-3.5" /> Last Bill
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={() => setShowMobileCart(false)} className="rounded-full bg-muted/50">
+              <X className="h-6 w-6" />
+            </Button>
+          </div>
         </div>
 
         {/* Desktop Header */}
@@ -1343,9 +1369,22 @@ export default function POS() {
           <h2 className="font-bold text-lg flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" /> Current Bill
           </h2>
-          <Button variant="ghost" size="sm" onClick={() => setCart([])} disabled={cart.length === 0}>
-            Clear
-          </Button>
+          <div className="flex items-center gap-2">
+            {lastBill && cart.length === 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setCheckoutResult(lastBill)}
+                className="text-xs h-8 border-primary/40 text-primary hover:bg-primary/10 flex items-center gap-1.5 font-semibold"
+                title="Reprint previous bill"
+              >
+                <Printer className="h-3.5 w-3.5" /> Reprint Last Bill
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setCart([])} disabled={cart.length === 0}>
+              Clear
+            </Button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1354,6 +1393,16 @@ export default function POS() {
               <ShoppingCart className="h-12 w-12 opacity-20" />
               <p>Cart is empty</p>
               <p className="text-xs">Scan a barcode to add products</p>
+              {lastBill && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setCheckoutResult(lastBill)}
+                  className="mt-2 text-xs font-semibold text-primary border-primary/40 hover:bg-primary/10 flex items-center gap-1.5 shadow-xs"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Reprint Last Bill (#{String(lastBill.id || '').slice(-6).toUpperCase()})
+                </Button>
+              )}
               <Button variant="outline" className="mt-4 md:hidden" onClick={() => setShowMobileCart(false)}>
                 Go Back to Products
               </Button>
@@ -1916,7 +1965,7 @@ export default function POS() {
         const savingsPercentage = totalMrpValue > 0 ? Math.round((grandTotalSavings / totalMrpValue) * 100) : 0;
         const taxVal = Number(checkoutResult.taxAmount || 0);
         const halfTax = taxVal / 2;
-        const shopGst = shopData?.gstNumber || '27AABCS1429B1Z2';
+        const shopGst = shopData?.gstNumber || '';
         const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
         const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
         const paperWidth = (shopData as any)?.settings?.paperSize === '58mm' || (shopData as any)?.receiptPaperSize === '58mm' ? '58mm' : '80mm';
@@ -1943,9 +1992,11 @@ export default function POS() {
               {shopData.phone && (
                 <p style={{ margin: '2px 0', fontSize: '11px' }}>Ph: {shopData.phone}</p>
               )}
-              <p style={{ margin: '3px 0', fontSize: '12px', fontWeight: 'bold' }}>
-                GSTIN: {shopGst}
-              </p>
+              {shopGst ? (
+                <p style={{ margin: '3px 0', fontSize: '12px', fontWeight: 'bold' }}>
+                  GSTIN: {shopGst}
+                </p>
+              ) : null}
               {(shopData as any).fssaiNumber && (
                 <p style={{ margin: '2px 0', fontSize: '11px' }}>FSSAI Lic: {(shopData as any).fssaiNumber}</p>
               )}
@@ -2061,6 +2112,19 @@ export default function POS() {
                 borderBottom: '1px dashed #000'
               }}>
                 ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% बचत)
+              </div>
+            )}
+
+            {/* UPI SCAN & PAY ON THERMAL RECEIPT */}
+            {shopData?.upiId && (
+              <div style={{ textAlign: 'center', margin: '6px 0 4px 0', padding: '4px', border: '1px dashed #000' }}>
+                <p style={{ margin: '0 0 3px 0', fontSize: '10px', fontWeight: 'bold' }}>Scan & Pay via UPI</p>
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`upi://pay?pa=${shopData.upiId}&pn=${encodeURIComponent(shopData.shopName || shopData.name || 'Store')}&am=${checkoutResult.total}&cu=INR`)}`}
+                  alt="UPI QR"
+                  style={{ width: '70px', height: '70px', margin: '0 auto', display: 'block' }}
+                />
+                <p style={{ margin: '3px 0 0 0', fontSize: '9px', fontWeight: 'bold' }}>UPI: {shopData.upiId}</p>
               </div>
             )}
 

@@ -167,9 +167,11 @@ export default function Receipt() {
             {receipt.shopAddress && <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 max-w-[280px] mx-auto leading-tight">{receipt.shopAddress}</p>}
             {receipt.shopPhone && <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">Ph: {receipt.shopPhone}</p>}
             
-            <div className="inline-block mt-2 px-3 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full border border-zinc-200 dark:border-zinc-700 text-xs font-bold text-zinc-800 dark:text-zinc-200">
-              GSTIN: {receipt.shopGstNumber || receipt.gstNumber || '27AABCS1429B1Z2'}
-            </div>
+            {(receipt.shopGstNumber || receipt.gstNumber) && (
+              <div className="inline-block mt-2 px-3 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full border border-zinc-200 dark:border-zinc-700 text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                GSTIN: {receipt.shopGstNumber || receipt.gstNumber}
+              </div>
+            )}
 
             <div className="mt-3 text-[11px] font-bold text-zinc-500 uppercase tracking-widest border-t border-b border-dashed border-zinc-200 dark:border-zinc-800 py-1">
               *** Retail Tax Invoice ***

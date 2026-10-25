@@ -4,7 +4,7 @@ import {
   IndianRupee, ShoppingCart, TrendingUp, Users, Wallet,
   AlertTriangle, Download, Sparkles, RefreshCw, Zap,
   Smartphone, CreditCard, Banknote, MessageCircle, CheckCircle2,
-  ChevronRight, ArrowUpRight
+  ChevronRight, ArrowUpRight, ShieldCheck, Printer, X, FileText
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { api } from '../lib/api';
@@ -38,6 +38,15 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sendingSummary, setSendingSummary] = useState(false);
   const [summaryStatus, setSummaryStatus] = useState<string | null>(null);
+
+  // Cash Register Day-Close Settlement State
+  const [showSettlementModal, setShowSettlementModal] = useState(false);
+  const [openingFloat, setOpeningFloat] = useState(() => {
+    return localStorage.getItem('pos_opening_cash') || '0';
+  });
+  const [countedCash, setCountedCash] = useState('');
+  const [settlementNotes, setSettlementNotes] = useState('');
+  const [isPrintingZReport, setIsPrintingZReport] = useState(false);
 
   const parseDate = useCallback((dateVal: any): Date | null => {
     if (!dateVal) return null;
@@ -310,6 +319,16 @@ export default function Dashboard() {
 
           <Button
             variant="outline"
+            onClick={() => setShowSettlementModal(true)}
+            className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white font-semibold flex items-center gap-2 text-xs cursor-pointer"
+            title="End-of-Day Register Settlement & Cash Count"
+          >
+            <ShieldCheck className="h-4 w-4 text-amber-400" />
+            <span>गल्ला क्लोजिंग</span>
+          </Button>
+
+          <Button
+            variant="outline"
             size="icon"
             onClick={() => fetchDashboardData(true)}
             disabled={isRefreshing}
@@ -397,7 +416,16 @@ export default function Dashboard() {
             <div className="stat-value text-amber-600 dark:text-amber-400">
               ₹{cashInDrawer.toFixed(2)}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Cash minus expenses</p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[11px] text-muted-foreground">Cash minus expenses</p>
+              <button
+                type="button"
+                onClick={() => setShowSettlementModal(true)}
+                className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30"
+              >
+                <ShieldCheck className="h-3 w-3" /> गल्ला क्लोजिंग
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -650,6 +678,298 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ─── CASH REGISTER SETTLEMENT MODAL (DAY CLOSE / Z-REPORT) ─── */}
+      {showSettlementModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200 no-print">
+          <div className="bg-card text-card-foreground p-0 rounded-2xl border shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-600 to-orange-600 p-5 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black flex items-center gap-2">
+                  <ShieldCheck className="h-6 w-6" /> Day Close & Register Settlement
+                </h3>
+                <p className="text-xs text-amber-100 mt-0.5">
+                  दुकान बंद करताना गल्ल्यातील पैशांचा हिशोब व पडताळणी (Z-Report)
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowSettlementModal(false)}
+                className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto max-h-[calc(92vh-140px)]">
+              {/* Today's Tally Summary Grid */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-3 rounded-xl bg-muted/40 border">
+                  <span className="text-muted-foreground">Today's Total Sales:</span>
+                  <div className="text-base font-bold text-foreground">₹{todaysSales.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground">({todaysOrders} orders billed)</div>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <span className="text-emerald-700 dark:text-emerald-300 font-semibold">Cash Sales (रोकड):</span>
+                  <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{todaysCash.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground">Cash received</div>
+                </div>
+                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                  <span className="text-blue-700 dark:text-blue-300 font-semibold">UPI / Online:</span>
+                  <div className="text-base font-bold text-blue-600 dark:text-blue-400">₹{todaysUPI.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground">Direct in bank</div>
+                </div>
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <span className="text-red-700 dark:text-red-300 font-semibold">Cash Expenses (खर्च):</span>
+                  <div className="text-base font-bold text-red-600 dark:text-red-400">-₹{todaysExpenses.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground">Paid from drawer</div>
+                </div>
+              </div>
+
+              {/* Cash Reconciliation Inputs */}
+              <div className="p-4 rounded-xl bg-muted/30 border space-y-3">
+                <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5 uppercase tracking-wider">
+                  <Wallet className="h-4 w-4 text-amber-500" /> Cash Drawer Reconciliation (हिशोब पडताळणी)
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="font-semibold text-muted-foreground">Opening Cash (सकाळची शिल्लक)</label>
+                    <div className="relative mt-1">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={openingFloat}
+                        onChange={e => setOpeningFloat(e.target.value)}
+                        className="w-full pl-7 pr-3 py-1.5 rounded-lg border bg-background font-bold text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-muted-foreground">Actual Cash Counted (मोजलेली रोकड)</label>
+                    <div className="relative mt-1">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600 font-bold">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={countedCash}
+                        onChange={e => setCountedCash(e.target.value)}
+                        className="w-full pl-7 pr-3 py-1.5 rounded-lg border bg-background font-bold text-sm text-emerald-600 focus:ring-1 focus:ring-emerald-500"
+                        placeholder="गल्ल्यात किती रुपये आहेत?"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Calculation Details */}
+                {(() => {
+                  const floatNum = Number(openingFloat) || 0;
+                  const expectedCash = floatNum + cashInDrawer;
+                  const countedNum = countedCash !== '' ? Number(countedCash) : null;
+                  const diff = countedNum !== null ? countedNum - expectedCash : null;
+
+                  return (
+                    <div className="pt-2 border-t space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground">Expected Cash in Drawer:</span>
+                        <span className="font-mono font-bold text-sm">₹{expectedCash.toFixed(2)}</span>
+                      </div>
+
+                      {diff !== null && (
+                        <div className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
+                          diff === 0 
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                            : diff < 0
+                            ? 'bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-300'
+                            : 'bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-300'
+                        }`}>
+                          <span>
+                            {diff === 0 ? '✅ हिशोब तंतोतंत बरोबर (Cash Matched)' : diff < 0 ? `🔻 गल्ल्यात कमी (Cash Short)` : `🔺 गल्ल्यात जास्त (Cash Excess)`}
+                          </span>
+                          <span className="text-sm font-black">
+                            {diff === 0 ? '₹0.00' : `${diff < 0 ? '-' : '+'}₹${Math.abs(diff).toFixed(2)}`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground">Notes / शेरा (Optional)</label>
+                  <input
+                    type="text"
+                    value={settlementNotes}
+                    onChange={e => setSettlementNotes(e.target.value)}
+                    placeholder="उदा. गल्ल्यात ५०० रु नाणी आहेत किंवा हिशोब बरोबर आहे."
+                    className="w-full mt-1 px-3 py-1.5 rounded-lg border bg-background text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsPrintingZReport(true);
+                    setTimeout(() => {
+                      window.print();
+                      setTimeout(() => setIsPrintingZReport(false), 800);
+                    }, 250);
+                  }}
+                  className="w-full sm:w-auto text-xs font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/10 cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" /> Print Z-Report (पावती प्रिंट)
+                </Button>
+
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowSettlementModal(false)}
+                    className="flex-1 sm:flex-none text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const floatNum = Number(openingFloat) || 0;
+                      const countedVal = Number(countedCash) || 0;
+                      const expectedCash = floatNum + cashInDrawer;
+                      const diff = countedVal - expectedCash;
+
+                      const record = {
+                        id: 'settle_' + Date.now().toString(36),
+                        date: new Date().toISOString(),
+                        shopName: shopData?.name || 'Kirana Store',
+                        openingFloat: floatNum,
+                        todaysSales,
+                        todaysCash,
+                        todaysUPI,
+                        todaysUdhar,
+                        todaysExpenses,
+                        expectedCash,
+                        countedCash: countedVal,
+                        difference: diff,
+                        notes: settlementNotes
+                      };
+
+                      try {
+                        const history = JSON.parse(localStorage.getItem('pos_day_settlements') || '[]');
+                        history.unshift(record);
+                        localStorage.setItem('pos_day_settlements', JSON.stringify(history.slice(0, 50)));
+                        localStorage.setItem('pos_opening_cash', openingFloat);
+                        alert('गल्ला क्लोजिंग (Z-Report) हिशोब सेव्ह झाला! ✅');
+                        setShowSettlementModal(false);
+                      } catch (e) {
+                        alert('हिशोब सेव्ह झाला!');
+                        setShowSettlementModal(false);
+                      }
+                    }}
+                    className="flex-1 sm:flex-none text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
+                  >
+                    Save Settlement (हिशोब सेव्ह करा)
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── HIDDEN Z-REPORT THERMAL SLIP FOR PRINT ─── */}
+      <div 
+        id="zreport-template" 
+        className="hidden print:block absolute left-0 top-0 bg-white text-black text-[12px] leading-[1.3] font-mono z-0 p-3 w-[80mm]"
+      >
+        <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+          <h2 style={{ margin: '0 0 2px 0', fontSize: '16px', fontWeight: '900' }}>
+            {(shopData?.name || 'KIRANA STORE').toUpperCase()}
+          </h2>
+          <div style={{ margin: '4px 0', fontWeight: 'bold', fontSize: '12px', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '3px 0' }}>
+            *** DAILY REGISTER CLOSE (Z-REPORT) ***
+          </div>
+        </div>
+
+        <div style={{ fontSize: '11px', marginBottom: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')}</span>
+            <span><strong>Time:</strong> {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span><strong>Orders:</strong> {todaysOrders}</span>
+            <span><strong>Sales:</strong> ₹{todaysSales.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div style={{ borderBottom: '1px dashed #000', margin: '4px 0' }}></div>
+
+        <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Cash Sales:</span>
+            <span>₹{todaysCash.toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>UPI / Online:</span>
+            <span>₹{todaysUPI.toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Udhar Sales:</span>
+            <span>₹{todaysUdhar.toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c00' }}>
+            <span>Cash Expenses:</span>
+            <span>-₹{todaysExpenses.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div style={{ borderBottom: '1.5px solid #000', margin: '6px 0' }}></div>
+
+        <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Opening Float:</span>
+            <span>₹{(Number(openingFloat) || 0).toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+            <span>Expected Cash:</span>
+            <span>₹{((Number(openingFloat) || 0) + cashInDrawer).toFixed(2)}</span>
+          </div>
+          {countedCash !== '' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                <span>Actual Counted:</span>
+                <span>₹{(Number(countedCash) || 0).toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', borderTop: '1px dotted #000', paddingTop: '2px', marginTop: '2px' }}>
+                <span>Variance:</span>
+                <span>{((Number(countedCash) || 0) - ((Number(openingFloat) || 0) + cashInDrawer) >= 0 ? '+' : '')}₹{((Number(countedCash) || 0) - ((Number(openingFloat) || 0) + cashInDrawer)).toFixed(2)}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {settlementNotes && (
+          <div style={{ marginTop: '6px', fontSize: '10px', fontStyle: 'italic' }}>
+            Note: {settlementNotes}
+          </div>
+        )}
+
+        <div style={{ borderBottom: '1px dashed #000', margin: '8px 0' }}></div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', fontSize: '10px' }}>
+          <div style={{ borderTop: '1px solid #000', width: '40%', textAlign: 'center', paddingTop: '2px' }}>Cashier Sign</div>
+          <div style={{ borderTop: '1px solid #000', width: '40%', textAlign: 'center', paddingTop: '2px' }}>Owner Sign</div>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '9px', color: '#666' }}>
+          --------------------------------<br />
+          MartGPT POS • Day Close Verified
         </div>
       </div>
     </div>

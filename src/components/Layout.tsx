@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, LogOut, Crown, Zap, Sparkles, Bell } from 'lucide-react';
+import { Menu, LogOut, Crown, Zap, Sparkles, Bell, Wifi, WifiOff, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
-import { api } from '../lib/api';
+import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
 import { UpgradeModal } from './UpgradeModal';
 
@@ -12,9 +12,66 @@ export default function Layout() {
   const { plan, isExpired, openUpgradeModal } = usePlan();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [offlineCount, setOfflineCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const isPosPage = location.pathname === '/pos' || location.pathname === '/';
+
+  useEffect(() => {
+    // Check initial offline queue
+    setOfflineCount(getOfflineQueue().length);
+
+    const handleOnline = async () => {
+      setIsOnline(true);
+      const queue = getOfflineQueue();
+      if (queue.length > 0) {
+        setIsSyncing(true);
+        try {
+          const res = await syncOfflineQueue();
+          setOfflineCount(res.remaining);
+        } finally {
+          setIsSyncing(false);
+        }
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setOfflineCount(getOfflineQueue().length);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Periodically poll offline queue count
+    const interval = setInterval(() => {
+      setOfflineCount(getOfflineQueue().length);
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const res = await syncOfflineQueue();
+      setOfflineCount(res.remaining);
+      if (res.synced > 0) {
+        alert(`${res.synced} offline bill(s) synced to cloud successfully! ✅`);
+      }
+    } catch (err: any) {
+      alert('Sync failed: ' + (err.message || 'Please check connection'));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -120,6 +177,35 @@ export default function Layout() {
 
           {/* Right: Actions, Plan Badge & Logout */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Real-time Cloud Sync & Network Status Widget */}
+            {offlineCount > 0 ? (
+              <button
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                title="Click to sync offline bills to cloud database"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition-all shadow-xs cursor-pointer animate-pulse"
+              >
+                <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : `${offlineCount} Offline Bill(s)`}</span>
+              </button>
+            ) : !isOnline ? (
+              <span 
+                title="Working in offline mode. Billing and cart are fully operational!"
+                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25"
+              >
+                <WifiOff className="h-3 w-3" />
+                <span>Offline Ready</span>
+              </span>
+            ) : (
+              <span 
+                title="Connected to cloud database. Data is backed up in real time."
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 select-none"
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Cloud Synced</span>
+              </span>
+            )}
+
             {/* Notification Bell */}
             <button
               onClick={() => navigate('/notifications')}

@@ -18,10 +18,60 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection (server kept running):', reason?.message || reason);
 });
 
+// Security Headers Middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=()');
+  next();
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// In-Memory Rate Limiter for Auth Routes (Brute-force protection)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_AUTH_ATTEMPTS = 25; // 25 requests per minute per IP
+
+function authRateLimiter(req, res, next) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = rateLimitMap.get(ip) || { count: 0, resetTime: now + RATE_LIMIT_WINDOW };
+
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + RATE_LIMIT_WINDOW;
+  } else {
+    record.count += 1;
+  }
+
+  rateLimitMap.set(ip, record);
+
+  if (record.count > MAX_AUTH_ATTEMPTS) {
+    const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+    res.setHeader('Retry-After', retryAfter);
+    return res.status(429).json({
+      error: `Too many authentication attempts. Please try again in ${retryAfter} seconds.`,
+      retryAfter
+    });
+  }
+  next();
+}
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Database Connection
 const pool = require('./db');
@@ -382,10 +432,23 @@ async function checkAndSendScheduledSummaries() {
 
 setInterval(checkAndSendScheduledSummaries, 30000);
 
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRateLimiter, authRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api', apiRoutes);
+
+// Safe Global Error Handler for API
+app.use((err, req, res, next) => {
+  console.error('Unhandled Server Error:', err.stack || err.message);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production' 
+      ? 'An unexpected error occurred. Please try again later.' 
+      : err.message
+  });
+});
 
 // Serve frontend in production
 app.use(express.static(path.join(__dirname, '../dist')));

@@ -510,6 +510,54 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   return data;
 }
 
+// ── OFFLINE QUEUE & SYNC HELPERS ──────────────────────────────
+export function getOfflineQueue(): any[] {
+  try {
+    const raw = localStorage.getItem('pos_offline_queue');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveOfflineQueue(queue: any[]) {
+  try {
+    localStorage.setItem('pos_offline_queue', JSON.stringify(queue));
+  } catch (e) {}
+}
+
+export async function syncOfflineQueue(): Promise<{ synced: number; remaining: number }> {
+  const queue = getOfflineQueue();
+  if (queue.length === 0) return { synced: 0, remaining: 0 };
+
+  let synced = 0;
+  const remaining: any[] = [];
+
+  for (const item of queue) {
+    try {
+      await fetchAPI('/transactions', {
+        method: 'POST',
+        body: JSON.stringify(item)
+      });
+      synced++;
+    } catch (err) {
+      console.warn('Could not sync offline transaction:', item.id, err);
+      remaining.push(item);
+    }
+  }
+
+  saveOfflineQueue(remaining);
+  return { synced, remaining: remaining.length };
+}
+
+// Auto-sync listener when browser reconnects
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('Internet connection restored. Syncing offline transactions...');
+    syncOfflineQueue().catch(() => {});
+  });
+}
+
 export const api = {
   auth: {
     login: (credentials: any) => fetchAPI('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
@@ -546,7 +594,26 @@ export const api = {
   },
   transactions: {
     list: () => fetchAPI('/transactions', { method: 'GET' }),
-    create: (data: any) => fetchAPI('/transactions', { method: 'POST', body: JSON.stringify(data) })
+    create: async (data: any) => {
+      try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          throw new Error('Offline');
+        }
+        return await fetchAPI('/transactions', { method: 'POST', body: JSON.stringify(data) });
+      } catch (err: any) {
+        console.warn('Network issue during checkout. Storing transaction in offline queue:', err.message);
+        const queue = getOfflineQueue();
+        const offlineItem = {
+          ...data,
+          id: data.id || ('off_' + Date.now().toString(36)),
+          createdAt: data.createdAt || new Date().toISOString(),
+          isOffline: true
+        };
+        queue.push(offlineItem);
+        saveOfflineQueue(queue);
+        return { success: true, data: offlineItem, offline: true };
+      }
+    }
   },
   expenses: {
     list: () => fetchAPI('/expenses', { method: 'GET' }),

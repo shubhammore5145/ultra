@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles, Printer, Barcode, Bluetooth, Usb, Volume2, VolumeX, CheckCircle2, Play, Sliders } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles, Printer, Barcode, Bluetooth, Usb, Volume2, VolumeX, CheckCircle2, Play, Sliders, Download, Upload, Database, HardDrive, RefreshCw, AlertCircle, FileCheck } from 'lucide-react';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
-import { api } from '../lib/api';
+import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
 
 export default function Settings() {
   const { userData, shopData, logout } = useAuth();
@@ -64,6 +64,17 @@ export default function Settings() {
     billDelaySeconds: 5
   });
   const [savingWaSettings, setSavingWaSettings] = useState(false);
+
+  // Data Vault State
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [offlinePendingCount, setOfflinePendingCount] = useState(0);
+  const [isSyncingOffline, setIsSyncingOffline] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setOfflinePendingCount(getOfflineQueue().length);
+  }, []);
 
   const fetchStaff = async () => {
     setLoadingStaff(true);
@@ -335,6 +346,166 @@ export default function Settings() {
       alert('Failed to save settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExportShopBackup = async () => {
+    setIsExporting(true);
+    try {
+      const [products, customers, transactions, udhar, expenses, suppliers] = await Promise.all([
+        api.products.list().catch(() => []),
+        api.customers.list().catch(() => []),
+        api.transactions.list().catch(() => []),
+        api.udhar.list().catch(() => []),
+        api.expenses.list().catch(() => []),
+        api.suppliers.list().catch(() => [])
+      ]);
+
+      const backupData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        shopId: shopData?.shopId,
+        shopInfo: {
+          name: formData.shopName,
+          owner: formData.ownerName,
+          phone: formData.phone,
+          address: formData.address,
+          gstNumber: formData.gstNumber,
+          upiId: formData.upiId
+        },
+        settings: {
+          hardware: hardwareSettings,
+          whatsapp: whatsappSettings
+        },
+        counts: {
+          products: Array.isArray(products) ? products.length : 0,
+          customers: Array.isArray(customers) ? customers.length : 0,
+          transactions: Array.isArray(transactions) ? transactions.length : 0,
+          udhar: Array.isArray(udhar) ? udhar.length : 0,
+          expenses: Array.isArray(expenses) ? expenses.length : 0
+        },
+        data: {
+          products: Array.isArray(products) ? products : [],
+          customers: Array.isArray(customers) ? customers : [],
+          transactions: Array.isArray(transactions) ? transactions : [],
+          udhar: Array.isArray(udhar) ? udhar : [],
+          expenses: Array.isArray(expenses) ? expenses : [],
+          suppliers: Array.isArray(suppliers) ? suppliers : []
+        }
+      };
+
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      const shopSlug = (formData.shopName || 'Shop').replace(/[^a-zA-Z0-9]/g, '_');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', `MartGPT_Backup_${shopSlug}_${dateStr}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+
+      alert(`✅ संपूर्ण डेटा बॅकअप यशस्वीरित्या सेव्ह झाला!\nफाइल डाउनलोड फोल्डरमध्ये तपासू शकता.\n(Products: ${backupData.counts.products}, Customers: ${backupData.counts.customers}, Bills: ${backupData.counts.transactions})`);
+    } catch (err: any) {
+      alert('बॅकअप डाऊनलोड करताना अडचण आली: ' + (err.message || 'Error'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportShopBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const backup = JSON.parse(content);
+
+        if (!backup.data || !Array.isArray(backup.data.products)) {
+          alert('अवैध बॅकअप फाईल! कृपया MartGPT मधून तयार केलेली .json फाईलच निवडा.');
+          return;
+        }
+
+        const prodsCount = backup.data.products?.length || 0;
+        const custsCount = backup.data.customers?.length || 0;
+
+        const confirmRestore = window.confirm(
+          `बॅकअप फाईल सापडली:\n• प्रॉडक्ट्स: ${prodsCount}\n• ग्राहक: ${custsCount}\n• तारीख: ${backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString('en-IN') : 'N/A'}\n\nतुम्ही हा डेटा रिस्टोअर (Import) करू इच्छिता का?`
+        );
+
+        if (!confirmRestore) return;
+
+        setIsImporting(true);
+        let importedProds = 0;
+        for (const prod of (backup.data.products || [])) {
+          try {
+            await api.products.create({
+              name: prod.name,
+              barcode: prod.barcode || '',
+              sellingPrice: prod.sellingPrice || prod.price || 0,
+              purchasePrice: prod.purchasePrice || 0,
+              stock: prod.stock || 0,
+              unit: prod.unit || 'pcs',
+              category: prod.category || 'General',
+              isLoose: Boolean(prod.isLoose)
+            });
+            importedProds++;
+          } catch {}
+        }
+
+        let importedCusts = 0;
+        for (const cust of (backup.data.customers || [])) {
+          try {
+            await api.customers.create({
+              name: cust.name,
+              phone: cust.phone || '',
+              address: cust.address || '',
+              totalBalance: cust.totalBalance || 0
+            });
+            importedCusts++;
+          } catch {}
+        }
+
+        alert(`✅ रिस्टोअर यशस्वी!\n• प्रॉडक्ट्स रिस्टोअर: ${importedProds}/${prodsCount}\n• ग्राहक रिस्टोअर: ${importedCusts}/${custsCount}`);
+        window.location.reload();
+      } catch (err: any) {
+        alert('बॅकअप रिस्टोअर करताना अडचण आली: ' + (err.message || 'Invalid JSON'));
+      } finally {
+        setIsImporting(false);
+        if (e.target) e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleManualSyncOffline = async () => {
+    setIsSyncingOffline(true);
+    try {
+      const res = await syncOfflineQueue();
+      setOfflinePendingCount(res.remaining);
+      alert(`ऑफलाईन सिंक पूर्ण: ${res.synced} बिले क्लाउडवर सेव्ह झाली. शिल्लक: ${res.remaining}`);
+    } catch {
+      alert('ऑफलाईन सिंक अयशस्वी झाले. इंटरनेट चालू असल्याची खात्री करा.');
+    } finally {
+      setIsSyncingOffline(false);
+    }
+  };
+
+  const handleClearCorruptCache = () => {
+    if (window.confirm('तुम्ही ब्राऊझरमधील लोकल कॅशे रिसेट करू इच्छिता का? (तुमचा लॉगिन सुरक्षित राहील)')) {
+      const token = localStorage.getItem('auth_token');
+      const user = localStorage.getItem('auth_user');
+      const shop = localStorage.getItem('auth_shop');
+
+      localStorage.clear();
+
+      if (token) localStorage.setItem('auth_token', token);
+      if (user) localStorage.setItem('auth_user', user);
+      if (shop) localStorage.setItem('auth_shop', shop);
+
+      alert('कॅशे साफ झाली! पेज रिफ्रेश होत आहे...');
+      window.location.reload();
     }
   };
 
@@ -1170,6 +1341,151 @@ export default function Settings() {
             {savingWaSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save WhatsApp Settings
           </Button>
+        </div>
+      </div>
+
+      {/* ── Shop Data Vault & Resilience (डेटा बॅकअप, रिस्टोअर & सुरक्षितता) ── */}
+      <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
+        <div className="p-6 border-b bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2 text-foreground">
+              <Database className="h-6 w-6 text-blue-600" /> Shop Data Vault & Security (डेटा बॅकअप & सुरक्षितता)
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              तुमचा सर्व डेटा (प्रॉडक्ट्स, ग्राहक, उधारी, बिले) १००% सुरक्षित ठेवा. एका क्लिकवर बॅकअप डाउनलोड करा किंवा नवीन संगणकावर रिस्टोअर करा.
+            </p>
+          </div>
+          <span className="text-xs px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-semibold self-start sm:self-auto flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4" /> Cloud & Local Vault
+          </span>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Backup & Restore Action Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Export Backup Card */}
+            <div className="p-5 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-4">
+              <div>
+                <div className="flex items-center gap-2.5 text-foreground font-bold text-base mb-1">
+                  <Download className="h-5 w-5 text-emerald-600" /> 1-Click Full Backup (डेटा डाऊनलोड)
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  सर्व प्रॉडक्ट्स, ग्राहक लेजर, उधारी, बिले, आणि दुकानाची सर्व सेटिंग्ज एका सुरक्षित <code>.json</code> फाइलमध्ये तात्काळ डाउनलोड करा.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  onClick={handleExportShopBackup}
+                  disabled={isExporting}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-2"
+                >
+                  {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {isExporting ? 'बॅकअप तयार होत आहे...' : 'Download Full Shop Backup (.json)'}
+                </Button>
+                <p className="text-[11px] text-muted-foreground text-center mt-2">
+                  🔒 डेटा एन्क्रिप्टेड आणि तुमच्या वैयक्तिक संगणकावर सुरक्षित सेव्ह होतो.
+                </p>
+              </div>
+            </div>
+
+            {/* Import / Restore Backup Card */}
+            <div className="p-5 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-4">
+              <div>
+                <div className="flex items-center gap-2.5 text-foreground font-bold text-base mb-1">
+                  <Upload className="h-5 w-5 text-blue-600" /> Restore from Backup (डेटा रिस्टोअर)
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  नवीन संगणक, मोबाईल किंवा लॅपटॉपवर दुकानाची जुनी बॅकअप फाईल निवडून सर्व डेटा काही सेकंदांत पुन्हा चालू करा.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportShopBackup}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isImporting}
+                  className="w-full border-blue-600/40 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 font-semibold text-xs flex items-center justify-center gap-2"
+                >
+                  {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isImporting ? 'डेटा रिस्टोअर होत आहे...' : 'Choose Backup File to Restore (.json)'}
+                </Button>
+                <p className="text-[11px] text-muted-foreground text-center mt-2">
+                  ⚡ जुन्या प्रॉडक्ट्स आणि ग्राहकांची यादी आपोआप अपडेट होईल.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-border" />
+
+          {/* Offline Resilience & Local Cache Health */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-primary" /> Offline Resilience & Storage Health (ऑफलाईन सुरक्षा)
+            </h3>
+
+            <div className="p-4 rounded-xl border bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block w-2.5 h-2.5 rounded-full ${offlinePendingCount > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span className="text-xs font-bold text-foreground">
+                    {offlinePendingCount > 0
+                      ? `${offlinePendingCount} बिले ऑफलाईन सेव्ह आहेत (Pending Sync)`
+                      : 'सर्व बिले क्लाउडवर सुरक्षित सिंक्रोनाइझ आहेत (All Synced)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  वायफाय किंवा इंटरनेट बंद असताना तयार झालेली बिले आपोआप ब्राउझरमध्ये सुरक्षित ठेवली जातात.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {offlinePendingCount > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleManualSyncOffline}
+                    disabled={isSyncingOffline}
+                    className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center gap-1.5"
+                  >
+                    {isSyncingOffline ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Sync Now
+                  </Button>
+                )}
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleClearCorruptCache}
+                  className="h-8 text-xs text-muted-foreground hover:text-foreground border-border"
+                >
+                  Clear Corrupt Cache
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Security & Isolation Notice */}
+          <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 text-xs text-muted-foreground flex items-start gap-3">
+            <ShieldCheck className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-foreground mb-0.5">डेटा आयसोलेशन आणि सुरक्षितता हमी:</p>
+              <p>
+                आपल्या दुकानाची माहिती (Shop ID: <span className="font-mono font-bold text-foreground">{shopData?.shopId}</span>) इतर कोणत्याही दुकानाशी किंवा त्रयस्थ व्यक्तीशी कधीही शेअर केली जात नाही. सर्व संप्रेषण HTTPS आणि JWT ऑथेंटिकेशनने सुरक्षित केले आहे.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

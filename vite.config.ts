@@ -8,23 +8,49 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       devOptions: {
-        enabled: false
+        enabled: true,
+        type: 'module'
       },
       workbox: {
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,webmanifest}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/]
       },
       manifest: {
-        name: 'MartGPT',
+        name: 'MartGPT - AI Kirana & Retail POS',
         short_name: 'MartGPT',
-        description: 'Smart AI Supermarket & Kirana POS',
-        theme_color: '#4f46e5',
+        description: 'Smart AI Supermarket & Kirana POS Billing System',
+        theme_color: '#7c3aed',
+        background_color: '#ffffff',
+        display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
         icons: [
           {
-            src: '/favicon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
+            src: '/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
             purpose: 'any maskable'
+          },
+          {
+            src: '/favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml'
           }
         ]
       }

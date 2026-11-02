@@ -170,7 +170,15 @@ export function MobileBottomNav() {
 }
 
 /** Mobile Full-Screen Menu Drawer */
-export function MobileMoreMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+export function MobileMoreMenu({ 
+  isOpen, 
+  onClose,
+  unreadNotifs = 0
+}: { 
+  isOpen: boolean; 
+  onClose: () => void;
+  unreadNotifs?: number;
+}) {
   const { userData, shopData, logout } = useAuth();
   const { canAccess } = usePlan();
   const userRole = userData?.role || 'cashier';

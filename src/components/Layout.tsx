@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, LogOut, Crown, Zap, Sparkles, Bell, Wifi, WifiOff, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Menu, LogOut, Crown, Zap, Sparkles, Bell, Wifi, WifiOff, RefreshCw, CheckCircle2, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
@@ -15,9 +15,30 @@ export default function Layout() {
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [offlineCount, setOfflineCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const isPosPage = location.pathname === '/pos' || location.pathname === '/';
+
+  useEffect(() => {
+    // Listen for PWA installation prompt
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
 
   useEffect(() => {
     // Check initial offline queue
@@ -92,6 +113,19 @@ export default function Layout() {
     if (window.confirm('Are you sure you want to log out of MartGPT?')) {
       logout();
       navigate('/login');
+    }
+  };
+
+  const handleInstallPWA = async () => {
+    if (!deferredPrompt) return;
+    try {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice?.outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } catch (e) {
+      console.warn('PWA install prompt error:', e);
     }
   };
 
@@ -206,6 +240,18 @@ export default function Layout() {
               </span>
             )}
 
+            {/* PWA Install Button */}
+            {deferredPrompt && (
+              <button
+                onClick={handleInstallPWA}
+                title="Install MartGPT App to Home Screen"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm animate-pulse cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Install App</span>
+              </button>
+            )}
+
             {/* Notification Bell */}
             <button
               onClick={() => navigate('/notifications')}
@@ -273,7 +319,7 @@ export default function Layout() {
       <MobileBottomNav />
 
       {/* Mobile Drawer */}
-      <MobileMoreMenu isOpen={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} />
+      <MobileMoreMenu isOpen={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} unreadNotifs={unreadNotifs} />
 
       {/* Global Feature Upgrade Modal */}
       <UpgradeModal />

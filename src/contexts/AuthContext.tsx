@@ -91,17 +91,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (token) {
         try {
           const res = await api.auth.me();
-          setUser(res.user);
-          setUserData(res.user);
-          localStorage.setItem('auth_user', JSON.stringify(res.user));
-          const resolvedShop = resolveShop(res.user, res.shop);
-          if (resolvedShop) {
-            setShopData(resolvedShop);
-            localStorage.setItem('auth_shop', JSON.stringify(resolvedShop));
+          if (res && res.user) {
+            setUser(res.user);
+            setUserData(res.user);
+            localStorage.setItem('auth_user', JSON.stringify(res.user));
+            const resolvedShop = resolveShop(res.user, res.shop);
+            if (resolvedShop) {
+              setShopData(resolvedShop);
+              localStorage.setItem('auth_shop', JSON.stringify(resolvedShop));
+            }
           }
-        } catch (error) {
-          console.error('Session expired or invalid:', error);
-          logout();
+        } catch (error: any) {
+          console.warn('Backend session check notice (preserving local offline session):', error?.message || error);
+          // CRITICAL FIX: NEVER logout if backend is offline or network drops!
+          // Only logout if the backend explicitly replied with 401 Unauthorized or 403 Forbidden.
+          const status = error?.status || error?.response?.status;
+          if (status === 401 || status === 403) {
+            logout();
+          }
         }
       }
       setLoading(false);

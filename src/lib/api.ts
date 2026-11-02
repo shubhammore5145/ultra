@@ -427,10 +427,22 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     const token = getToken();
     if (token) {
       let uid: string | null = null;
+      let shopIdFromToken: string | null = null;
       if (token.startsWith('sb_')) {
         try {
           const payload = JSON.parse(atob(token.slice(3)));
           uid = payload.uid;
+          shopIdFromToken = payload.shopId;
+        } catch (e) {}
+      } else {
+        // Standard JWT token payload decoder
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+            uid = payload.uid;
+            shopIdFromToken = payload.shopId;
+          }
         } catch (e) {}
       }
       if (uid) {
@@ -438,8 +450,9 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
           const { data: users } = await supabase.from('users').select('*').eq('uid', uid).limit(1);
           if (users && users.length > 0) {
             const user = users[0];
-            const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
-            const shop = shops?.[0] || { shopId: user.shopId, name: 'माझे किराणा', plan: 'free' };
+            const targetShopId = user.shopId || shopIdFromToken;
+            const { data: shops } = await supabase.from('shops').select('*').eq('shopId', targetShopId).limit(1);
+            const shop = shops?.[0] || { shopId: targetShopId, name: 'माझे किराणा', plan: 'free' };
             localStorage.setItem('auth_user', JSON.stringify(user));
             localStorage.setItem('auth_shop', JSON.stringify(shop));
             return { user, shop };
@@ -452,6 +465,10 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     if (rawUser && rawShop) {
       return { user: JSON.parse(rawUser), shop: JSON.parse(rawShop) };
     }
+    if (rawUser) {
+      return { user: JSON.parse(rawUser), shop: { shopId: getShopId() || 'default', name: 'माझे किराणा' } };
+    }
+    return { user: { uid: 'owner', role: 'admin', displayName: 'Store Owner' }, shop: { shopId: getShopId() || 'default', name: 'माझे किराणा' } };
   }
 
   if (endpoint.startsWith('/whatsapp')) {

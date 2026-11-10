@@ -212,11 +212,18 @@ export default function POS() {
       setTimeout(() => setFloatingNotification(''), 7000);
       setTimeout(() => setWhatsappStatusBanner(null), 6000);
     } catch (err: any) {
-      const errMsg = err.message || 'Failed to send WhatsApp bill';
+      console.warn('WhatsApp bot send error, opening direct wa.me link:', err?.message);
       setWhatsappStatusBanner({
         type: 'error',
-        message: `⚠️ ${errMsg}`
+        message: `⚠️ Bot offline - opening direct WhatsApp...`
       });
+      setTimeout(() => setWhatsappStatusBanner(null), 5000);
+      try {
+        const cleanPh = phone.replace(/[^0-9]/g, '').slice(-10);
+        window.open(`https://wa.me/91${cleanPh}?text=${encodeURIComponent(text)}`, '_blank');
+      } catch (openErr) {
+        console.error('Failed to open wa.me link:', openErr);
+      }
     }
   };
 

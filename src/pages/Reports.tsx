@@ -27,8 +27,20 @@ export default function Reports() {
 
   // Filter state
   const [activeTab, setActiveTab] = useState<'invoices' | 'analytics' | 'payments' | 'gstr1' | 'products' | 'udharAging' | 'exports'>('invoices');
-  const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'thisMonth' | 'lastMonth' | 'all'>('thisMonth');
+  const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'thisMonth' | 'lastMonth' | 'all'>('all');
   const [invoiceSearch, setInvoiceSearch] = useState('');
+
+  // Robust date parser for all date string formats (SQLite, ISO, UTC)
+  const parseReportDate = (dateVal: any): Date | null => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+    let str = String(dateVal).trim();
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.includes('Z') && !str.includes('+')) {
+      str = str.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,7 +71,8 @@ export default function Reports() {
     const now = new Date();
     return sales.filter(s => {
       if (!s.createdAt) return false;
-      const d = new Date(s.createdAt);
+      const d = parseReportDate(s.createdAt);
+      if (!d) return true; // Show bill even if date parsing is ambiguous
 
       if (dateFilter === 'today') {
         return d.toDateString() === now.toDateString();
@@ -538,7 +551,9 @@ export default function Reports() {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {searchedSales.map((s, idx) => {
-                        const itemsArr = Array.isArray(s.items) ? s.items : [];
+                        const itemsArr = Array.isArray(s.items) 
+                          ? s.items 
+                          : (typeof s.items === 'string' ? (() => { try { return JSON.parse(s.items); } catch { return []; } })() : []);
                         const itemCount = itemsArr.reduce((acc: number, it: any) => acc + Number(it.qty || 1), 0);
                         const cleanId = String(s.id || '').slice(-8).toUpperCase();
                         const phone = (s as any).customerPhone || (s as any).phone;

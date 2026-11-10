@@ -365,17 +365,40 @@ router.delete('/customers/:id', async (req, res) => {
 
 // --- TRANSACTIONS (POS) ---
 router.get('/transactions', async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM transactions WHERE shopId = ? ORDER BY createdAt DESC LIMIT 100', [req.user.shopId]);
-  const formatted = rows.map(r => {
-    let dt = r.createdAt;
-    if (dt instanceof Date) {
-      dt = dt.toISOString();
-    } else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
-      dt = dt.replace(' ', 'T') + 'Z';
-    }
-    return { ...r, createdAt: dt };
-  });
-  res.json(formatted);
+  try {
+    const [rows] = await pool.query('SELECT * FROM transactions WHERE shopId = ? ORDER BY createdAt DESC LIMIT 150', [req.user.shopId]);
+    const formatted = rows.map(r => {
+      let dt = r.createdAt;
+      if (dt instanceof Date) {
+        dt = dt.toISOString();
+      } else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
+        dt = dt.replace(' ', 'T') + 'Z';
+      }
+
+      let parsedItems = r.items;
+      if (typeof parsedItems === 'string') {
+        try {
+          parsedItems = JSON.parse(parsedItems);
+        } catch {
+          try {
+            parsedItems = Function('"use strict";return (' + parsedItems + ')')();
+          } catch {
+            parsedItems = [];
+          }
+        }
+      }
+
+      return { 
+        ...r, 
+        createdAt: dt,
+        items: Array.isArray(parsedItems) ? parsedItems : []
+      };
+    });
+    res.json(formatted);
+  } catch (err) {
+    console.error('Failed to fetch transactions:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/transactions', async (req, res) => {

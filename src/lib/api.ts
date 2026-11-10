@@ -610,7 +610,25 @@ export const api = {
     create: (data: any) => fetchAPI('/purchases', { method: 'POST', body: JSON.stringify(data) })
   },
   transactions: {
-    list: () => fetchAPI('/transactions', { method: 'GET' }),
+    list: async () => {
+      let list: any[] = [];
+      try {
+        const res = await fetchAPI('/transactions', { method: 'GET' });
+        if (Array.isArray(res)) list = res;
+      } catch (e) {
+        console.warn('Failed to fetch server transactions:', e);
+      }
+      // Always merge any pending offline bills from localStorage so they are immediately visible
+      const offline = getOfflineQueue();
+      const existingIds = new Set(list.map((t: any) => t.id));
+      for (const item of offline) {
+        if (item && item.id && !existingIds.has(item.id)) {
+          list.unshift({ ...item, isOffline: true });
+          existingIds.add(item.id);
+        }
+      }
+      return list;
+    },
     create: async (data: any) => {
       try {
         if (typeof navigator !== 'undefined' && !navigator.onLine) {

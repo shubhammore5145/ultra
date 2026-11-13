@@ -81,7 +81,7 @@ export default function Receipt() {
 
           const combined = {
             ...t,
-            shopName: sh.name || sh.shopName || 'माझे किराणा',
+            shopName: sh.name || sh.shopName || 'MartGPT Kirana',
             shopPhone: sh.phone || '',
             shopAddress: sh.address || '',
             shopGstNumber: sh.gstNumber || '',
@@ -295,7 +295,7 @@ export default function Receipt() {
                 {/* Savings Banner - Clean & Minimal */}
                 {grandTotalSavings > 0 && (
                   <div className="mx-6 my-3 py-2 px-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-lg text-center font-bold text-xs text-emerald-700 dark:text-emerald-300">
-                    ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercent}% बचत)
+                    ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercent}% savings)
                   </div>
                 )}
               </>

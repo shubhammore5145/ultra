@@ -44,7 +44,7 @@ function getSQLiteDb() {
   if (sqliteDb) return sqliteDb;
 
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION);
-  const dataDir = isVercel ? '/tmp/kirana-data' : path.join(__dirname, 'data');
+  const dataDir = process.env.MARTGPT_DATA_DIR || (isVercel ? '/tmp/kirana-data' : path.join(__dirname, 'data'));
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
@@ -218,12 +218,56 @@ function getSQLiteDb() {
         active INTEGER DEFAULT 1,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS staff (
+        id TEXT PRIMARY KEY,
+        shopId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        role TEXT DEFAULT 'Helper',
+        salaryType TEXT DEFAULT 'monthly',
+        salary REAL DEFAULT 0,
+        joinDate TEXT,
+        address TEXT,
+        status TEXT DEFAULT 'active',
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS staff_attendance (
+        id TEXT PRIMARY KEY,
+        shopId TEXT NOT NULL,
+        staffId TEXT NOT NULL,
+        date TEXT NOT NULL,
+        status TEXT NOT NULL,
+        notes TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS staff_salary_payments (
+        id TEXT PRIMARY KEY,
+        shopId TEXT NOT NULL,
+        staffId TEXT NOT NULL,
+        amount REAL NOT NULL,
+        type TEXT DEFAULT 'salary',
+        monthYear TEXT,
+        paymentDate TEXT NOT NULL,
+        paymentMethod TEXT DEFAULT 'Cash',
+        notes TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     try { sqliteDb.exec('ALTER TABLE customers ADD COLUMN aadharPhotoUrl TEXT;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN expiryDate TEXT;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isLoose INTEGER DEFAULT 0;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN shortCode TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN variants TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isDeleted INTEGER DEFAULT 0;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN deletedAt TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE transactions ADD COLUMN isDeleted INTEGER DEFAULT 0;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE transactions ADD COLUMN deletedAt TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE customers ADD COLUMN isDeleted INTEGER DEFAULT 0;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE customers ADD COLUMN deletedAt TEXT;'); } catch (e) {}
 
     return sqliteDb;
   } catch (err) {
@@ -274,20 +318,26 @@ const TABLE_PRIMARY_KEYS = {
   suppliers: 'id',
   purchases: 'id',
   notifications: 'id',
-  promo_codes: 'code'
+  promo_codes: 'code',
+  staff: 'id',
+  staff_attendance: 'id',
+  staff_salary_payments: 'id'
 };
 
 const SUPABASE_TABLE_COLUMNS = {
   shops: new Set(['shopId', 'name', 'ownerName', 'phone', 'email', 'address', 'gstNumber', 'upiId', 'publicUrl', 'plan', 'planExpiry', 'settings', 'receiptHeader', 'receiptFooter', 'receiptPaperSize', 'fssaiNumber', 'invoiceTerms', 'createdAt']),
-  products: new Set(['id', 'shopId', 'name', 'category', 'brand', 'unit', 'purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'sku', 'barcode', 'shortCode', 'isLoose', 'expiryDate', 'imageUrl', 'createdAt']),
-  customers: new Set(['id', 'shopId', 'name', 'phone', 'email', 'address', 'balance', 'visits', 'totalSpent', 'loyaltyPoints', 'aadharNumber', 'photoUrl', 'createdAt']),
-  transactions: new Set(['id', 'shopId', 'subtotal', 'taxAmount', 'discountAmount', 'totalAmount', 'paymentMethod', 'customerId', 'items', 'createdAt']),
+  products: new Set(['id', 'shopId', 'name', 'category', 'brand', 'unit', 'purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'sku', 'barcode', 'shortCode', 'isLoose', 'expiryDate', 'imageUrl', 'variants', 'isDeleted', 'deletedAt', 'createdAt']),
+  customers: new Set(['id', 'shopId', 'name', 'phone', 'email', 'address', 'balance', 'visits', 'totalSpent', 'loyaltyPoints', 'aadharNumber', 'photoUrl', 'isDeleted', 'deletedAt', 'createdAt']),
+  transactions: new Set(['id', 'shopId', 'subtotal', 'taxAmount', 'discountAmount', 'totalAmount', 'paymentMethod', 'customerId', 'items', 'isDeleted', 'deletedAt', 'createdAt']),
   expenses: new Set(['id', 'shopId', 'title', 'category', 'amount', 'description', 'date', 'notes', 'addedBy', 'createdAt']),
   udhar_transactions: new Set(['id', 'shopId', 'customerId', 'amount', 'type', 'notes', 'createdAt']),
   suppliers: new Set(['id', 'shopId', 'name', 'contactPerson', 'phone', 'email', 'address', 'gstNumber', 'paymentTerms', 'balance', 'createdAt']),
   purchases: new Set(['id', 'shopId', 'supplierId', 'invoiceNumber', 'date', 'purchaseDate', 'totalAmount', 'paidAmount', 'paymentStatus', 'paymentMethod', 'items', 'notes', 'createdAt']),
   notifications: new Set(['id', 'shopId', 'title', 'message', 'type', 'channel', 'actionUrl', 'isRead', 'readBy', 'createdAt']),
-  promo_codes: new Set(['code', 'discountPercent', 'flatDiscount', 'planType', 'maxUses', 'usedCount', 'validUntil', 'active', 'createdAt'])
+  promo_codes: new Set(['code', 'discountPercent', 'flatDiscount', 'planType', 'maxUses', 'usedCount', 'validUntil', 'active', 'createdAt']),
+  staff: new Set(['id', 'shopId', 'name', 'phone', 'role', 'salaryType', 'salary', 'joinDate', 'address', 'status', 'createdAt']),
+  staff_attendance: new Set(['id', 'shopId', 'staffId', 'date', 'status', 'notes', 'createdAt']),
+  staff_salary_payments: new Set(['id', 'shopId', 'staffId', 'amount', 'type', 'monthYear', 'paymentDate', 'paymentMethod', 'notes', 'createdAt'])
 };
 
 function formatRowForSupabase(table, row) {

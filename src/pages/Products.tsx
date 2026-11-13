@@ -100,9 +100,10 @@ export default function Products() {
   }, [filteredProducts, currentPage, itemsPerPage]);
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
+    const prod = products.find(p => p.id === id);
+    if (window.confirm(`Are you sure you want to move "${prod?.name || 'this product'}" to Recycle Bin?`)) {
       try {
-        await api.products.delete(id);
+        await api.products.delete(id, prod);
         setProducts(prev => prev.filter(p => p.id !== id));
       } catch (error) {
         console.error('Failed to delete product', error);
@@ -426,9 +427,9 @@ export default function Products() {
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                     <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                    <p className="font-semibold text-base text-foreground">कोणतीही उत्पादने सापडली नाहीत (No products found)</p>
+                    <p className="font-semibold text-base text-foreground">No products found</p>
                     <p className="text-xs mt-1 max-w-sm mx-auto">
-                      {searchTerm ? 'Try adjusting your search query or clear category filters.' : 'दुकानदार बंधू, तुमच्या दुकानात अद्याप वस्तू जोडल्या गेलेल्या नाहीत. खालील बटणावर क्लिक करून वस्तू जोडा किंवा रीलोड करा.'}
+                      {searchTerm ? 'Try adjusting your search query or clear category filters.' : 'No products found in your inventory. Click the button below to add products or refresh.'}
                     </p>
                     <div className="mt-4 flex items-center justify-center gap-2">
                       <Button size="sm" variant="outline" onClick={() => fetchProducts()} disabled={loading}>
@@ -459,7 +460,7 @@ export default function Products() {
                             <span>{product.name}</span>
                             {(product as any).isLoose ? (
                               <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700">
-                                खुली वस्तू
+                                Loose Item
                               </span>
                             ) : null}
                             {(product as any).shortCode ? (

@@ -14,22 +14,22 @@ import { Label } from '../components/ui/label';
 
 // Common loose grocery presets for fast Kirana setup
 const LOOSE_PRESETS = [
-  { name: 'Sugar (साखर)', unit: '1 kg', price: 44, mrp: 48, shelfMonths: 12 },
-  { name: 'Sugar (साखर)', unit: '500 g', price: 23, mrp: 25, shelfMonths: 12 },
-  { name: 'Toor Dal (तूर डाळ)', unit: '1 kg', price: 160, mrp: 175, shelfMonths: 6 },
-  { name: 'Toor Dal (तूर डाळ)', unit: '500 g', price: 82, mrp: 90, shelfMonths: 6 },
-  { name: 'Chana Dal (चणा डाळ)', unit: '1 kg', price: 90, mrp: 100, shelfMonths: 6 },
-  { name: 'Chana Dal (चणा डाळ)', unit: '500 g', price: 46, mrp: 52, shelfMonths: 6 },
-  { name: 'Moong Dal (मूग डाळ)', unit: '500 g', price: 65, mrp: 75, shelfMonths: 6 },
-  { name: 'Poha (जाड पोहे)', unit: '1 kg', price: 55, mrp: 62, shelfMonths: 6 },
-  { name: 'Poha (जाड पोहे)', unit: '500 g', price: 28, mrp: 32, shelfMonths: 6 },
-  { name: 'Peanuts (शेंगदाणे)', unit: '1 kg', price: 130, mrp: 145, shelfMonths: 6 },
-  { name: 'Peanuts (शेंगदाणे)', unit: '500 g', price: 66, mrp: 75, shelfMonths: 6 },
-  { name: 'Rice - Kolam (तांदूळ)', unit: '5 kg', price: 340, mrp: 380, shelfMonths: 12 },
-  { name: 'Wheat Flour (गहू पीठ)', unit: '5 kg', price: 220, mrp: 250, shelfMonths: 3 },
-  { name: 'Jaggery (सेंद्रिय गूळ)', unit: '1 kg', price: 65, mrp: 75, shelfMonths: 6 },
-  { name: 'Cumin Seeds (जिरे)', unit: '100 g', price: 38, mrp: 45, shelfMonths: 12 },
-  { name: 'Mustard (मोहरी)', unit: '200 g', price: 30, mrp: 35, shelfMonths: 12 },
+  { name: 'Sugar', unit: '1 kg', price: 44, mrp: 48, shelfMonths: 12 },
+  { name: 'Sugar', unit: '500 g', price: 23, mrp: 25, shelfMonths: 12 },
+  { name: 'Toor Dal', unit: '1 kg', price: 160, mrp: 175, shelfMonths: 6 },
+  { name: 'Toor Dal', unit: '500 g', price: 82, mrp: 90, shelfMonths: 6 },
+  { name: 'Chana Dal', unit: '1 kg', price: 90, mrp: 100, shelfMonths: 6 },
+  { name: 'Chana Dal', unit: '500 g', price: 46, mrp: 52, shelfMonths: 6 },
+  { name: 'Moong Dal', unit: '500 g', price: 65, mrp: 75, shelfMonths: 6 },
+  { name: 'Poha', unit: '1 kg', price: 55, mrp: 62, shelfMonths: 6 },
+  { name: 'Poha', unit: '500 g', price: 28, mrp: 32, shelfMonths: 6 },
+  { name: 'Peanuts', unit: '1 kg', price: 130, mrp: 145, shelfMonths: 6 },
+  { name: 'Peanuts', unit: '500 g', price: 66, mrp: 75, shelfMonths: 6 },
+  { name: 'Rice - Kolam', unit: '5 kg', price: 340, mrp: 380, shelfMonths: 12 },
+  { name: 'Wheat Flour', unit: '5 kg', price: 220, mrp: 250, shelfMonths: 3 },
+  { name: 'Organic Jaggery', unit: '1 kg', price: 65, mrp: 75, shelfMonths: 6 },
+  { name: 'Cumin Seeds (Jeera)', unit: '100 g', price: 38, mrp: 45, shelfMonths: 12 },
+  { name: 'Mustard Seeds (Rai)', unit: '200 g', price: 30, mrp: 35, shelfMonths: 12 },
 ];
 
 export default function BarcodePrint() {
@@ -39,7 +39,7 @@ export default function BarcodePrint() {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
 
   // Label configuration
-  const [itemName, setItemName] = useState('Sugar (साखर)');
+  const [itemName, setItemName] = useState('Sugar');
   const [netWeight, setNetWeight] = useState('1 kg');
   const [sellingPrice, setSellingPrice] = useState('44');
   const [mrp, setMrp] = useState('48');
@@ -184,7 +184,7 @@ export default function BarcodePrint() {
           {/* Quick Presets */}
           <div className="kirana-card p-5">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-500" /> Quick Grocery Presets (एका क्लिकवर निवडा)
+              <Sparkles className="h-4 w-4 text-amber-500" /> Quick Grocery Presets (1-Click Fill)
             </h3>
             <div className="flex flex-wrap gap-2">
               {LOOSE_PRESETS.map((preset, idx) => (
@@ -225,12 +225,12 @@ export default function BarcodePrint() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="itemName">Item Name (इंग्रजी / मराठी)</Label>
+                <Label htmlFor="itemName">Item Name</Label>
                 <Input
                   id="itemName"
                   value={itemName}
                   onChange={(e) => setItemName(e.target.value)}
-                  placeholder="e.g. Sugar / साखर"
+                  placeholder="e.g. Sugar / Toor Dal"
                   className="mt-1"
                 />
               </div>

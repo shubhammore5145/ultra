@@ -33,6 +33,64 @@ const getShopId = () => {
   return null;
 };
 
+// ── LOCAL RECYCLE BIN STORAGE (OFFLINE & CLOUD BACKUP) ─────────
+export interface RecycleBinItemStorage {
+  products: any[];
+  transactions: any[];
+  customers: any[];
+}
+
+export const RECYCLE_BIN_STORAGE_KEY = 'martgpt_recycle_bin';
+
+export function getLocalRecycleBin(): RecycleBinItemStorage {
+  try {
+    const raw = localStorage.getItem(RECYCLE_BIN_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        products: Array.isArray(parsed?.products) ? parsed.products : [],
+        transactions: Array.isArray(parsed?.transactions) ? parsed.transactions : [],
+        customers: Array.isArray(parsed?.customers) ? parsed.customers : []
+      };
+    }
+  } catch {}
+  return { products: [], transactions: [], customers: [] };
+}
+
+export function saveLocalRecycleBin(data: RecycleBinItemStorage) {
+  try {
+    localStorage.setItem(RECYCLE_BIN_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Failed to save recycle bin to localStorage:', e);
+  }
+}
+
+export function addLocalRecycleItem(type: 'product' | 'transaction' | 'customer', item: any) {
+  if (!item || !item.id) return;
+  const bin = getLocalRecycleBin();
+  const deletedItem = {
+    ...item,
+    isDeleted: 1,
+    deletedAt: item.deletedAt || new Date().toISOString()
+  };
+  if (type === 'product') {
+    bin.products = [deletedItem, ...bin.products.filter(p => p.id !== item.id)];
+  } else if (type === 'transaction') {
+    bin.transactions = [deletedItem, ...bin.transactions.filter(t => t.id !== item.id)];
+  } else if (type === 'customer') {
+    bin.customers = [deletedItem, ...bin.customers.filter(c => c.id !== item.id)];
+  }
+  saveLocalRecycleBin(bin);
+}
+
+export function removeLocalRecycleItem(type: 'product' | 'transaction' | 'customer', id: string) {
+  const bin = getLocalRecycleBin();
+  if (type === 'product') bin.products = bin.products.filter(p => p.id !== id);
+  else if (type === 'transaction') bin.transactions = bin.transactions.filter(t => t.id !== id);
+  else if (type === 'customer') bin.customers = bin.customers.filter(c => c.id !== id);
+  saveLocalRecycleBin(bin);
+}
+
 // Direct Supabase Fallback when backend is unreachable or on serverless
 async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Promise<any> {
   const method = (options.method || 'GET').toUpperCase();
@@ -44,7 +102,10 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const q = supabase.from('products').select('*').order('name', { ascending: true });
       const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
       if (error) throw new Error(error.message);
-      return data || [];
+      const localBin = getLocalRecycleBin();
+      const deletedIds = new Set(localBin.products.map(p => p.id));
+      const activeProducts = (data || []).filter((p: any) => !p.isDeleted && !deletedIds.has(p.id));
+      return activeProducts;
     }
     if (method === 'POST') {
       const body = JSON.parse(options.body as string);
@@ -71,8 +132,18 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
     if (method === 'DELETE') {
       const id = endpoint.split('/products/')[1];
-      const { error } = await supabase.from('products').delete().eq('id', id);
-      if (error) throw new Error(error.message);
+      try {
+        const { data: existing } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
+        if (existing) addLocalRecycleItem('product', existing);
+      } catch {}
+      try {
+        const { error } = await supabase.from('products').update({ isDeleted: 1, deletedAt: new Date().toISOString() }).eq('id', id);
+        if (error) {
+          await supabase.from('products').delete().eq('id', id);
+        }
+      } catch {
+        try { await supabase.from('products').delete().eq('id', id); } catch {}
+      }
       return { success: true };
     }
   }
@@ -95,7 +166,10 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const q = supabase.from('customers').select('*').order('name', { ascending: true });
       const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
       if (error) throw new Error(error.message);
-      return data || [];
+      const localBin = getLocalRecycleBin();
+      const deletedIds = new Set(localBin.customers.map(c => c.id));
+      const activeCustomers = (data || []).filter((c: any) => !c.isDeleted && !deletedIds.has(c.id));
+      return activeCustomers;
     }
     if (method === 'POST') {
       const body = JSON.parse(options.body as string);
@@ -116,8 +190,18 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
     if (method === 'DELETE') {
       const id = endpoint.split('/customers/')[1];
-      const { error } = await supabase.from('customers').delete().eq('id', id);
-      if (error) throw new Error(error.message);
+      try {
+        const { data: existing } = await supabase.from('customers').select('*').eq('id', id).maybeSingle();
+        if (existing) addLocalRecycleItem('customer', existing);
+      } catch {}
+      try {
+        const { error } = await supabase.from('customers').update({ isDeleted: 1, deletedAt: new Date().toISOString() }).eq('id', id);
+        if (error) {
+          await supabase.from('customers').delete().eq('id', id);
+        }
+      } catch {
+        try { await supabase.from('customers').delete().eq('id', id); } catch {}
+      }
       return { success: true };
     }
   }
@@ -125,10 +209,29 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
   // 3. Transactions
   if (endpoint.startsWith('/transactions')) {
     if (method === 'GET') {
-      const q = supabase.from('transactions').select('*').order('createdAt', { ascending: false }).limit(100);
+      const q = supabase.from('transactions').select('*').order('createdAt', { ascending: false }).limit(200);
       const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
       if (error) throw new Error(error.message);
-      return data || [];
+      const localBin = getLocalRecycleBin();
+      const deletedIds = new Set(localBin.transactions.map(t => t.id));
+      const activeTransactions = (data || []).filter((t: any) => !t.isDeleted && !deletedIds.has(t.id));
+      return activeTransactions;
+    }
+    if (method === 'DELETE') {
+      const id = endpoint.split('/transactions/')[1].split('?')[0];
+      try {
+        const { data: existing } = await supabase.from('transactions').select('*').eq('id', id).maybeSingle();
+        if (existing) addLocalRecycleItem('transaction', existing);
+      } catch {}
+      try {
+        const { error } = await supabase.from('transactions').update({ isDeleted: 1, deletedAt: new Date().toISOString() }).eq('id', id);
+        if (error) {
+          await supabase.from('transactions').delete().eq('id', id);
+        }
+      } catch {
+        try { await supabase.from('transactions').delete().eq('id', id); } catch {}
+      }
+      return { success: true };
     }
     if (method === 'POST') {
       const body = JSON.parse(options.body as string);
@@ -347,17 +450,326 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
   }
 
+  // 10. Staff Members Fallback
+  if (endpoint.startsWith('/staff-members')) {
+    const localKey = `martgpt_staff_${shopId || 'default'}`;
+    const getLocal = () => {
+      try { return JSON.parse(localStorage.getItem(localKey) || '[]'); } catch { return []; }
+    };
+    const setLocal = (data: any[]) => localStorage.setItem(localKey, JSON.stringify(data));
+
+    if (method === 'GET') {
+      try {
+        const { data, error } = await supabase.from('staff').select('*').eq('shopId', shopId || 'default').order('createdAt', { ascending: false });
+        if (!error && Array.isArray(data)) return data;
+      } catch {}
+      return getLocal();
+    }
+
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const newStaff = {
+        id: body.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'staff_' + Date.now()),
+        shopId: shopId || 'default',
+        name: body.name,
+        phone: body.phone || null,
+        role: body.role || 'Helper',
+        salaryType: body.salaryType || 'monthly',
+        salary: Number(body.salary) || 0,
+        joinDate: body.joinDate || new Date().toISOString().slice(0, 10),
+        address: body.address || null,
+        status: body.status || 'active',
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        await supabase.from('staff').insert(newStaff);
+      } catch {}
+
+      const list = getLocal();
+      list.unshift(newStaff);
+      setLocal(list);
+      return { success: true, id: newStaff.id, ...newStaff };
+    }
+
+    if (method === 'PUT') {
+      const id = endpoint.split('/staff-members/')[1]?.split('?')[0];
+      const body = JSON.parse(options.body as string);
+
+      try {
+        await supabase.from('staff').update(body).eq('id', id);
+      } catch {}
+
+      const list = getLocal().map((s: any) => s.id === id ? { ...s, ...body } : s);
+      setLocal(list);
+      return { success: true };
+    }
+
+    if (method === 'DELETE') {
+      const id = endpoint.split('/staff-members/')[1]?.split('?')[0];
+      try {
+        await supabase.from('staff').delete().eq('id', id);
+      } catch {}
+
+      const list = getLocal().filter((s: any) => s.id !== id);
+      setLocal(list);
+      return { success: true };
+    }
+  }
+
+  // 10.1 Staff Attendance Fallback
+  if (endpoint.startsWith('/staff-attendance')) {
+    const localKey = `martgpt_attendance_${shopId || 'default'}`;
+    const getLocal = () => {
+      try { return JSON.parse(localStorage.getItem(localKey) || '[]'); } catch { return []; }
+    };
+    const setLocal = (data: any[]) => localStorage.setItem(localKey, JSON.stringify(data));
+
+    if (method === 'GET') {
+      const params = new URLSearchParams(endpoint.split('?')[1] || '');
+      const month = params.get('month');
+      const date = params.get('date');
+      const staffIdParam = params.get('staffId');
+
+      let list: any[] = [];
+      try {
+        const { data, error } = await supabase.from('staff_attendance').select('*').eq('shopId', shopId || 'default');
+        if (!error && Array.isArray(data)) list = data;
+        else list = getLocal();
+      } catch {
+        list = getLocal();
+      }
+
+      if (date) list = list.filter(a => a.date === date);
+      else if (month) list = list.filter(a => (a.date || '').startsWith(month));
+      if (staffIdParam) list = list.filter(a => a.staffId === staffIdParam);
+      return list;
+    }
+
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string || '{}');
+      const records = Array.isArray(body.records) ? body.records : [body];
+      const existingList = getLocal();
+
+      for (const rec of records) {
+        if (!rec.staffId || !rec.date) continue;
+        const entry = {
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'att_' + Date.now() + Math.random().toString(36).slice(2, 6),
+          shopId: shopId || 'default',
+          staffId: rec.staffId,
+          date: rec.date,
+          status: rec.status || 'present',
+          notes: rec.notes || null,
+          createdAt: new Date().toISOString()
+        };
+
+        try {
+          await supabase.from('staff_attendance').upsert(entry);
+        } catch {}
+
+        const matchIdx = existingList.findIndex((x: any) => x.staffId === rec.staffId && x.date === rec.date);
+        if (matchIdx >= 0) {
+          existingList[matchIdx] = { ...existingList[matchIdx], status: entry.status, notes: entry.notes };
+        } else {
+          existingList.push(entry);
+        }
+      }
+
+      setLocal(existingList);
+      return { success: true };
+    }
+  }
+
+  // 10.2 Staff Salary Payments Fallback
+  if (endpoint.startsWith('/staff-salary-payments')) {
+    const localKey = `martgpt_salary_${shopId || 'default'}`;
+    const getLocal = () => {
+      try { return JSON.parse(localStorage.getItem(localKey) || '[]'); } catch { return []; }
+    };
+    const setLocal = (data: any[]) => localStorage.setItem(localKey, JSON.stringify(data));
+
+    if (method === 'GET') {
+      const params = new URLSearchParams(endpoint.split('?')[1] || '');
+      const monthYear = params.get('monthYear');
+      const staffIdParam = params.get('staffId');
+
+      let list: any[] = [];
+      try {
+        const { data, error } = await supabase.from('staff_salary_payments').select('*').eq('shopId', shopId || 'default');
+        if (!error && Array.isArray(data)) list = data;
+        else list = getLocal();
+      } catch {
+        list = getLocal();
+      }
+
+      if (monthYear) list = list.filter(p => p.monthYear === monthYear || (p.paymentDate || '').startsWith(monthYear));
+      if (staffIdParam) list = list.filter(p => p.staffId === staffIdParam);
+      return list;
+    }
+
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      const cleanDate = body.paymentDate || new Date().toISOString().slice(0, 10);
+      const newPayment = {
+        id: body.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'pay_' + Date.now()),
+        shopId: shopId || 'default',
+        staffId: body.staffId,
+        amount: Number(body.amount) || 0,
+        type: body.type || 'salary',
+        monthYear: body.monthYear || cleanDate.slice(0, 7),
+        paymentDate: cleanDate,
+        paymentMethod: body.paymentMethod || 'Cash',
+        notes: body.notes || null,
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        await supabase.from('staff_salary_payments').insert(newPayment);
+      } catch {}
+
+      const list = getLocal();
+      list.unshift(newPayment);
+      setLocal(list);
+
+      // Auto-log to expenses
+      try {
+        await fallbackSupabase('/expenses', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: `${newPayment.type === 'advance' ? 'Advance' : 'Salary'} Payout`,
+            category: 'Salary',
+            amount: newPayment.amount,
+            date: newPayment.paymentDate,
+            description: newPayment.notes || 'Staff salary payout'
+          })
+        });
+      } catch {}
+
+      return { success: true, id: newPayment.id, ...newPayment };
+    }
+
+    if (method === 'DELETE') {
+      const id = endpoint.split('/staff-salary-payments/')[1]?.split('?')[0];
+      try {
+        await supabase.from('staff_salary_payments').delete().eq('id', id);
+      } catch {}
+
+      const list = getLocal().filter((p: any) => p.id !== id);
+      setLocal(list);
+      return { success: true };
+    }
+  }
+
+  // 10.3 Recycle Bin Fallback
+  if (endpoint.startsWith('/recycle-bin')) {
+    if (method === 'GET') {
+      const localBin = getLocalRecycleBin();
+      let cloudProducts: any[] = [];
+      let cloudTransactions: any[] = [];
+      let cloudCustomers: any[] = [];
+
+      try {
+        const [pRes, tRes, cRes] = await Promise.allSettled([
+          supabase.from('products').select('*').eq('isDeleted', 1).limit(100),
+          supabase.from('transactions').select('*').eq('isDeleted', 1).limit(100),
+          supabase.from('customers').select('*').eq('isDeleted', 1).limit(100),
+        ]);
+        if (pRes.status === 'fulfilled' && pRes.value.data) cloudProducts = pRes.value.data;
+        if (tRes.status === 'fulfilled' && tRes.value.data) cloudTransactions = tRes.value.data;
+        if (cRes.status === 'fulfilled' && cRes.value.data) cloudCustomers = cRes.value.data;
+      } catch (e) {
+        console.warn('Could not query deleted items from Supabase:', e);
+      }
+
+      const mergeItems = (cloudList: any[] = [], localList: any[] = []) => {
+        const map = new Map();
+        [...(cloudList || []), ...(localList || [])].forEach(item => {
+          if (item && item.id) map.set(item.id, item);
+        });
+        return Array.from(map.values()).sort((a: any, b: any) => {
+          const tA = new Date(a.deletedAt || a.createdAt || 0).getTime();
+          const tB = new Date(b.deletedAt || b.createdAt || 0).getTime();
+          return tB - tA;
+        });
+      };
+
+      return {
+        products: mergeItems(cloudProducts, localBin.products),
+        transactions: mergeItems(cloudTransactions, localBin.transactions),
+        customers: mergeItems(cloudCustomers, localBin.customers)
+      };
+    }
+
+    if (method === 'POST') {
+      const body = JSON.parse(options.body as string || '{}');
+      const { type, id } = body;
+      const table = type === 'product' ? 'products' : type === 'transaction' ? 'transactions' : 'customers';
+
+      if (endpoint.includes('/restore') && id) {
+        const localBin = getLocalRecycleBin();
+        let itemToRestore: any = null;
+        if (type === 'product') {
+          itemToRestore = localBin.products.find(p => p.id === id);
+          localBin.products = localBin.products.filter(p => p.id !== id);
+        } else if (type === 'transaction') {
+          itemToRestore = localBin.transactions.find(t => t.id === id);
+          localBin.transactions = localBin.transactions.filter(t => t.id !== id);
+        } else if (type === 'customer') {
+          itemToRestore = localBin.customers.find(c => c.id === id);
+          localBin.customers = localBin.customers.filter(c => c.id !== id);
+        }
+        saveLocalRecycleBin(localBin);
+
+        try {
+          const { error } = await supabase.from(table).update({ isDeleted: 0, deletedAt: null }).eq('id', id);
+          if (error && itemToRestore) {
+            const clean = { ...itemToRestore };
+            delete clean.isDeleted;
+            delete clean.deletedAt;
+            await supabase.from(table).upsert(clean);
+          }
+        } catch {
+          if (itemToRestore) {
+            const clean = { ...itemToRestore };
+            delete clean.isDeleted;
+            delete clean.deletedAt;
+            await supabase.from(table).upsert(clean).catch(() => {});
+          }
+        }
+        return { success: true };
+      }
+
+      if (endpoint.includes('/purge') && id) {
+        removeLocalRecycleItem(type, id);
+        try { await supabase.from(table).delete().eq('id', id); } catch {}
+        return { success: true };
+      }
+
+      if (endpoint.includes('/empty')) {
+        saveLocalRecycleBin({ products: [], transactions: [], customers: [] });
+        try {
+          await Promise.allSettled([
+            supabase.from('products').delete().eq('isDeleted', 1),
+            supabase.from('transactions').delete().eq('isDeleted', 1),
+            supabase.from('customers').delete().eq('isDeleted', 1),
+          ]);
+        } catch {}
+        return { success: true };
+      }
+    }
+  }
+
   // 11. Login Fallback
   if (endpoint.startsWith('/auth/login')) {
     const body = JSON.parse(options.body as string);
     const cleanEmail = (body.email || '').trim().toLowerCase();
     const { data: users, error: uErr } = await supabase.from('users').select('*').ilike('email', cleanEmail).limit(1);
     if (uErr || !users || users.length === 0) {
-      throw new Error('या ईमेलने नोंदणीकृत युझर सापडला नाही. कृपया आधी Sign Up करा.');
+      throw new Error('No user found registered with this email. Please sign up first.');
     }
     const user = users[0];
     const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
-    const shop = shops?.[0] || { shopId: user.shopId, name: 'माझे किराणा', plan: 'free' };
+    const shop = shops?.[0] || { shopId: user.shopId, name: 'MartGPT Store', plan: 'free' };
     delete user.password;
     const clientToken = 'sb_' + btoa(JSON.stringify({ uid: user.uid, shopId: user.shopId, exp: Date.now() + 7 * 86400000 }));
     localStorage.setItem('auth_user', JSON.stringify(user));
@@ -388,7 +800,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
 
     if (user) {
       const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
-      const shop = shops?.[0] || { shopId: user.shopId, name: 'माझे किराणा', plan: 'free' };
+      const shop = shops?.[0] || { shopId: user.shopId, name: 'MartGPT Store', plan: 'free' };
       delete user.password;
       const clientToken = 'sb_' + btoa(JSON.stringify({ uid: user.uid, shopId: user.shopId, exp: Date.now() + 7 * 86400000 }));
       localStorage.setItem('auth_user', JSON.stringify(user));
@@ -400,7 +812,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     const newShopId = body.shopId || 'shop_' + Date.now().toString(36);
     const shopObj = {
       shopId: newShopId,
-      name: body.shopName || (displayName ? `${displayName} किराणा` : 'माझे किराणा स्टोअर'),
+      name: body.shopName || (displayName ? `${displayName} Store` : 'MartGPT Store'),
       ownerName: body.ownerName || displayName,
       email: cleanEmail,
       plan: 'free'
@@ -452,7 +864,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
             const user = users[0];
             const targetShopId = user.shopId || shopIdFromToken;
             const { data: shops } = await supabase.from('shops').select('*').eq('shopId', targetShopId).limit(1);
-            const shop = shops?.[0] || { shopId: targetShopId, name: 'माझे किराणा', plan: 'free' };
+            const shop = shops?.[0] || { shopId: targetShopId, name: 'MartGPT Store', plan: 'free' };
             localStorage.setItem('auth_user', JSON.stringify(user));
             localStorage.setItem('auth_shop', JSON.stringify(shop));
             return { user, shop };
@@ -466,13 +878,13 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       return { user: JSON.parse(rawUser), shop: JSON.parse(rawShop) };
     }
     if (rawUser) {
-      return { user: JSON.parse(rawUser), shop: { shopId: getShopId() || 'default', name: 'माझे किराणा' } };
+      return { user: JSON.parse(rawUser), shop: { shopId: getShopId() || 'default', name: 'MartGPT Store' } };
     }
-    return { user: { uid: 'owner', role: 'admin', displayName: 'Store Owner' }, shop: { shopId: getShopId() || 'default', name: 'माझे किराणा' } };
+    return { user: { uid: 'owner', role: 'admin', displayName: 'Store Owner' }, shop: { shopId: getShopId() || 'default', name: 'MartGPT Store' } };
   }
 
   if (endpoint.startsWith('/whatsapp')) {
-    throw new Error('WhatsApp Bot चालवण्यासाठी Node.js बॅकएंड सर्व्हर चालू असणे आवश्यक आहे. कृपया Render वर Web Service तयार करा किंवा लोकलवर सर्व्हर चालू ठेवा.');
+    throw new Error('The Node.js backend server must be running to operate the WhatsApp Bot. Please start the local server or cloud web service.');
   }
 
   throw new Error(`Endpoint ${endpoint} not available in direct cloud mode.`);
@@ -586,13 +998,23 @@ export const api = {
     list: () => fetchAPI('/products', { method: 'GET' }),
     create: (data: any) => fetchAPI('/products', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => fetchAPI(`/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id: string) => fetchAPI(`/products/${id}`, { method: 'DELETE' })
+    delete: async (id: string, itemData?: any) => {
+      if (itemData) {
+        addLocalRecycleItem('product', itemData);
+      }
+      return fetchAPI(`/products/${id}`, { method: 'DELETE' });
+    }
   },
   customers: {
     list: (params?: { phone?: string }) => fetchAPI('/customers' + (params?.phone ? `?phone=${encodeURIComponent(params.phone)}` : ''), { method: 'GET' }),
     create: (data: any) => fetchAPI('/customers', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => fetchAPI(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (id: string) => fetchAPI(`/customers/${id}`, { method: 'DELETE' }),
+    delete: async (id: string, itemData?: any) => {
+      if (itemData) {
+        addLocalRecycleItem('customer', itemData);
+      }
+      return fetchAPI(`/customers/${id}`, { method: 'DELETE' });
+    },
     getLedger: (id: string) => fetchAPI(`/customers/${id}/ledger`, { method: 'GET' })
   },
   staff: {
@@ -648,6 +1070,72 @@ export const api = {
         saveOfflineQueue(queue);
         return { success: true, data: offlineItem, offline: true };
       }
+    },
+    delete: async (id: string, permanent?: boolean, itemData?: any) => {
+      if (itemData && !permanent) {
+        addLocalRecycleItem('transaction', itemData);
+      }
+      return fetchAPI(`/transactions/${id}${permanent ? '?permanent=true' : ''}`, { method: 'DELETE' });
+    }
+  },
+  staffMembers: {
+    list: () => fetchAPI('/staff-members', { method: 'GET' }),
+    create: (data: any) => fetchAPI('/staff-members', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => fetchAPI(`/staff-members/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchAPI(`/staff-members/${id}`, { method: 'DELETE' })
+  },
+  staffAttendance: {
+    list: (params?: { month?: string; date?: string; staffId?: string }) => {
+      const q = new URLSearchParams(params as any).toString();
+      return fetchAPI('/staff-attendance' + (q ? `?${q}` : ''), { method: 'GET' });
+    },
+    mark: (records: any) => fetchAPI('/staff-attendance', { method: 'POST', body: JSON.stringify(records) })
+  },
+  staffSalary: {
+    list: (params?: { staffId?: string; monthYear?: string }) => {
+      const q = new URLSearchParams(params as any).toString();
+      return fetchAPI('/staff-salary-payments' + (q ? `?${q}` : ''), { method: 'GET' });
+    },
+    create: (data: any) => fetchAPI('/staff-salary-payments', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchAPI(`/staff-salary-payments/${id}`, { method: 'DELETE' })
+  },
+  recycleBin: {
+    list: async () => {
+      let res: any = { products: [], transactions: [], customers: [] };
+      try {
+        res = await fetchAPI('/recycle-bin', { method: 'GET' });
+      } catch (e) {
+        console.warn('Backend recycle bin list call error, relying on local backup:', e);
+      }
+      const local = getLocalRecycleBin();
+      const merge = (cloudList: any[] = [], localList: any[] = []) => {
+        const map = new Map();
+        [...(cloudList || []), ...(localList || [])].forEach(it => {
+          if (it && it.id) map.set(it.id, it);
+        });
+        return Array.from(map.values()).sort((a: any, b: any) => {
+          const tA = new Date(a.deletedAt || a.createdAt || 0).getTime();
+          const tB = new Date(b.deletedAt || b.createdAt || 0).getTime();
+          return tB - tA;
+        });
+      };
+      return {
+        products: merge(res?.products, local.products),
+        transactions: merge(res?.transactions, local.transactions),
+        customers: merge(res?.customers, local.customers)
+      };
+    },
+    restore: async (type: 'product' | 'transaction' | 'customer', id: string) => {
+      removeLocalRecycleItem(type, id);
+      return fetchAPI('/recycle-bin/restore', { method: 'POST', body: JSON.stringify({ type, id }) });
+    },
+    purge: async (type: 'product' | 'transaction' | 'customer', id: string) => {
+      removeLocalRecycleItem(type, id);
+      return fetchAPI('/recycle-bin/purge', { method: 'POST', body: JSON.stringify({ type, id }) });
+    },
+    empty: async () => {
+      saveLocalRecycleBin({ products: [], transactions: [], customers: [] });
+      return fetchAPI('/recycle-bin/empty', { method: 'POST' });
     }
   },
   expenses: {

@@ -107,7 +107,7 @@ router.get('/public/receipt/:id', async (req, res) => {
         const { data: cu } = t.customerId ? await supabase.from('customers').select('*').eq('id', t.customerId).limit(1) : { data: [] };
         return res.json({
           ...t,
-          shopName: sh?.[0]?.name || sh?.[0]?.shopName || 'माझे किराणा',
+          shopName: sh?.[0]?.name || sh?.[0]?.shopName || 'MartGPT Kirana',
           shopPhone: sh?.[0]?.phone || '',
           shopAddress: sh?.[0]?.address || '',
           shopGstNumber: sh?.[0]?.gstNumber || '',
@@ -191,25 +191,33 @@ router.use(authMiddleware);
 // --- PRODUCTS ---
 router.get('/products', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM products WHERE shopId = ?', [req.user.shopId]);
-    res.json(rows);
+    const [rows] = await pool.query('SELECT * FROM products WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', [req.user.shopId]);
+    const formatted = rows.map(p => {
+      let v = p.variants;
+      if (typeof v === 'string') {
+        try { v = JSON.parse(v); } catch { v = []; }
+      }
+      return { ...p, variants: Array.isArray(v) ? v : [] };
+    });
+    res.json(formatted);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 router.post('/products', async (req, res) => {
-  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate } = req.body;
+  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate, variants } = req.body;
+  const variantsStr = variants ? (typeof variants === 'string' ? variants : JSON.stringify(variants)) : null;
   try {
     await pool.query(
-      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, expiryDate || null]
+      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate, variants, isDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, expiryDate || null, variantsStr]
     );
   } catch (err) {
     console.warn('Fallback product insert:', err.message);
     await pool.query(
-      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0]
+      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, variants) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, variantsStr]
     );
   }
   res.json({ success: true });
@@ -217,17 +225,20 @@ router.post('/products', async (req, res) => {
 
 router.put('/products/:id', async (req, res) => {
   try {
-    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate } = req.body;
+    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate, variants } = req.body;
     
     // Fetch existing product to fill missing fields
     const [existingRows] = await pool.query('SELECT * FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
     if (existingRows.length === 0) return res.status(404).json({ error: 'Product not found' });
     
     const p = existingRows[0];
+    const variantsStr = variants !== undefined 
+      ? (typeof variants === 'string' ? variants : JSON.stringify(variants)) 
+      : p.variants;
     
     try {
       await pool.query(
-        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=?, expiryDate=? WHERE id=? AND shopId=?',
+        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=?, expiryDate=?, variants=? WHERE id=? AND shopId=?',
         [
           name !== undefined ? name : p.name, 
           category !== undefined ? category : p.category, 
@@ -245,6 +256,7 @@ router.put('/products/:id', async (req, res) => {
           shortCode !== undefined ? shortCode : (p.shortCode || null),
           isLoose !== undefined ? (isLoose ? 1 : 0) : (p.isLoose ? 1 : 0),
           expiryDate !== undefined ? (expiryDate || null) : (p.expiryDate || null),
+          variantsStr,
           req.params.id, 
           req.user.shopId
         ]
@@ -282,7 +294,12 @@ router.put('/products/:id', async (req, res) => {
 });
 
 router.delete('/products/:id', async (req, res) => {
-  await pool.query('DELETE FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+  const { permanent } = req.query;
+  if (permanent === 'true') {
+    await pool.query('DELETE FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+  } else {
+    await pool.query('UPDATE products SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+  }
   res.json({ success: true });
 });
 
@@ -292,10 +309,10 @@ router.get('/customers', async (req, res) => {
     const { phone } = req.query;
     if (phone) {
       const clean = String(phone).replace(/\D/g, '').slice(-10);
-      const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ? AND (phone = ? OR phone LIKE ?)', [req.user.shopId, clean, `%${clean}`]);
+      const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL) AND (phone = ? OR phone LIKE ?)', [req.user.shopId, clean, `%${clean}`]);
       return res.json(rows);
     }
-    const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ?', [req.user.shopId]);
+    const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', [req.user.shopId]);
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -306,7 +323,7 @@ router.post('/customers', async (req, res) => {
   const { id, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
   try {
     await pool.query(
-      'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl, isDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
       [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null, aadharPhotoUrl || null]
     );
   } catch (err) {
@@ -356,7 +373,12 @@ router.put('/customers/:id', async (req, res) => {
 
 router.delete('/customers/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM customers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    const { permanent } = req.query;
+    if (permanent === 'true') {
+      await pool.query('DELETE FROM customers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    } else {
+      await pool.query('UPDATE customers SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    }
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -366,7 +388,27 @@ router.delete('/customers/:id', async (req, res) => {
 // --- TRANSACTIONS (POS) ---
 router.get('/transactions', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM transactions WHERE shopId = ? ORDER BY createdAt DESC LIMIT 150', [req.user.shopId]);
+    const { startDate, endDate, month, limit, all } = req.query;
+    let query = 'SELECT * FROM transactions WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)';
+    const params = [req.user.shopId];
+
+    if (startDate && endDate) {
+      query += ' AND createdAt >= ? AND createdAt <= ?';
+      params.push(startDate, endDate);
+    } else if (month) {
+      query += ' AND createdAt LIKE ?';
+      params.push(`${month}%`);
+    } else if (all !== 'true') {
+      // 1-Month default limitation to keep app fast and lightweight
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      query += ' AND createdAt >= ?';
+      params.push(thirtyDaysAgo);
+    }
+
+    const maxLimit = Math.min(parseInt(limit) || 500, 1000);
+    query += ` ORDER BY createdAt DESC LIMIT ${maxLimit}`;
+
+    const [rows] = await pool.query(query, params);
     const formatted = rows.map(r => {
       let dt = r.createdAt;
       if (dt instanceof Date) {
@@ -401,6 +443,21 @@ router.get('/transactions', async (req, res) => {
   }
 });
 
+router.delete('/transactions/:id', async (req, res) => {
+  try {
+    const shopId = req.user?.shopId || 'default';
+    const { permanent } = req.query;
+    if (permanent === 'true') {
+      await pool.query('DELETE FROM transactions WHERE id=? AND (shopId=? OR shopId IS NULL)', [req.params.id, shopId]);
+    } else {
+      await pool.query('UPDATE transactions SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND (shopId=? OR shopId IS NULL)', [req.params.id, shopId]);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/transactions', async (req, res) => {
   const { id, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt } = req.body;
   
@@ -412,7 +469,7 @@ router.post('/transactions', async (req, res) => {
 
     // 1. Insert transaction
     await connection.query(
-      'INSERT INTO transactions (id, shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO transactions (id, shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt, isDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
       [id, req.user.shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId || null, JSON.stringify(items), txCreatedAt]
     );
 
@@ -753,6 +810,259 @@ router.post('/purchases', async (req, res) => {
     res.status(500).json({ error: error.message });
   } finally {
     connection.release();
+  }
+});
+
+// --- STAFF MANAGEMENT ---
+router.get('/staff-members', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM staff WHERE shopId = ? ORDER BY createdAt DESC', [req.user.shopId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/staff-members', async (req, res) => {
+  try {
+    const { id, name, phone, role, salaryType, salary, joinDate, address, status } = req.body;
+    const crypto = require('crypto');
+    const staffId = id || crypto.randomUUID();
+    await pool.query(
+      'INSERT INTO staff (id, shopId, name, phone, role, salaryType, salary, joinDate, address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [staffId, req.user.shopId, name, phone || null, role || 'Helper', salaryType || 'monthly', salary || 0, joinDate || null, address || null, status || 'active']
+    );
+    res.json({ success: true, id: staffId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/staff-members/:id', async (req, res) => {
+  try {
+    const { name, phone, role, salaryType, salary, joinDate, address, status } = req.body;
+    await pool.query(
+      'UPDATE staff SET name=?, phone=?, role=?, salaryType=?, salary=?, joinDate=?, address=?, status=? WHERE id=? AND shopId=?',
+      [name, phone || null, role || 'Helper', salaryType || 'monthly', salary || 0, joinDate || null, address || null, status || 'active', req.params.id, req.user.shopId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/staff-members/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM staff WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    await pool.query('DELETE FROM staff_attendance WHERE staffId=? AND shopId=?', [req.params.id, req.user.shopId]);
+    await pool.query('DELETE FROM staff_salary_payments WHERE staffId=? AND shopId=?', [req.params.id, req.user.shopId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- STAFF ATTENDANCE ---
+router.get('/staff-attendance', async (req, res) => {
+  try {
+    const { month, date, staffId } = req.query;
+    let query = 'SELECT * FROM staff_attendance WHERE shopId = ?';
+    const params = [req.user.shopId];
+
+    if (date) {
+      query += ' AND date = ?';
+      params.push(date);
+    } else if (month) {
+      query += ' AND date LIKE ?';
+      params.push(`${month}%`);
+    }
+
+    if (staffId) {
+      query += ' AND staffId = ?';
+      params.push(staffId);
+    }
+
+    query += ' ORDER BY date DESC, createdAt DESC';
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/staff-attendance', async (req, res) => {
+  try {
+    const { records } = req.body;
+    const crypto = require('crypto');
+    const items = Array.isArray(records) ? records : [req.body];
+
+    for (const item of items) {
+      if (!item.staffId || !item.date) continue;
+      const [existing] = await pool.query(
+        'SELECT id FROM staff_attendance WHERE shopId = ? AND staffId = ? AND date = ?',
+        [req.user.shopId, item.staffId, item.date]
+      );
+
+      if (existing.length > 0) {
+        await pool.query(
+          'UPDATE staff_attendance SET status = ?, notes = ? WHERE id = ?',
+          [item.status || 'present', item.notes || null, existing[0].id]
+        );
+      } else {
+        await pool.query(
+          'INSERT INTO staff_attendance (id, shopId, staffId, date, status, notes) VALUES (?, ?, ?, ?, ?, ?)',
+          [crypto.randomUUID(), req.user.shopId, item.staffId, item.date, item.status || 'present', item.notes || null]
+        );
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- STAFF SALARY & ADVANCE PAYMENTS ---
+router.get('/staff-salary-payments', async (req, res) => {
+  try {
+    const { staffId, monthYear } = req.query;
+    let query = 'SELECT * FROM staff_salary_payments WHERE shopId = ?';
+    const params = [req.user.shopId];
+
+    if (staffId) {
+      query += ' AND staffId = ?';
+      params.push(staffId);
+    }
+    if (monthYear) {
+      query += ' AND monthYear = ?';
+      params.push(monthYear);
+    }
+
+    query += ' ORDER BY paymentDate DESC, createdAt DESC';
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/staff-salary-payments', async (req, res) => {
+  try {
+    const { staffId, amount, type, monthYear, paymentDate, paymentMethod, notes } = req.body;
+    const crypto = require('crypto');
+    const id = crypto.randomUUID();
+    const cleanDate = paymentDate || new Date().toISOString().slice(0, 10);
+
+    await pool.query(
+      'INSERT INTO staff_salary_payments (id, shopId, staffId, amount, type, monthYear, paymentDate, paymentMethod, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.shopId, staffId, amount || 0, type || 'salary', monthYear || cleanDate.slice(0, 7), cleanDate, paymentMethod || 'Cash', notes || null]
+    );
+
+    // Auto-record under Expenses as well
+    if (type === 'salary' || type === 'advance') {
+      try {
+        const [staffRows] = await pool.query('SELECT name FROM staff WHERE id = ?', [staffId]);
+        const staffName = staffRows[0]?.name || 'Staff';
+        await pool.query(
+          'INSERT INTO expenses (id, shopId, title, category, amount, description, date, addedBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [crypto.randomUUID(), req.user.shopId, `${type === 'advance' ? 'Advance Payout' : 'Salary Payout'} - ${staffName}`, 'Salary', amount || 0, notes || `${staffName} ${type} payout`, cleanDate, req.user.uid]
+        );
+      } catch (expErr) {
+        console.warn('Expense auto-log warning:', expErr.message);
+      }
+    }
+
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/staff-salary-payments/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM staff_salary_payments WHERE id = ? AND shopId = ?', [req.params.id, req.user.shopId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- RECYCLE BIN ---
+router.get('/recycle-bin', async (req, res) => {
+  try {
+    const shopId = req.user?.shopId || 'default';
+    const [deletedProducts] = await pool.query('SELECT * FROM products WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1 ORDER BY COALESCE(deletedAt, createdAt, "") DESC', [shopId]);
+    const [deletedTransactions] = await pool.query('SELECT * FROM transactions WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1 ORDER BY COALESCE(deletedAt, createdAt, "") DESC LIMIT 200', [shopId]);
+    const [deletedCustomers] = await pool.query('SELECT * FROM customers WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1 ORDER BY COALESCE(deletedAt, createdAt, "") DESC', [shopId]);
+
+    res.json({
+      products: (deletedProducts || []).map(p => {
+        if (typeof p.variants === 'string') {
+          try { p.variants = JSON.parse(p.variants); } catch {}
+        }
+        return p;
+      }),
+      transactions: (deletedTransactions || []).map(t => {
+        if (typeof t.items === 'string') {
+          try { t.items = JSON.parse(t.items); } catch {}
+        }
+        return t;
+      }),
+      customers: deletedCustomers || []
+    });
+  } catch (err) {
+    console.error('Recycle Bin list error:', err);
+    res.status(500).json({ error: err.message, products: [], transactions: [], customers: [] });
+  }
+});
+
+router.post('/recycle-bin/restore', async (req, res) => {
+  const { type, id } = req.body;
+  const shopId = req.user?.shopId || 'default';
+  try {
+    if (type === 'product') {
+      await pool.query('UPDATE products SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND (shopId = ? OR shopId IS NULL)', [id, shopId]);
+    } else if (type === 'transaction') {
+      await pool.query('UPDATE transactions SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND (shopId = ? OR shopId IS NULL)', [id, shopId]);
+    } else if (type === 'customer') {
+      await pool.query('UPDATE customers SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND (shopId = ? OR shopId IS NULL)', [id, shopId]);
+    } else {
+      return res.status(400).json({ error: 'Invalid restore type' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/recycle-bin/purge', async (req, res) => {
+  const { type, id } = req.body;
+  const shopId = req.user?.shopId || 'default';
+  try {
+    if (type === 'product') {
+      await pool.query('DELETE FROM products WHERE id = ? AND (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [id, shopId]);
+    } else if (type === 'transaction') {
+      await pool.query('DELETE FROM transactions WHERE id = ? AND (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [id, shopId]);
+    } else if (type === 'customer') {
+      await pool.query('DELETE FROM customers WHERE id = ? AND (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [id, shopId]);
+    } else {
+      return res.status(400).json({ error: 'Invalid purge type' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/recycle-bin/empty', async (req, res) => {
+  const shopId = req.user?.shopId || 'default';
+  try {
+    await pool.query('DELETE FROM products WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [shopId]);
+    await pool.query('DELETE FROM transactions WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [shopId]);
+    await pool.query('DELETE FROM customers WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [shopId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

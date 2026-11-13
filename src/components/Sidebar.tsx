@@ -3,7 +3,8 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet, Crown,
-  HelpCircle, ClipboardList, LogOut, X, Barcode, Bell
+  HelpCircle, ClipboardList, LogOut, X, Barcode, Bell,
+  Receipt, TrendingUp, UserCheck, Trash2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
@@ -12,14 +13,18 @@ import { api } from '../lib/api';
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'], color: 'text-indigo-500' },
   { name: 'POS Billing', href: '/pos', icon: ShoppingCart, roles: ['admin', 'cashier'], color: 'text-emerald-500' },
+  { name: 'Bill Store', href: '/bill-store', icon: Receipt, roles: ['admin', 'cashier'], color: 'text-teal-500' },
   { name: 'Products', href: '/products', icon: Package, roles: ['admin', 'cashier'], color: 'text-blue-500' },
   { name: 'Barcode Print', href: '/barcode-print', icon: Barcode, roles: ['admin', 'cashier'], color: 'text-violet-500' },
   { name: 'Inventory & AI', href: '/inventory', icon: ClipboardList, roles: ['admin', 'cashier'], color: 'text-purple-500' },
   { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'cashier'], color: 'text-cyan-500' },
   { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'cashier'], color: 'text-rose-500' },
+  { name: 'Staff & Salary', href: '/staff', icon: UserCheck, roles: ['admin'], color: 'text-blue-500' },
+  { name: 'Digital Analytics', href: '/analytics', icon: TrendingUp, roles: ['admin'], color: 'text-emerald-600' },
   { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, roles: ['admin'], color: 'text-orange-500' },
   { name: 'Expenses', href: '/expenses', icon: Wallet, roles: ['admin'], color: 'text-amber-500' },
-  { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'], color: 'text-teal-500' },
+  { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'], color: 'text-indigo-400' },
+  { name: 'Recycle Bin', href: '/recycle-bin', icon: Trash2, roles: ['admin'], color: 'text-rose-500' },
   { name: 'Notifications', href: '/notifications', icon: Bell, roles: ['admin', 'cashier'], color: 'text-amber-500' },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['admin'], color: 'text-slate-500' },
   { name: 'Upgrade', href: '/upgrade', icon: Crown, roles: ['admin'], color: 'text-yellow-500' },

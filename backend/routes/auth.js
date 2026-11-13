@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 
@@ -77,25 +77,25 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email आणि password आवश्यक आहेत.' });
+      return res.status(400).json({ error: 'Email and password are required.' });
     }
     
     const cleanEmail = email.trim().toLowerCase();
     const [users] = await pool.query('SELECT * FROM users WHERE LOWER(email) = ?', [cleanEmail]);
     if (users.length === 0) {
-      return res.status(400).json({ error: 'या ईमेलने नोंदणीकृत युझर सापडला नाही. कृपया आधी Sign Up करा.' });
+      return res.status(400).json({ error: 'No user registered with this email. Please sign up first.' });
     }
     
     const user = users[0];
     if (!user.password) {
       return res.status(400).json({ 
-        error: 'हा अकाउंट Google ने रजिस्टर केलेला आहे. कृपया खालील "Continue with Google" बटण वापरा.' 
+        error: 'This account was registered with Google. Please use the "Continue with Google" button.' 
       });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ error: 'पासवर्ड चुकीचा आहे. कृपया योग्य पासवर्ड टाका.' });
+      return res.status(400).json({ error: 'Incorrect password. Please try again.' });
     }
 
     const token = jwt.sign({ uid: user.uid, shopId: user.shopId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -109,7 +109,7 @@ router.post('/login', async (req, res) => {
       try {
         await pool.query(
           'INSERT INTO shops (shopId, name, ownerName, email, plan) VALUES (?, ?, ?, ?, ?)',
-          [user.shopId, user.displayName ? `${user.displayName} किराणा` : 'माझे किराणा स्टोअर', user.displayName || 'दुकानदार', user.email, 'free']
+          [user.shopId, user.displayName ? `${user.displayName} Store` : 'MartGPT Store', user.displayName || 'Owner', user.email, 'free']
         );
         const [createdShops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
         shop = createdShops[0] || null;

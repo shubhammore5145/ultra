@@ -324,7 +324,7 @@ export default function Dashboard() {
             title="End-of-Day Register Settlement & Cash Count"
           >
             <ShieldCheck className="h-4 w-4 text-amber-400" />
-            <span>गल्ला क्लोजिंग</span>
+            <span>Register Closing</span>
           </Button>
 
           <Button
@@ -408,7 +408,7 @@ export default function Dashboard() {
           {/* Net Cash in Drawer (Galla) */}
           <div className="stat-card border-l-4 border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/10">
             <div className="flex items-center justify-between mb-2">
-              <span className="stat-label text-xs">Cash in Drawer (गल्ला)</span>
+              <span className="stat-label text-xs">Cash in Drawer</span>
               <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
                 <Wallet className="h-4 w-4" />
               </div>
@@ -423,7 +423,7 @@ export default function Dashboard() {
                 onClick={() => setShowSettlementModal(true)}
                 className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30"
               >
-                <ShieldCheck className="h-3 w-3" /> गल्ला क्लोजिंग
+                <ShieldCheck className="h-3 w-3" /> Register Closing
               </button>
             </div>
           </div>
@@ -692,7 +692,7 @@ export default function Dashboard() {
                   <ShieldCheck className="h-6 w-6" /> Day Close & Register Settlement
                 </h3>
                 <p className="text-xs text-amber-100 mt-0.5">
-                  दुकान बंद करताना गल्ल्यातील पैशांचा हिशोब व पडताळणी (Z-Report)
+                  End-of-day register cash count and verification (Z-Report)
                 </p>
               </div>
               <button 
@@ -712,7 +712,7 @@ export default function Dashboard() {
                   <div className="text-[10px] text-muted-foreground">({todaysOrders} orders billed)</div>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                  <span className="text-emerald-700 dark:text-emerald-300 font-semibold">Cash Sales (रोकड):</span>
+                  <span className="text-emerald-700 dark:text-emerald-300 font-semibold">Cash Sales:</span>
                   <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{todaysCash.toFixed(2)}</div>
                   <div className="text-[10px] text-muted-foreground">Cash received</div>
                 </div>
@@ -722,7 +722,7 @@ export default function Dashboard() {
                   <div className="text-[10px] text-muted-foreground">Direct in bank</div>
                 </div>
                 <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                  <span className="text-red-700 dark:text-red-300 font-semibold">Cash Expenses (खर्च):</span>
+                  <span className="text-red-700 dark:text-red-300 font-semibold">Cash Expenses:</span>
                   <div className="text-base font-bold text-red-600 dark:text-red-400">-₹{todaysExpenses.toFixed(2)}</div>
                   <div className="text-[10px] text-muted-foreground">Paid from drawer</div>
                 </div>
@@ -731,12 +731,12 @@ export default function Dashboard() {
               {/* Cash Reconciliation Inputs */}
               <div className="p-4 rounded-xl bg-muted/30 border space-y-3">
                 <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5 uppercase tracking-wider">
-                  <Wallet className="h-4 w-4 text-amber-500" /> Cash Drawer Reconciliation (हिशोब पडताळणी)
+                  <Wallet className="h-4 w-4 text-amber-500" /> Cash Drawer Reconciliation
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
-                    <label className="font-semibold text-muted-foreground">Opening Cash (सकाळची शिल्लक)</label>
+                    <label className="font-semibold text-muted-foreground">Opening Cash (Morning Balance)</label>
                     <div className="relative mt-1">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">₹</span>
                       <input
@@ -751,7 +751,7 @@ export default function Dashboard() {
                   </div>
 
                   <div>
-                    <label className="font-semibold text-muted-foreground">Actual Cash Counted (मोजलेली रोकड)</label>
+                    <label className="font-semibold text-muted-foreground">Actual Cash Counted</label>
                     <div className="relative mt-1">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600 font-bold">₹</span>
                       <input
@@ -760,7 +760,7 @@ export default function Dashboard() {
                         value={countedCash}
                         onChange={e => setCountedCash(e.target.value)}
                         className="w-full pl-7 pr-3 py-1.5 rounded-lg border bg-background font-bold text-sm text-emerald-600 focus:ring-1 focus:ring-emerald-500"
-                        placeholder="गल्ल्यात किती रुपये आहेत?"
+                        placeholder="Enter counted cash in register"
                         autoFocus
                       />
                     </div>
@@ -790,7 +790,7 @@ export default function Dashboard() {
                             : 'bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-300'
                         }`}>
                           <span>
-                            {diff === 0 ? '✅ हिशोब तंतोतंत बरोबर (Cash Matched)' : diff < 0 ? `🔻 गल्ल्यात कमी (Cash Short)` : `🔺 गल्ल्यात जास्त (Cash Excess)`}
+                            {diff === 0 ? '✅ Cash Matched Perfectly' : diff < 0 ? `🔻 Cash Shortage` : `🔺 Cash Excess`}
                           </span>
                           <span className="text-sm font-black">
                             {diff === 0 ? '₹0.00' : `${diff < 0 ? '-' : '+'}₹${Math.abs(diff).toFixed(2)}`}
@@ -802,12 +802,12 @@ export default function Dashboard() {
                 })()}
 
                 <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground">Notes / शेरा (Optional)</label>
+                  <label className="text-[11px] font-semibold text-muted-foreground">Notes / Remarks (Optional)</label>
                   <input
                     type="text"
                     value={settlementNotes}
                     onChange={e => setSettlementNotes(e.target.value)}
-                    placeholder="उदा. गल्ल्यात ५०० रु नाणी आहेत किंवा हिशोब बरोबर आहे."
+                    placeholder="e.g. 500 in coins or register balanced."
                     className="w-full mt-1 px-3 py-1.5 rounded-lg border bg-background text-xs"
                   />
                 </div>
@@ -826,7 +826,7 @@ export default function Dashboard() {
                   }}
                   className="w-full sm:w-auto text-xs font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/10 cursor-pointer"
                 >
-                  <Printer className="h-4 w-4" /> Print Z-Report (पावती प्रिंट)
+                  <Printer className="h-4 w-4" /> Print Z-Report
                 </Button>
 
                 <div className="flex gap-2 w-full sm:w-auto">
@@ -865,16 +865,16 @@ export default function Dashboard() {
                         history.unshift(record);
                         localStorage.setItem('pos_day_settlements', JSON.stringify(history.slice(0, 50)));
                         localStorage.setItem('pos_opening_cash', openingFloat);
-                        alert('गल्ला क्लोजिंग (Z-Report) हिशोब सेव्ह झाला! ✅');
+                        alert('Day Close & Register Settlement saved! ✅');
                         setShowSettlementModal(false);
                       } catch (e) {
-                        alert('हिशोब सेव्ह झाला!');
+                        alert('Settlement saved!');
                         setShowSettlementModal(false);
                       }
                     }}
                     className="flex-1 sm:flex-none text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
                   >
-                    Save Settlement (हिशोब सेव्ह करा)
+                    Save Settlement
                   </Button>
                 </div>
               </div>

@@ -51,8 +51,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!fallbackId) return null;
     return {
       shopId: fallbackId,
-      name: s?.name || (u?.displayName ? `${u.displayName} चे किराणा` : 'माझे किराणा स्टोअर'),
-      ownerName: s?.ownerName || u?.displayName || 'दुकानदार',
+      name: s?.name || (u?.displayName ? `${u.displayName} Store` : 'MartGPT Store'),
+      ownerName: s?.ownerName || u?.displayName || 'Store Owner',
       phone: s?.phone || '',
       email: s?.email || u?.email || '',
       address: s?.address || '',
@@ -122,7 +122,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm font-medium text-slate-300">MartGPT सुरू होत आहे...</p>
+          <p className="text-sm font-medium text-slate-300">Starting MartGPT...</p>
         </div>
       </div>
     );

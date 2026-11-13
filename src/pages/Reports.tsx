@@ -3,7 +3,7 @@ import {
   BarChart3, TrendingUp, DollarSign, Loader2, 
   Download, FileSpreadsheet, Banknote, 
   ShieldCheck, PieChart as PieIcon,
-  ShoppingBag, Printer, Search, MessageCircle
+  ShoppingBag, Printer, Search, MessageCircle, Calendar
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -27,7 +27,8 @@ export default function Reports() {
 
   // Filter state
   const [activeTab, setActiveTab] = useState<'invoices' | 'analytics' | 'payments' | 'gstr1' | 'products' | 'udharAging' | 'exports'>('invoices');
-  const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'thisMonth' | 'lastMonth' | 'all'>('all');
+  const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'thisMonth' | 'lastMonth' | 'customMonth' | 'all'>('all');
+  const [customMonth, setCustomMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [invoiceSearch, setInvoiceSearch] = useState('');
 
   // Robust date parser for all date string formats (SQLite, ISO, UTC)
@@ -85,10 +86,13 @@ export default function Reports() {
         const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
         const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
         return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear;
+      } else if (dateFilter === 'customMonth' && customMonth) {
+        const [y, m] = customMonth.split('-').map(Number);
+        return d.getFullYear() === y && d.getMonth() === (m - 1);
       }
       return true; // 'all'
     });
-  }, [sales, dateFilter]);
+  }, [sales, dateFilter, customMonth]);
 
   // Filter expenses by date
   const filteredExpenses = useMemo(() => {
@@ -106,10 +110,13 @@ export default function Reports() {
         const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
         const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
         return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear;
+      } else if (dateFilter === 'customMonth' && customMonth) {
+        const [y, m] = customMonth.split('-').map(Number);
+        return d.getFullYear() === y && d.getMonth() === (m - 1);
       }
       return true;
     });
-  }, [expenses, dateFilter]);
+  }, [expenses, dateFilter, customMonth]);
 
   // Derived Analytics Data
   const analytics = useMemo(() => {
@@ -364,6 +371,27 @@ export default function Reports() {
                pill === 'lastMonth' ? 'Last Month' : 'All Time'}
             </button>
           ))}
+
+          {/* Month-wise Calendar Picker */}
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border transition-all ${
+            dateFilter === 'customMonth'
+              ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+              : 'bg-card text-muted-foreground hover:text-foreground border-border'
+          }`}>
+            <Calendar className="h-3.5 w-3.5 shrink-0" />
+            <span className="text-xs font-bold shrink-0">Month:</span>
+            <input
+              type="month"
+              value={customMonth}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setCustomMonth(e.target.value);
+                  setDateFilter('customMonth');
+                }
+              }}
+              className="bg-transparent border-none text-xs font-bold cursor-pointer focus:outline-none focus:ring-0 p-0 text-inherit font-mono"
+            />
+          </div>
         </div>
       </div>
 
@@ -422,7 +450,7 @@ export default function Reports() {
             activeTab === 'invoices' ? 'border-primary text-primary font-bold' : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          🧾 Bill History (पावती यादी)
+          🧾 Bill History
         </button>
 
         <button
@@ -499,10 +527,10 @@ export default function Reports() {
               <div>
                 <h3 className="text-base font-bold flex items-center gap-2 text-foreground">
                   <FileSpreadsheet className="h-5 w-5 text-primary" />
-                  Bill & Invoice Registry (सर्व पावत्यांची यादी)
+                  Bill & Invoice Registry
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  कोणतीही जुनी पावती शोधा, पुन्हा प्रिंट करा किंवा ग्राहकाला पाठवा.
+                  Search any previous invoice, reprint, or share with the customer.
                 </p>
               </div>
               <div className="relative w-full sm:w-72">
@@ -511,7 +539,7 @@ export default function Reports() {
                   type="text"
                   value={invoiceSearch}
                   onChange={e => setInvoiceSearch(e.target.value)}
-                  placeholder="Invoice # किंवा फोन नंबर..."
+                  placeholder="Search Invoice # or phone number..."
                   className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-background text-foreground focus:ring-1 focus:ring-primary outline-hidden"
                 />
               </div>
@@ -530,7 +558,7 @@ export default function Reports() {
               if (searchedSales.length === 0) {
                 return (
                   <div className="text-center py-12 text-muted-foreground text-xs">
-                    {invoiceSearch ? 'या शोधानुसार कोणतीही पावती सापडली नाही.' : 'निवडलेल्या तारखेमध्ये कोणतीही पावती उपलब्ध नाही.'}
+                    {invoiceSearch ? 'No invoices found matching your search.' : 'No invoices found for the selected period.'}
                   </div>
                 );
               }
@@ -611,7 +639,7 @@ export default function Reports() {
                                 </a>
                                 {phone && (
                                   <a
-                                    href={`https://wa.me/91${phone}?text=${encodeURIComponent(`नमस्ते! ${shopData?.name || 'आमच्या दुकानातील'} आपले पावती बिल: ${window.location.origin}/receipt/${s.id}`)}`}
+                                    href={`https://wa.me/91${phone}?text=${encodeURIComponent(`Hello! Here is your invoice receipt from ${shopData?.name || 'our store'}: ${window.location.origin}/receipt/${s.id}`)}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"

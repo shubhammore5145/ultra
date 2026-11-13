@@ -295,7 +295,15 @@ export default function POS() {
           item.id === product.id ? { ...item, qty: item.qty + 1 } : item
         );
       }
-      return [...prev, { ...product, qty: 1 }];
+
+      const itemToAdd: CartItem = {
+        ...product,
+        sellingPrice: Number(product.sellingPrice) || 0,
+        purchasePrice: Number(product.purchasePrice) || 0,
+        mrp: Number(product.mrp || product.sellingPrice) || 0,
+        qty: 1
+      };
+      return [...prev, itemToAdd];
     });
   }, []);
 
@@ -563,7 +571,7 @@ export default function POS() {
           customerId: finalCustomerId,
           customerName: customerName || '',
           customerPhone: phoneToSend,
-          shopName: shopData?.shopName || shopData?.name || 'माझे किराणा',
+          shopName: shopData?.shopName || shopData?.name || 'MartGPT Kirana',
           shopPhone: shopData?.phone || '',
           shopAddress: shopData?.address || '',
           shopGstNumber: shopData?.gstNumber || '',
@@ -655,7 +663,7 @@ export default function POS() {
     return true;
   });
 
-  // Loose Items for quick buttons strip (साखर, शेंगदाणे, तांदूळ इ.)
+  // Loose Items for quick buttons strip (Sugar, Peanuts, Rice etc.)
   const looseQuickItems = products.filter(p => 
     Boolean((p as any).isLoose) || 
     Boolean((p as any).shortCode) || 
@@ -1028,7 +1036,7 @@ export default function POS() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
           <Input 
             ref={searchInputRef}
-            placeholder="वस्तू शोधा किंवा बारकोड स्कॅन करा..." 
+            placeholder="Search items or scan barcode (F2)..." 
             className="pl-11 pr-36 h-12 md:h-14 text-sm md:text-base shadow-xs rounded-2xl font-medium bg-background border-border/80"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -1119,7 +1127,7 @@ export default function POS() {
               onClick={() => setActiveTab('loose')}
             >
               <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              Loose (सुट्टे)
+              Loose Items
             </Button>
             <Button 
               variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
@@ -1132,7 +1140,7 @@ export default function POS() {
 
           <div className="shrink-0">
             {liveWaStatus === 'CONNECTED' || liveWaStatus === 'AUTHENTICATED' ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-300 border border-green-300 dark:border-green-800 shadow-2xs" title="Auto WhatsApp Bot सक्रिय आहे.">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-300 border border-green-300 dark:border-green-800 shadow-2xs" title="Auto WhatsApp Bot is active.">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <Smartphone className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> WhatsApp Active
               </span>
@@ -1151,10 +1159,10 @@ export default function POS() {
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200">
                 <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                <span>⚡ जलद वस्तू (Quick Click):</span>
+                <span>⚡ Quick Items (1-Click):</span>
               </div>
               <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">
-                {looseQuickItems.length} आयटम
+                {looseQuickItems.length} items
               </span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -1164,7 +1172,7 @@ export default function POS() {
                   type="button"
                   onClick={() => addToCart(item)}
                   className="shrink-0 flex items-center gap-1.5 bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/80 rounded-lg px-2.5 py-1 shadow-2xs transition-all active:scale-95 group text-left"
-                  title={`क्लिक करा किंवा कोड ${(item as any).shortCode || item.barcode || ''} दाबून Enter करा`}
+                  title={`Click to add or enter code ${(item as any).shortCode || item.barcode || ''}`}
                 >
                   {((item as any).shortCode) && (
                     <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded font-mono">
@@ -1417,21 +1425,21 @@ export default function POS() {
           ) : (
             cart.map(item => (
               <div key={item.id} className="flex items-center justify-between border-b pb-3">
-                <div className="flex-1">
-                  <p className="font-medium text-sm leading-tight">{item.name}</p>
+                <div className="flex-1 pr-2">
+                  <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
                   <p className="text-muted-foreground text-xs mt-1">₹{item.sellingPrice} x {item.qty}</p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <p className="font-bold">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
+                  <p className="font-bold text-sm">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
                   <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQty(item.id, -1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-6 text-center text-sm font-medium">{item.qty}</span>
+                    <span className="w-6 text-center text-sm font-semibold">{item.qty}</span>
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQty(item.id, 1)}>
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeItem(item.id)}>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={() => removeItem(item.id)}>
                       <Trash className="h-3 w-3" />
                     </Button>
                   </div>
@@ -1536,8 +1544,8 @@ export default function POS() {
             {/* Header */}
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h2 className="text-xl font-black text-foreground">पेमेंट पर्याय (Payment Option)</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">रोख, UPI किंवा उधारीचे वाटप करा</p>
+                <h2 className="text-xl font-black text-foreground">Payment Options</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Split across Cash, UPI, or Credit (Udhar)</p>
               </div>
               <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowPaymentModal(false)}>
                 <X className="h-5 w-5" />
@@ -1548,7 +1556,7 @@ export default function POS() {
               {/* Total Bill Banner & 1-Click Presets */}
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-2xl shadow-md space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-semibold text-blue-100 uppercase tracking-wider block">एकूण बिल (Total Bill)</span>
+                  <span className="text-xs font-semibold text-blue-100 uppercase tracking-wider block">Total Bill Amount</span>
                   <span className="text-2xl font-black">₹{total.toFixed(2)}</span>
                 </div>
                 {/* 1-Click Quick Presets */}
@@ -1558,21 +1566,21 @@ export default function POS() {
                     onClick={() => setSplitAmounts({ cash: total, upi: 0, udhar: 0 })}
                     className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
                   >
-                    💵 सर्व Cash
+                    💵 All Cash
                   </button>
                   <button
                     type="button"
                     onClick={() => setSplitAmounts({ cash: 0, upi: total, udhar: 0 })}
                     className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
                   >
-                    📱 सर्व UPI
+                    📱 All UPI
                   </button>
                   <button
                     type="button"
                     onClick={() => setSplitAmounts({ cash: 0, upi: 0, udhar: total })}
                     className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
                   >
-                    📝 सर्व उधारी
+                    📝 All Udhar
                   </button>
                 </div>
               </div>
@@ -1581,7 +1589,7 @@ export default function POS() {
               <div className="flex flex-col gap-1 bg-muted/40 p-3 rounded-2xl border border-border">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-bold text-foreground">
-                    ग्राहक मोबाईल नंबर {splitAmounts.udhar > 0 ? <span className="text-red-500 font-extrabold">* (उधारीसाठी आवश्यक)</span> : '(WhatsApp बिलासाठी)'}
+                    Customer Mobile Number {splitAmounts.udhar > 0 ? <span className="text-red-500 font-extrabold">* (Required for Udhar)</span> : '(For WhatsApp Bill)'}
                   </Label>
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'text-muted-foreground'}`}>
                     {customerPhone.length}/10
@@ -1610,7 +1618,7 @@ export default function POS() {
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   <span className="font-bold text-amber-950 dark:text-amber-200">
-                    कॅश दिल्यावर बाकी रक्कम आपोआप उधारीत टाका
+                    Auto-allocate remaining balance to Udhar
                   </span>
                 </div>
                 <input
@@ -1650,13 +1658,13 @@ export default function POS() {
                     variant="outline"
                     size="sm"
                     className="text-xs h-11 px-2.5 shrink-0"
-                    title="बाकी रक्कम रोख टाका"
+                    title="Allocate remaining to cash"
                     onClick={() => {
                       const rem = Math.max(0, Number((total - splitAmounts.upi - splitAmounts.udhar).toFixed(2)));
                       setSplitAmounts(p => ({ ...p, cash: rem }));
                     }}
                   >
-                    बाकी
+                    Balance
                   </Button>
                 </div>
 
@@ -1687,19 +1695,19 @@ export default function POS() {
                     variant="outline"
                     size="sm"
                     className="text-xs h-11 px-2.5 shrink-0"
-                    title="बाकी रक्कम UPI टाका"
+                    title="Allocate remaining to UPI"
                     onClick={() => {
                       const rem = Math.max(0, Number((total - splitAmounts.cash - splitAmounts.udhar).toFixed(2)));
                       setSplitAmounts(p => ({ ...p, upi: rem }));
                     }}
                   >
-                    बाकी
+                    Balance
                   </Button>
                 </div>
 
                 {/* Udhar Input */}
                 <div className="flex items-center gap-2">
-                  <Label className="w-16 font-bold text-sm text-orange-600 dark:text-orange-400">उधारी:</Label>
+                  <Label className="w-16 font-bold text-sm text-orange-600 dark:text-orange-400">Udhar:</Label>
                   <div className="relative flex-1">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-bold">₹</span>
                     <Input 
@@ -1716,13 +1724,13 @@ export default function POS() {
                     variant="outline"
                     size="sm"
                     className="text-xs h-11 px-2.5 shrink-0 border-orange-300 text-orange-600 hover:bg-orange-50 font-bold"
-                    title="बाकी सर्व रक्कम उधारीत टाका"
+                    title="Allocate remaining to Udhar"
                     onClick={() => {
                       const rem = Math.max(0, Number((total - splitAmounts.cash - splitAmounts.upi).toFixed(2)));
                       setSplitAmounts(p => ({ ...p, udhar: rem }));
                     }}
                   >
-                    + उधारी
+                    + Udhar
                   </Button>
                 </div>
 
@@ -1734,7 +1742,7 @@ export default function POS() {
                     return (
                       <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
                         <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                        <span>रक्कम बरोबर जुळली! ({splitAmounts.cash > 0 ? `₹${splitAmounts.cash} रोख ` : ''}{splitAmounts.upi > 0 ? `+ ₹${splitAmounts.upi} UPI ` : ''}{splitAmounts.udhar > 0 ? `+ ₹${splitAmounts.udhar} उधारी ` : ''}= ₹{total.toFixed(2)})</span>
+                        <span>Amount matches! ({splitAmounts.cash > 0 ? `₹${splitAmounts.cash} Cash ` : ''}{splitAmounts.upi > 0 ? `+ ₹${splitAmounts.upi} UPI ` : ''}{splitAmounts.udhar > 0 ? `+ ₹${splitAmounts.udhar} Udhar ` : ''}= ₹{total.toFixed(2)})</span>
                       </div>
                     );
                   }
@@ -1742,7 +1750,7 @@ export default function POS() {
                     return (
                       <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-2 text-xs">
                         <div className="flex justify-between items-center font-bold text-amber-950 dark:text-amber-200">
-                          <span>शिल्लक बाकी (Remaining):</span>
+                          <span>Remaining Balance:</span>
                           <span className="text-base font-black text-red-600">₹{diff.toFixed(2)}</span>
                         </div>
                         <div className="flex gap-2">
@@ -1752,7 +1760,7 @@ export default function POS() {
                             className="flex-1 h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
                             onClick={() => setSplitAmounts(p => ({ ...p, udhar: Number((p.udhar + diff).toFixed(2)) }))}
                           >
-                            + बाकी ₹{diff.toFixed(2)} उधारीत जोडा
+                            + Add ₹{diff.toFixed(2)} to Udhar
                           </Button>
                           <Button
                             type="button"
@@ -1761,7 +1769,7 @@ export default function POS() {
                             className="h-8 text-xs font-bold border-amber-300"
                             onClick={() => setSplitAmounts(p => ({ ...p, upi: Number((p.upi + diff).toFixed(2)) }))}
                           >
-                            + UPI मध्ये
+                            + To UPI
                           </Button>
                         </div>
                       </div>
@@ -1769,7 +1777,7 @@ export default function POS() {
                   }
                   return (
                     <div className="p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded-xl text-xs font-bold text-red-600 text-center">
-                      जास्त रक्कम झाली आहे: एकूण बिलापेक्षा ₹{Math.abs(diff).toFixed(2)} जास्त टाकले आहेत.
+                      Excess amount entered: ₹{Math.abs(diff).toFixed(2)} more than total bill.
                     </div>
                   );
                 })()}
@@ -1778,7 +1786,7 @@ export default function POS() {
                 {splitAmounts.udhar > 0 && (
                   <div className="pt-2 border-t border-dashed mt-2 space-y-3">
                     <p className="text-xs text-orange-600 dark:text-orange-400 font-bold uppercase tracking-wider">
-                      उधारी ग्राहक तपशील (Udhar Details)
+                      Udhar Customer Details
                     </p>
                     <div className="flex items-center gap-3">
                       <Label className="w-20 text-xs">Aadhar:</Label>
@@ -1862,7 +1870,7 @@ export default function POS() {
                   Math.abs(Number((splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar).toFixed(2)) - total) >= 0.01
                 }
               >
-                {checkoutLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : `बिल पूर्ण करा (₹${total.toFixed(2)})`}
+                {checkoutLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : `Complete Bill (₹${total.toFixed(2)})`}
               </Button>
             </div>
           </div>
@@ -2118,7 +2126,7 @@ export default function POS() {
                 fontWeight: 'bold',
                 borderBottom: '1px dashed #000'
               }}>
-                ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% बचत)
+                ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% savings)
               </div>
             )}
 

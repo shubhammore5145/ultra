@@ -120,19 +120,19 @@ export default function Udhar() {
   const handleWhatsAppReminder = async (customer: Customer) => {
     if (!requireFeature('whatsapp_reminders')) return;
     if (!customer.phone) {
-      alert('ग्राहकाचा फोन नंबर उपलब्ध नाही.');
+      alert('Customer mobile number is not available.');
       return;
     }
     const cleanPh = customer.phone.replace(/\D/g, '').slice(-10);
-    const shopName = shopData?.shopName || shopData?.name || 'आमच्या दुकानातून';
-    const text = `🙏 *नमस्ते ${customer.name} जी,*\n\n*${shopName}* कडून नम्र आठवण:\nआपल्याकडे उधारी बाकी: *₹${Number(customer.balance || 0).toFixed(2)}* आहे.\n\nकृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.\n\nधन्यवाद! 💐`;
+    const shopName = shopData?.shopName || shopData?.name || 'Our Store';
+    const text = `🙏 *Hello ${customer.name},*\n\nThis is a gentle reminder from *${shopName}*:\nYour outstanding balance is: *₹${Number(customer.balance || 0).toFixed(2)}*.\n\nPlease clear the balance at your earliest convenience. Feel free to contact us for any queries.\n\nThank you! 💐`;
 
     // Try direct WhatsApp Bot sending first
     try {
       const statusRes = await api.whatsapp.status();
       if (statusRes.status === 'CONNECTED' || statusRes.status === 'AUTHENTICATED') {
         await api.whatsapp.send(cleanPh, text);
-        alert(`✅ ${customer.name} यांना WhatsApp उधारी आठवण मेसेज पाठवला!`);
+        alert(`✅ WhatsApp payment reminder sent to ${customer.name}!`);
         return;
       }
     } catch (e) {
@@ -164,7 +164,7 @@ export default function Udhar() {
     setBulkStatus({ sent: 0, failed: 0, total: pendingCustomers.length });
 
     try {
-      const shopName = shopData?.shopName || shopData?.name || 'आमच्या दुकानातून';
+      const shopName = shopData?.shopName || shopData?.name || 'Our Store';
       const res = await api.whatsapp.sendBulkReminder(pendingCustomers, shopName);
       if (res.results) {
         setBulkStatus({
@@ -180,7 +180,7 @@ export default function Udhar() {
           failed: pendingCustomers.length,
           total: pendingCustomers.length,
           completed: true,
-          error: res.error || 'मेसेज पाठवता आला नाही.'
+          error: res.error || 'Failed to send message.'
         });
       }
     } catch (err: any) {
@@ -210,7 +210,7 @@ export default function Udhar() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
-            <History className="h-8 w-8 text-primary" /> Udhar Book (उधारी खातेवही)
+            <History className="h-8 w-8 text-primary" /> Customer Credit Ledger (Udhar Book)
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Track customer balances, send WhatsApp reminders, and view passbook statements.
@@ -276,7 +276,7 @@ export default function Udhar() {
                     className={`flex-1 font-bold ${transactionType === 'payment' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
                     onClick={() => setTransactionType('payment')}
                   >
-                    <TrendingDown className="mr-2 h-4 w-4" /> Received Payment (जमा)
+                    <TrendingDown className="mr-2 h-4 w-4" /> Received Payment (Credit)
                   </Button>
                   <Button
                     type="button"
@@ -284,12 +284,12 @@ export default function Udhar() {
                     className={`flex-1 font-bold ${transactionType === 'credit' ? 'bg-red-600 hover:bg-red-700 text-white' : ''}`}
                     onClick={() => setTransactionType('credit')}
                   >
-                    <TrendingUp className="mr-2 h-4 w-4" /> Gave Udhar (नावे)
+                    <TrendingUp className="mr-2 h-4 w-4" /> Gave Udhar (Debit)
                   </Button>
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-semibold">Amount (रक्कम ₹) *</label>
+                <label className="text-sm font-semibold">Amount (₹) *</label>
                 <Input 
                   required 
                   type="number"
@@ -549,10 +549,10 @@ export default function Udhar() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <MessageCircle className="h-6 w-6" />
-                    <h2 className="text-xl font-black">सर्व ग्राहकांना WhatsApp आठवण मेसेज</h2>
+                    <h2 className="text-xl font-black">Send Bulk WhatsApp Reminders</h2>
                   </div>
                   <p className="text-xs text-emerald-100 font-medium">
-                    ज्यांची उधारी बाकी आहे अशा सर्व ग्राहकांना एका क्लिकवर आपोआप मेसेज पाठवा.
+                    Send automated payment reminders to all customers with pending balance in one click.
                   </p>
                 </div>
                 <Button 
@@ -578,8 +578,8 @@ export default function Udhar() {
                   <span className={`w-2.5 h-2.5 rounded-full ${botConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                   <span>
                     {botConnected 
-                      ? 'WhatsApp Bot चालू आहे 🟢 (थेट मेसेज जाईल)' 
-                      : 'WhatsApp Bot ऑफलाइन आहे (Settings मध्ये QR स्कॅन करा)'}
+                      ? 'WhatsApp Bot Active 🟢 (Direct Delivery)' 
+                      : 'WhatsApp Bot Offline (Scan QR in Settings)'}
                   </span>
                 </div>
                 {!botConnected && (
@@ -592,41 +592,41 @@ export default function Udhar() {
               {/* Summary Stats */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-muted/40 p-3.5 rounded-2xl border text-center">
-                  <p className="text-xs text-muted-foreground font-semibold">एकूण थकबाकीदार ग्राहक</p>
+                  <p className="text-xs text-muted-foreground font-semibold">Customers with Pending Udhar</p>
                   <p className="text-2xl font-black text-foreground mt-0.5">{pendingCustomers.length}</p>
                 </div>
                 <div className="bg-muted/40 p-3.5 rounded-2xl border text-center">
-                  <p className="text-xs text-muted-foreground font-semibold">एकूण बाकी रक्कम</p>
+                  <p className="text-xs text-muted-foreground font-semibold">Total Outstanding Udhar</p>
                   <p className="text-2xl font-black text-orange-600 dark:text-orange-400 mt-0.5">₹{totalUdhar.toFixed(2)}</p>
                 </div>
               </div>
 
               {/* Message Preview */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">मेसेज असा दिसेल (Message Preview):</label>
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Message Preview:</label>
                 <div className="bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-3.5 text-xs text-foreground font-mono whitespace-pre-wrap leading-relaxed">
-{`🙏 *नमस्ते [ग्राहकाचे नाव] जी,*
+{`🙏 *Hello [Customer Name],*
 
-*${shopData?.shopName || shopData?.name || 'आमच्या दुकानातून'}* कडून नम्र आठवण:
-आपल्याकडे उधारी बाकी: *₹[शिल्लक रक्कम]* शिल्लक आहे.
+This is a gentle reminder from *${shopData?.shopName || shopData?.name || 'Our Store'}*:
+Your outstanding balance is: *₹[Pending Amount]*.
 
-कृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.
+Please clear the balance at your earliest convenience. Feel free to contact us for any queries.
 
-धन्यवाद! 💐`}
+Thank you! 💐`}
                 </div>
               </div>
 
               {/* Customer List */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  मेसेज जाणारे ग्राहक ({pendingCustomers.length}):
+                  Target Customers ({pendingCustomers.length}):
                 </label>
                 <div className="max-h-40 overflow-y-auto border rounded-2xl divide-y text-xs">
                   {pendingCustomers.map((c) => (
                     <div key={c.id} className="p-2.5 flex items-center justify-between hover:bg-muted/30">
                       <div>
                         <p className="font-bold text-foreground">{c.name}</p>
-                        <p className="text-[11px] text-muted-foreground">{c.phone ? `+91 ${c.phone}` : '⚠️ फोन नंबर नाही'}</p>
+                        <p className="text-[11px] text-muted-foreground">{c.phone ? `+91 ${c.phone}` : '⚠️ No phone number'}</p>
                       </div>
                       <span className="font-black text-red-600">₹{Number(c.balance || 0).toFixed(2)}</span>
                     </div>
@@ -649,13 +649,13 @@ export default function Udhar() {
                     )}
                     <span>
                       {bulkStatus.completed 
-                        ? `पूर्ण झाले! एकूण ${bulkStatus.sent} ग्राहकांना WhatsApp मेसेज यशस्वीरित्या पाठवले.`
-                        : `मेसेज पाठवत आहे... कृपया थांबा.`}
+                        ? `Completed! WhatsApp reminder sent to ${bulkStatus.sent} customers successfully.`
+                        : `Sending reminders... Please wait.`}
                     </span>
                   </div>
                   {bulkStatus.failed > 0 && (
                     <p className="text-amber-700 dark:text-amber-300 font-semibold">
-                      ⚠️ {bulkStatus.failed} ग्राहकांना फोन नंबर नसल्यामुळे मेसेज पाठवता आला नाही.
+                      ⚠️ Could not send to {bulkStatus.failed} customer(s) due to missing phone number.
                     </p>
                   )}
                   {bulkStatus.error && (

@@ -242,7 +242,7 @@ export default function Purchases() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between print:hidden">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
-            <PackagePlus className="h-8 w-8 text-primary" /> Purchases & Stock-In (खरेदी)
+            <PackagePlus className="h-8 w-8 text-primary" /> Purchases & Stock-In
           </h1>
           <p className="text-muted-foreground mt-1">
             Record supplier bills, automatically increase stock, and manage dealer udhar.
@@ -251,7 +251,7 @@ export default function Purchases() {
         <div className="flex items-center gap-2">
           {activeTab === 'bills' && (
             <Button onClick={() => setShowBillModal(true)} className="bg-primary text-primary-foreground font-bold shadow-md">
-              <Plus className="h-4 w-4 mr-2" /> New Purchase Bill (स्टॉक नोंद)
+              <Plus className="h-4 w-4 mr-2" /> New Purchase Bill
             </Button>
           )}
           {activeTab === 'suppliers' && (
@@ -259,7 +259,7 @@ export default function Purchases() {
               setSupplierForm({ id: '', name: '', phone: '', address: '', gstNumber: '', balance: 0 });
               setShowSupplierModal(true);
             }} className="bg-primary text-primary-foreground font-bold shadow-md">
-              <Plus className="h-4 w-4 mr-2" /> Add Supplier (नवीन व्यापारी)
+              <Plus className="h-4 w-4 mr-2" /> Add Supplier
             </Button>
           )}
           {activeTab === 'lowstock' && (
@@ -530,7 +530,7 @@ export default function Purchases() {
           <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-muted/30">
               <h2 className="text-xl font-bold flex items-center gap-2">
-                <PackagePlus className="h-6 w-6 text-primary" /> New Purchase Bill (स्टॉक खरेदी नोंद)
+                <PackagePlus className="h-6 w-6 text-primary" /> New Purchase Bill
               </h2>
               <Button variant="ghost" size="icon" onClick={() => setShowBillModal(false)}>
                 <X className="h-5 w-5" />
@@ -540,7 +540,7 @@ export default function Purchases() {
             <form onSubmit={handleSavePurchaseBill} className="p-6 overflow-y-auto flex-1 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Supplier (व्यापारी)</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">Supplier</label>
                   <select
                     value={billSupplierId}
                     onChange={(e) => setBillSupplierId(e.target.value)}
@@ -598,7 +598,7 @@ export default function Purchases() {
                     />
                   </div>
                   <div className="sm:col-span-2 space-y-1">
-                    <label className="text-xs font-medium">Qty (संख्या)</label>
+                    <label className="text-xs font-medium">Qty</label>
                     <Input
                       type="number"
                       min="1"
@@ -664,7 +664,7 @@ export default function Purchases() {
               {/* Payment Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Amount Paid (दिलेली रक्कम) ₹</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">Amount Paid (₹)</label>
                   <Input
                     type="number"
                     step="0.01"

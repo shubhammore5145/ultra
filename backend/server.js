@@ -178,7 +178,7 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
   const botStatus = whatsappBot.getStatus(shopId);
   if (botStatus.status !== 'CONNECTED') {
     return res.status(400).json({ 
-      error: 'आपल्या दुकानाचा WhatsApp Bot कनेक्ट नाहीये. कृपया Settings मध्ये जाऊन स्वतःचा WhatsApp QR कोड स्कॅन करा.',
+      error: 'Store WhatsApp Bot is not connected. Please scan the WhatsApp QR code in Settings.',
       notConnected: true 
     });
   }
@@ -190,7 +190,7 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
     details: []
   };
 
-  const currentShopName = shopName || 'आमच्या दुकानातून';
+  const currentShopName = shopName || 'Our Store';
 
   for (const c of customers) {
     const rawBalance = Number(c.balance || 0);
@@ -200,7 +200,7 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
       continue;
     }
 
-    const message = `🙏 *नमस्ते ${c.name} जी,*\n\n*${currentShopName}* कडून नम्र आठवण:\nआपल्याकडे उधारी बाकी: *₹${rawBalance.toFixed(2)}* आहे.\n\nकृपया सवडीनुसार रक्कम जमा करावी ही विनंती. काही अडचण असल्यास संपर्क साधावा.\n\nधन्यवाद! 💐`;
+    const message = `🙏 *Hello ${c.name},*\n\nThis is a gentle reminder from *${currentShopName}*:\nYour outstanding balance is: *₹${rawBalance.toFixed(2)}*.\n\nPlease clear the balance at your earliest convenience. Feel free to contact us for any queries.\n\nThank you! 💐`;
 
     try {
       await whatsappBot.sendMessage(c.phone, message, shopId);

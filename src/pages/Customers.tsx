@@ -4,7 +4,7 @@ import { Input } from '../components/ui/input';
 import { 
   Plus, Search, Loader2, Edit, Phone, MapPin, 
   IndianRupee, MessageCircle, History, X, ShoppingCart, 
-  CreditCard, Camera, Eye, ShieldCheck, AlertTriangle 
+  CreditCard, Camera, Eye, ShieldCheck, AlertTriangle, Trash2 
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -152,6 +152,25 @@ export default function Customers() {
     }
   };
 
+  const handleDeleteCustomer = async (customer: Customer) => {
+    if (Number(customer.balance || 0) > 0) {
+      if (!window.confirm(`Warning: ${customer.name} has a pending Udhar balance of ₹${customer.balance}. Are you sure you want to move this account to Recycle Bin?`)) {
+        return;
+      }
+    } else {
+      if (!window.confirm(`Are you sure you want to move ${customer.name} to the Recycle Bin? You can restore it anytime.`)) {
+        return;
+      }
+    }
+
+    try {
+      await api.customers.delete(customer.id, customer);
+      setCustomers(prev => prev.filter(c => c.id !== customer.id));
+    } catch (err: any) {
+      alert('Failed to delete customer: ' + (err.message || 'Error'));
+    }
+  };
+
   const filteredCustomers = customers.filter(c => 
     (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (c.phone || '').includes(searchTerm) ||
@@ -246,7 +265,7 @@ export default function Customers() {
               {/* Customer Photo */}
               <div className="border border-dashed rounded-xl p-4 flex flex-col items-center justify-center bg-muted/20 text-center">
                 <p className="text-xs font-semibold mb-2 flex items-center gap-1.5 text-foreground">
-                  <Camera className="h-4 w-4 text-primary" /> Customer Photo (चेहऱ्याचा फोटो)
+                  <Camera className="h-4 w-4 text-primary" /> Customer Photo
                 </p>
                 {formData.photoUrl ? (
                   <div className="relative group">
@@ -275,7 +294,7 @@ export default function Customers() {
                     <div className="px-3 py-2 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-all flex items-center gap-1.5">
                       <Camera className="h-3.5 w-3.5" /> Capture / Upload Photo
                     </div>
-                    <span className="text-[10px] text-muted-foreground mt-1">Auto-compressed under 50KB</span>
+                    <span className="text-[10px] text-muted-foreground mt-1">Auto-compressed under 100 KB</span>
                   </label>
                 )}
               </div>
@@ -283,7 +302,7 @@ export default function Customers() {
               {/* Aadhaar Card Photo */}
               <div className="border border-dashed rounded-xl p-4 flex flex-col items-center justify-center bg-muted/20 text-center">
                 <p className="text-xs font-semibold mb-2 flex items-center gap-1.5 text-foreground">
-                  <CreditCard className="h-4 w-4 text-emerald-600" /> Aadhaar Card Photo (आधार कार्ड फोटो)
+                  <CreditCard className="h-4 w-4 text-emerald-600" /> Aadhaar Card Photo
                 </p>
                 {formData.aadharPhotoUrl ? (
                   <div className="relative group">
@@ -487,6 +506,15 @@ export default function Customers() {
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(customer)}>
                           <Edit className="h-4 w-4 mr-1.5" /> Edit
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleDeleteCustomer(customer)} 
+                          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          title="Move to Recycle Bin"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1.5" /> Delete
                         </Button>
                       </td>
                     </tr>

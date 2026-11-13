@@ -58,24 +58,24 @@ export default function Login() {
   const formatFirebaseError = (err: any) => {
     const code = err?.code || '';
     if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-      return 'ईमेल किंवा पासवर्ड चुकीचा आहे.';
+      return 'Invalid email or password.';
     }
     if (code === 'auth/email-already-in-use') {
-      return 'हा ईमेल आधीच नोंदणीकृत आहे. कृपया लॉगिन करा.';
+      return 'This email is already registered. Please log in.';
     }
     if (code === 'auth/weak-password') {
-      return 'पासवर्ड कमीत कमी 6 अक्षरांचा असावा.';
+      return 'Password should be at least 6 characters.';
     }
     if (code === 'auth/invalid-email') {
-      return 'कृपया योग्य ईमेल आयडी टाका.';
+      return 'Please enter a valid email address.';
     }
     if (code === 'auth/popup-closed-by-user') {
-      return 'Google साइन इन विंडो बंद करण्यात आली.';
+      return 'Google sign-in window was closed.';
     }
     if (err?.message && (err.message.includes('Failed to fetch') || err.message.includes('not reachable') || err.message.includes('No response'))) {
-      return 'सर्व्हर किंवा इंटरनेट कनेक्शनमध्ये अडचण आली आहे. कृपया इंटरनेट तपासा किंवा पुन्हा प्रयत्न करा.';
+      return 'Network or server connection issue. Please check your connection and try again.';
     }
-    return err?.message || 'लॉगिन अयशस्वी झाले. कृपया पुन्हा प्रयत्न करा.';
+    return err?.message || 'Login failed. Please try again.';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -144,7 +144,7 @@ export default function Login() {
 
                 const shop = sbShops?.[0] || {
                   shopId: u.shopId || 'default',
-                  name: u.displayName ? `${u.displayName} स्टोअर` : 'माझे किराणा',
+                  name: u.displayName ? `${u.displayName} Store` : 'MartGPT Kirana',
                   plan: 'free'
                 };
 
@@ -228,7 +228,7 @@ export default function Login() {
     } catch (err: any) {
       console.error('Google sign in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
-        setError('Google साइन इन विंडो बंद करण्यात आली.');
+        setError('Google sign-in popup was closed.');
       } else if (err.code === 'auth/cancelled-popup-request') {
         // user clicked again while opening, ignore
       } else {

@@ -194,7 +194,7 @@ export default function Settings() {
         printerType: 'bluetooth',
         bluetoothDeviceName: device.name || 'Bluetooth Thermal Printer'
       }));
-      alert(`Bluetooth Thermal Printer "${device.name || 'Printer'}" जोडला गेला! ✅`);
+      alert(`Bluetooth Thermal Printer "${device.name || 'Printer'}" connected! ✅`);
     } catch (err: any) {
       if (err.name !== 'NotFoundError') {
         alert('Bluetooth Connection error: ' + (err.message || 'Device pair failed'));
@@ -257,9 +257,9 @@ export default function Settings() {
           ...hardwareSettings
         }
       });
-      alert('हार्डवेअर (प्रिंटर & बारकोड स्कॅनर) सेटिंग्ज सेव्ह झाल्या! ✅');
+      alert('Hardware (Printer & Barcode Scanner) settings saved! ✅');
     } catch (err: any) {
-      alert('सेटिंग्ज सेव्ह करण्यात अडचण आली: ' + (err.message || 'Error'));
+      alert('Error saving settings: ' + (err.message || 'Error'));
     } finally {
       setSavingHardware(false);
     }
@@ -299,7 +299,7 @@ export default function Settings() {
       return;
     }
     if (!testPhone || testPhone.trim().length !== 10) {
-      alert('कृपया वैध 10-अंकी मोबाइल नंबर टाका');
+      alert('Please enter a valid 10-digit mobile number.');
       return;
     }
     setTestSending(true);
@@ -307,12 +307,12 @@ export default function Settings() {
     try {
       await api.whatsapp.send(
         testPhone,
-        `🏪 *${formData.shopName || 'Kirana Store'}*\n\n✅ *WhatsApp Bot Test Successful!*\nआपला किराणा ऑटो व्हॉट्सअॅप बॉट यशस्वीरित्या काम करत आहे.`,
+        `🏪 *${formData.shopName || 'Kirana Store'}*\n\n✅ *WhatsApp Bot Test Successful!*\nYour store WhatsApp bot is working properly.`,
         shopData?.shopId
       );
-      setTestResult('व्हॉट्सअॅप चाचणी मेसेज यशस्वीरित्या पाठवला! ✅');
+      setTestResult('WhatsApp test message sent successfully! ✅');
     } catch (e: any) {
-      setTestResult(`त्रुटी: ${e.message}`);
+      setTestResult(`Error: ${e.message}`);
     } finally {
       setTestSending(false);
     }
@@ -404,9 +404,9 @@ export default function Settings() {
       downloadAnchor.click();
       downloadAnchor.remove();
 
-      alert(`✅ संपूर्ण डेटा बॅकअप यशस्वीरित्या सेव्ह झाला!\nफाइल डाउनलोड फोल्डरमध्ये तपासू शकता.\n(Products: ${backupData.counts.products}, Customers: ${backupData.counts.customers}, Bills: ${backupData.counts.transactions})`);
+      alert(`✅ Full data backup saved successfully!\nCheck your downloads folder.\n(Products: ${backupData.counts.products}, Customers: ${backupData.counts.customers}, Bills: ${backupData.counts.transactions})`);
     } catch (err: any) {
-      alert('बॅकअप डाऊनलोड करताना अडचण आली: ' + (err.message || 'Error'));
+      alert('Error downloading backup: ' + (err.message || 'Error'));
     } finally {
       setIsExporting(false);
     }
@@ -423,7 +423,7 @@ export default function Settings() {
         const backup = JSON.parse(content);
 
         if (!backup.data || !Array.isArray(backup.data.products)) {
-          alert('अवैध बॅकअप फाईल! कृपया MartGPT मधून तयार केलेली .json फाईलच निवडा.');
+          alert('Invalid backup file! Please select a valid .json file generated from MartGPT.');
           return;
         }
 
@@ -431,7 +431,7 @@ export default function Settings() {
         const custsCount = backup.data.customers?.length || 0;
 
         const confirmRestore = window.confirm(
-          `बॅकअप फाईल सापडली:\n• प्रॉडक्ट्स: ${prodsCount}\n• ग्राहक: ${custsCount}\n• तारीख: ${backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString('en-IN') : 'N/A'}\n\nतुम्ही हा डेटा रिस्टोअर (Import) करू इच्छिता का?`
+          `Backup file detected:\n• Products: ${prodsCount}\n• Customers: ${custsCount}\n• Date: ${backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString('en-IN') : 'N/A'}\n\nDo you want to restore and import this data?`
         );
 
         if (!confirmRestore) return;
@@ -467,10 +467,10 @@ export default function Settings() {
           } catch {}
         }
 
-        alert(`✅ रिस्टोअर यशस्वी!\n• प्रॉडक्ट्स रिस्टोअर: ${importedProds}/${prodsCount}\n• ग्राहक रिस्टोअर: ${importedCusts}/${custsCount}`);
+        alert(`✅ Restore complete!\n• Products restored: ${importedProds}/${prodsCount}\n• Customers restored: ${importedCusts}/${custsCount}`);
         window.location.reload();
       } catch (err: any) {
-        alert('बॅकअप रिस्टोअर करताना अडचण आली: ' + (err.message || 'Invalid JSON'));
+        alert('Error restoring backup: ' + (err.message || 'Invalid JSON'));
       } finally {
         setIsImporting(false);
         if (e.target) e.target.value = '';
@@ -484,16 +484,16 @@ export default function Settings() {
     try {
       const res = await syncOfflineQueue();
       setOfflinePendingCount(res.remaining);
-      alert(`ऑफलाईन सिंक पूर्ण: ${res.synced} बिले क्लाउडवर सेव्ह झाली. शिल्लक: ${res.remaining}`);
+      alert(`Offline sync complete: ${res.synced} bills synced to cloud. Remaining: ${res.remaining}`);
     } catch {
-      alert('ऑफलाईन सिंक अयशस्वी झाले. इंटरनेट चालू असल्याची खात्री करा.');
+      alert('Offline sync failed. Please check your internet connection.');
     } finally {
       setIsSyncingOffline(false);
     }
   };
 
   const handleClearCorruptCache = () => {
-    if (window.confirm('तुम्ही ब्राऊझरमधील लोकल कॅशे रिसेट करू इच्छिता का? (तुमचा लॉगिन सुरक्षित राहील)')) {
+    if (window.confirm('Do you want to reset your local browser cache? (Your login will remain active)')) {
       const token = localStorage.getItem('auth_token');
       const user = localStorage.getItem('auth_user');
       const shop = localStorage.getItem('auth_shop');
@@ -504,7 +504,7 @@ export default function Settings() {
       if (user) localStorage.setItem('auth_user', user);
       if (shop) localStorage.setItem('auth_shop', shop);
 
-      alert('कॅशे साफ झाली! पेज रिफ्रेश होत आहे...');
+      alert('Cache cleared! Refreshing page...');
       window.location.reload();
     }
   };
@@ -646,7 +646,7 @@ export default function Settings() {
               <Printer className="h-6 w-6 text-amber-500" /> POS Hardware: Thermal Printer & Barcode Scanner
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              थर्मल बिल प्रिंटर (58mm / 80mm, USB/Bluetooth) आणि बारकोड स्कॅनर गन जोडा, टेस्ट करा व सेव्ह करा.
+              Configure thermal bill printer (58mm / 80mm, USB/Bluetooth) and barcode scanner gun.
             </p>
           </div>
           <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-semibold self-start sm:self-auto flex items-center gap-1.5">
@@ -659,7 +659,7 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-2 border-b">
               <h3 className="text-base font-bold flex items-center gap-2 text-foreground">
-                <Printer className="h-5 w-5 text-primary" /> 1. Thermal Printer Setup (थर्मल प्रिंटर)
+                <Printer className="h-5 w-5 text-primary" /> 1. Thermal Printer Setup
               </h3>
               <span className="text-xs text-muted-foreground font-mono">58mm / 80mm ESC-POS</span>
             </div>
@@ -681,7 +681,7 @@ export default function Settings() {
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground flex items-center gap-1.5">
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> 
-                  Plug & Play — संगणकाला USB केबल जोडा, थेट 1-Click प्रिंट चालते.
+                  Plug & Play — connect USB cable to computer for 1-click direct printing.
                 </div>
               </div>
 
@@ -707,7 +707,7 @@ export default function Settings() {
                         Connected: {hardwareSettings.bluetoothDeviceName}
                       </span>
                     ) : (
-                      'ब्लूटूथ प्रिंटर शोधून जोडा'
+                      'Find & pair Bluetooth printer'
                     )}
                   </span>
                   <Button
@@ -731,7 +731,7 @@ export default function Settings() {
             {/* Paper Size & Auto-Print Settings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-muted/30 border">
               <div className="space-y-2">
-                <Label className="text-xs font-semibold">Paper Width (कागदाचा आकार)</Label>
+                <Label className="text-xs font-semibold">Paper Width</Label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -749,7 +749,7 @@ export default function Settings() {
                   </button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  सुपरमार्केट/मोठ्या काऊंटरसाठी 80mm आणि छोट्या हँडहेल्ड प्रिंटरसाठी 58mm निवडा.
+                  Choose 80mm for supermarket / billing counters and 58mm for small handheld printers.
                 </p>
               </div>
 
@@ -764,31 +764,31 @@ export default function Settings() {
                     <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${hardwareSettings.autoPrintReceipt ? 'translate-x-6' : ''}`} />
                   </button>
                   <span className="text-xs font-medium">
-                    {hardwareSettings.autoPrintReceipt ? 'चालू (बिल बनताच प्रिंट विंडो उघडा)' : 'बंद (मॅन्युअल प्रिंट बटण दाबावे लागेल)'}
+                    {hardwareSettings.autoPrintReceipt ? 'Enabled (Auto-opens print window upon checkout)' : 'Disabled (Requires manual print button click)'}
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  कॅशियरचा वेळ वाचवण्यासाठी ऑटो-प्रिंट चालू ठेवणे फायदेशीर ठरते.
+                  Enabling auto-print saves cashier time during peak rush hours.
                 </p>
               </div>
 
               {/* Receipt Header & Footer */}
               <div className="space-y-2">
-                <Label className="text-xs font-semibold">Custom Receipt Header (बिलावर वर काय लिहायचे?)</Label>
+                <Label className="text-xs font-semibold">Custom Receipt Header</Label>
                 <Input
                   value={hardwareSettings.receiptHeader}
                   onChange={e => setHardwareSettings(prev => ({ ...prev, receiptHeader: e.target.value }))}
-                  placeholder="उदा. || श्री गणेशाय नमः || किंवा Welcome!"
+                  placeholder="e.g. Welcome to MartGPT!"
                   className="text-xs font-mono"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs font-semibold">Custom Receipt Footer (बिलाच्या खाली संदेश)</Label>
+                <Label className="text-xs font-semibold">Custom Receipt Footer</Label>
                 <Input
                   value={hardwareSettings.receiptFooter}
                   onChange={e => setHardwareSettings(prev => ({ ...prev, receiptFooter: e.target.value }))}
-                  placeholder="उदा. वस्तू बदलून मिळणार नाही. पुन्हा भेट द्या!"
+                  placeholder="e.g. Items once sold will not be returned. Thank you!"
                   className="text-xs font-mono"
                 />
               </div>
@@ -802,11 +802,11 @@ export default function Settings() {
                 onClick={handlePrintTestReceipt}
                 className="w-full sm:w-auto text-xs font-bold border-amber-500/50 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 flex items-center gap-2"
               >
-                <Printer className="h-4 w-4" /> Print Test Receipt (चाचणी पावती प्रिंट करा)
+                <Printer className="h-4 w-4" /> Print Test Receipt
               </Button>
 
               <span className="text-xs text-muted-foreground text-center sm:text-right">
-                थर्मल प्रिंटर योग्य जोडला आहे का हे पाहण्यासाठी टेस्ट प्रिंट बटण दाबा.
+                Click print test to verify the thermal printer is working.
               </span>
             </div>
           </div>
@@ -817,7 +817,7 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-2 border-b">
               <h3 className="text-base font-bold flex items-center gap-2 text-foreground">
-                <Barcode className="h-5 w-5 text-primary" /> 2. Barcode Scanner Gun Setup & Live Test (बारकोड स्कॅनर गन)
+                <Barcode className="h-5 w-5 text-primary" /> 2. Barcode Scanner Gun Setup & Live Test
               </h3>
               <span className="text-xs text-muted-foreground font-mono">USB / 2.4G / Bluetooth HID</span>
             </div>
@@ -827,10 +827,10 @@ export default function Settings() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" /> Live Barcode Scanner Test (इथे स्कॅन करून तपासा)
+                    <Sparkles className="h-4 w-4 text-primary" /> Live Barcode Scanner Test
                   </h4>
                   <p className="text-xs text-muted-foreground">
-                    आपल्या हातातील बारकोड गन कोणत्याही प्रॉडक्टवर रोखा आणि बटण दाबा.
+                    Point your barcode scanner gun at any product barcode and pull the trigger.
                   </p>
                 </div>
                 <Button
@@ -851,7 +851,7 @@ export default function Settings() {
                     type="text"
                     value={scannerTestInput}
                     onChange={e => setScannerTestInput(e.target.value)}
-                    placeholder="बारकोड गनने इथे स्कॅन करा किंवा नंबर टाईप करा..."
+                    placeholder="Scan with barcode gun or type code..."
                     className="pl-9 font-mono text-sm bg-background border-primary/30 focus-visible:ring-primary"
                   />
                 </div>
@@ -863,7 +863,7 @@ export default function Settings() {
               {/* Scanned Log Results */}
               {scannerResults.length > 0 ? (
                 <div className="space-y-2 pt-2">
-                  <div className="text-xs font-semibold text-muted-foreground">Recent Scans (अलीकडील स्कॅन):</div>
+                  <div className="text-xs font-semibold text-muted-foreground">Recent Scans:</div>
                   <div className="space-y-1.5 max-h-40 overflow-y-auto">
                     {scannerResults.map((item, i) => (
                       <div key={i} className="flex items-center justify-between p-2.5 rounded-lg bg-background border text-xs">
@@ -879,7 +879,7 @@ export default function Settings() {
                             </span>
                           ) : (
                             <span className="text-amber-600 dark:text-amber-400 font-medium">
-                              नवीन बारकोड (प्रॉडक्ट जोडण्यासाठी सज्ज)
+                              New Barcode (Ready to assign to product)
                             </span>
                           )}
                         </div>
@@ -889,7 +889,7 @@ export default function Settings() {
                 </div>
               ) : (
                 <div className="text-center py-2 text-xs text-muted-foreground italic">
-                  स्कॅनर गनचे बटण दाबताच इथे बारकोड आपोआप दिसेल आणि बीप आवाज येईल.
+                  Scanned barcodes will appear here automatically with a confirmation beep.
                 </div>
               )}
             </div>
@@ -899,10 +899,10 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                    <Volume2 className="h-4 w-4 text-primary" /> Audio Beep on Scan (स्कॅन बीप)
+                    <Volume2 className="h-4 w-4 text-primary" /> Audio Beep on Scan
                   </h4>
                   <p className="text-[11px] text-muted-foreground">
-                    वस्तू स्कॅन झाल्यावर सुपरमार्केटसारखा पुष्टी आवाज (Beep) वाजेल.
+                    Plays an authentic supermarket confirmation beep when a product is scanned.
                   </p>
                 </div>
                 <button
@@ -917,10 +917,10 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                    <Play className="h-4 w-4 text-primary" /> Auto-Add to Bill Cart (थेट बिलात जोडा)
+                    <Play className="h-4 w-4 text-primary" /> Auto-Add to Bill Cart
                   </h4>
                   <p className="text-[11px] text-muted-foreground">
-                    POS मध्ये स्कॅनरचे बटण दाबताच वस्तू आपोआप कार्टमध्ये जमा होईल.
+                    Automatically adds item to cart when scanned in POS.
                   </p>
                 </div>
                 <button
@@ -935,11 +935,11 @@ export default function Settings() {
 
             {/* Hardware Guide */}
             <div className="p-4 bg-muted/40 rounded-xl border text-xs text-muted-foreground space-y-2">
-              <h4 className="font-bold text-foreground">💡 बारकोड स्कॅनर गन कशी जोडावी? (3 Easy Steps)</h4>
+              <h4 className="font-bold text-foreground">💡 How to Connect Barcode Scanner Gun (3 Easy Steps)</h4>
               <ul className="list-disc pl-5 space-y-1">
-                <li><strong>Wired USB Gun:</strong> स्कॅनरची USB केबल लॅपटॉप/कम्प्युटरला लावा. कोणत्याही सॉफ्टवेअर किंवा ड्रायव्हरची गरज नाही (HID Plug & Play).</li>
-                <li><strong>Wireless 2.4GHz Gun:</strong> स्कॅनरसोबत आलेला छोटा USB Dongle लॅपटॉपला लावा.</li>
-                <li><strong>POS बिलिंग:</strong> POS स्क्रीनवर असताना स्कॅनरचे बटण दाबा. सर्च बारवर क्लिक करण्याचीही गरज नाही, वस्तू थेट बिलात ॲड होईल!</li>
+                <li><strong>Wired USB Gun:</strong> Plug the scanner's USB cable into your laptop/PC. No driver required (HID Plug & Play).</li>
+                <li><strong>Wireless 2.4GHz Gun:</strong> Plug the included 2.4GHz USB wireless dongle into your PC.</li>
+                <li><strong>POS Billing:</strong> Press the trigger on the POS screen. The item is automatically added to cart without even clicking the search bar!</li>
               </ul>
             </div>
           </div>
@@ -953,7 +953,7 @@ export default function Settings() {
               className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center gap-2 shadow-sm"
             >
               {savingHardware ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save Hardware Settings (हार्डवेअर सेव्ह करा)
+              Save Hardware Settings
             </Button>
           </div>
         </div>
@@ -1099,7 +1099,7 @@ export default function Settings() {
                 <p className="break-words">{whatsappStatus.error}</p>
                 {whatsappStatus.error.toLowerCase().includes('chrome') && (
                   <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 font-sans">
-                    💡 टीप: Render मोफत क्लाउड सर्व्हरवर Chromium ब्राऊझर इन्स्टॉल नसतो. ऑटो व्हॉट्सअॅप बॉट तुमच्या दुकानाच्या कॉम्प्युटरवर (Localhost) १००% ॲक्टिव्ह आहे.
+                    💡 Tip: Cloud servers without Chromium do not support the local WhatsApp bot. The bot runs with 100% full support when running locally on your PC / laptop.
                   </p>
                 )}
               </div>
@@ -1123,13 +1123,13 @@ export default function Settings() {
           <>
             <Loader2 className="h-10 w-10 animate-spin text-green-600 mb-4" />
             <p className="font-bold text-green-600 text-lg">QR Scanned! Linking Device...</p>
-            <p className="text-muted-foreground text-sm mt-2">कृपया थांबा, WhatsApp connect होत आहे...</p>
+            <p className="text-muted-foreground text-sm mt-2">Please wait, connecting WhatsApp...</p>
           </>
         ) : whatsappStatus.status === 'CONNECTING' ? (
           <>
             <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
             <p className="font-bold text-blue-600 text-lg">Reconnecting...</p>
-            <p className="text-muted-foreground text-sm mt-2">WhatsApp पुन्हा connect होत आहे, कृपया थांबा.</p>
+            <p className="text-muted-foreground text-sm mt-2">Reconnecting WhatsApp, please wait...</p>
           </>
         ) : whatsappStatus.status === 'INITIALIZING' ? (
           <>
@@ -1182,7 +1182,7 @@ export default function Settings() {
                 </Button>
               </div>
               {testResult && (
-                <p className={`text-xs font-medium ${testResult.includes('यशस्वीरित्या') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                <p className={`text-xs font-medium ${testResult.includes('successfully') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                   {testResult}
                 </p>
               )}
@@ -1207,7 +1207,7 @@ export default function Settings() {
             <Clock className="h-6 w-6" /> WhatsApp Bill & Summary Settings
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            बिल पाठवण्याचा delay आणि daily summary timing सेट करा.
+            Configure automated bill delay and daily summary schedule.
           </p>
         </div>
         <div className="p-6 space-y-6">
@@ -1217,7 +1217,7 @@ export default function Settings() {
               <Send className="h-4 w-4 text-green-600" /> Auto Bill Send Delay (Seconds)
             </Label>
             <p className="text-xs text-muted-foreground -mt-1">
-              बिलिंग नंतर किती seconds मध्ये WhatsApp बिल पाठवायचे? (0 = तात्काळ)
+              Delay in seconds before sending WhatsApp bill upon checkout (0 = instant):
             </p>
             <div className="flex items-center gap-3 flex-wrap">
               {[0, 3, 5, 8, 10].map(val => (
@@ -1227,7 +1227,7 @@ export default function Settings() {
                   onClick={() => setWhatsappSettings(prev => ({...prev, billDelaySeconds: val}))}
                   className={`px-4 py-2 rounded-lg border font-bold text-sm transition-all ${whatsappSettings.billDelaySeconds === val ? 'bg-green-600 text-white border-green-600 shadow-md scale-105' : 'bg-muted/50 text-foreground border-border hover:bg-muted'}`}
                 >
-                  {val === 0 ? 'तात्काळ' : `${val}s`}
+                  {val === 0 ? 'Instant' : `${val}s`}
                 </button>
               ))}
               <Input
@@ -1274,13 +1274,13 @@ export default function Settings() {
               >
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${whatsappSettings.summaryEnabled && canAccess('nightly_summary') ? 'translate-x-6' : ''}`} />
               </button>
-              <span className="text-sm font-medium">{whatsappSettings.summaryEnabled && canAccess('nightly_summary') ? 'चालू (Enabled)' : 'बंद (Disabled)'}</span>
+              <span className="text-sm font-medium">{whatsappSettings.summaryEnabled && canAccess('nightly_summary') ? 'Enabled' : 'Disabled'}</span>
             </div>
 
             {whatsappSettings.summaryEnabled && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border">
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Summary पाठवण्याची वेळ (IST)</Label>
+                  <Label className="text-sm font-semibold">Summary Send Time (IST)</Label>
                   <Input
                     type="time"
                     value={whatsappSettings.summaryTime}
@@ -1288,11 +1288,11 @@ export default function Settings() {
                     className="font-mono"
                   />
                   <p className="text-xs text-muted-foreground">
-                    रोज या वेळी ऑटो summary WhatsApp वर येईल
+                    Auto-summary report will be delivered every day at this time
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Summary कुठे पाठवायचे? (Phone)</Label>
+                  <Label className="text-sm font-semibold">Recipient Mobile Number</Label>
                   <Input
                     type="tel"
                     placeholder="10-digit mobile number"
@@ -1302,7 +1302,7 @@ export default function Settings() {
                     className="font-mono"
                   />
                   <p className="text-xs text-muted-foreground">
-                    मालकाचा WhatsApp नंबर (daily report इथे येईल)
+                    Store owner WhatsApp number (receives daily sales report)
                   </p>
                 </div>
               </div>
@@ -1344,15 +1344,15 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── Shop Data Vault & Resilience (डेटा बॅकअप, रिस्टोअर & सुरक्षितता) ── */}
+      {/* ── Shop Data Vault & Resilience ── */}
       <div className="bg-card text-card-foreground border rounded-xl shadow-sm mt-8 overflow-hidden">
         <div className="p-6 border-b bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2 text-foreground">
-              <Database className="h-6 w-6 text-blue-600" /> Shop Data Vault & Security (डेटा बॅकअप & सुरक्षितता)
+              <Database className="h-6 w-6 text-blue-600" /> Shop Data Vault & Security
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              तुमचा सर्व डेटा (प्रॉडक्ट्स, ग्राहक, उधारी, बिले) १००% सुरक्षित ठेवा. एका क्लिकवर बॅकअप डाउनलोड करा किंवा नवीन संगणकावर रिस्टोअर करा.
+              Keep all your products, customers, bills, and ledger safe. Download backups in 1 click or restore to another computer.
             </p>
           </div>
           <span className="text-xs px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-semibold self-start sm:self-auto flex items-center gap-1.5">
@@ -1367,10 +1367,10 @@ export default function Settings() {
             <div className="p-5 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex items-center gap-2.5 text-foreground font-bold text-base mb-1">
-                  <Download className="h-5 w-5 text-emerald-600" /> 1-Click Full Backup (डेटा डाऊनलोड)
+                  <Download className="h-5 w-5 text-emerald-600" /> 1-Click Full Backup
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  सर्व प्रॉडक्ट्स, ग्राहक लेजर, उधारी, बिले, आणि दुकानाची सर्व सेटिंग्ज एका सुरक्षित <code>.json</code> फाइलमध्ये तात्काळ डाउनलोड करा.
+                  Export all products, customer ledgers, credit, invoices, and settings instantly into a secure <code>.json</code> backup file.
                 </p>
               </div>
 
@@ -1382,10 +1382,10 @@ export default function Settings() {
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-2"
                 >
                   {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {isExporting ? 'बॅकअप तयार होत आहे...' : 'Download Full Shop Backup (.json)'}
+                  {isExporting ? 'Generating backup...' : 'Download Full Shop Backup (.json)'}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center mt-2">
-                  🔒 डेटा एन्क्रिप्टेड आणि तुमच्या वैयक्तिक संगणकावर सुरक्षित सेव्ह होतो.
+                  🔒 Data is encrypted and saved securely to your personal device.
                 </p>
               </div>
             </div>
@@ -1394,10 +1394,10 @@ export default function Settings() {
             <div className="p-5 rounded-xl border bg-muted/20 flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex items-center gap-2.5 text-foreground font-bold text-base mb-1">
-                  <Upload className="h-5 w-5 text-blue-600" /> Restore from Backup (डेटा रिस्टोअर)
+                  <Upload className="h-5 w-5 text-blue-600" /> Restore from Backup
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  नवीन संगणक, मोबाईल किंवा लॅपटॉपवर दुकानाची जुनी बॅकअप फाईल निवडून सर्व डेटा काही सेकंदांत पुन्हा चालू करा.
+                  Switching to a new laptop, phone, or computer? Select your backup file to restore your entire store in seconds.
                 </p>
               </div>
 
@@ -1417,10 +1417,10 @@ export default function Settings() {
                   className="w-full border-blue-600/40 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 font-semibold text-xs flex items-center justify-center gap-2"
                 >
                   {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  {isImporting ? 'डेटा रिस्टोअर होत आहे...' : 'Choose Backup File to Restore (.json)'}
+                  {isImporting ? 'Restoring data...' : 'Choose Backup File to Restore (.json)'}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center mt-2">
-                  ⚡ जुन्या प्रॉडक्ट्स आणि ग्राहकांची यादी आपोआप अपडेट होईल.
+                  ⚡ Existing product and customer databases will be updated.
                 </p>
               </div>
             </div>
@@ -1431,7 +1431,7 @@ export default function Settings() {
           {/* Offline Resilience & Local Cache Health */}
           <div className="space-y-4">
             <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <HardDrive className="h-4 w-4 text-primary" /> Offline Resilience & Storage Health (ऑफलाईन सुरक्षा)
+              <HardDrive className="h-4 w-4 text-primary" /> Offline Resilience & Storage Health
             </h3>
 
             <div className="p-4 rounded-xl border bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1440,12 +1440,12 @@ export default function Settings() {
                   <span className={`inline-block w-2.5 h-2.5 rounded-full ${offlinePendingCount > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
                   <span className="text-xs font-bold text-foreground">
                     {offlinePendingCount > 0
-                      ? `${offlinePendingCount} बिले ऑफलाईन सेव्ह आहेत (Pending Sync)`
-                      : 'सर्व बिले क्लाउडवर सुरक्षित सिंक्रोनाइझ आहेत (All Synced)'}
+                      ? `${offlinePendingCount} bills stored offline (Pending Cloud Sync)`
+                      : 'All bills safely synced to cloud (All Synced)'}
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  वायफाय किंवा इंटरनेट बंद असताना तयार झालेली बिले आपोआप ब्राउझरमध्ये सुरक्षित ठेवली जातात.
+                  Bills created when offline or disconnected from Wi-Fi are securely cached in browser storage.
                 </p>
               </div>
 
@@ -1480,9 +1480,9 @@ export default function Settings() {
           <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 text-xs text-muted-foreground flex items-start gap-3">
             <ShieldCheck className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-foreground mb-0.5">डेटा आयसोलेशन आणि सुरक्षितता हमी:</p>
+              <p className="font-bold text-foreground mb-0.5">Data Privacy and Isolation Guarantee:</p>
               <p>
-                आपल्या दुकानाची माहिती (Shop ID: <span className="font-mono font-bold text-foreground">{shopData?.shopId}</span>) इतर कोणत्याही दुकानाशी किंवा त्रयस्थ व्यक्तीशी कधीही शेअर केली जात नाही. सर्व संप्रेषण HTTPS आणि JWT ऑथेंटिकेशनने सुरक्षित केले आहे.
+                Your store data (Shop ID: <span className="font-mono font-bold text-foreground">{shopData?.shopId}</span>) is private and never shared with any other store or third party. All communication is protected with HTTPS and JWT authentication.
               </p>
             </div>
           </div>

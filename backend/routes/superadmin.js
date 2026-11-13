@@ -238,7 +238,7 @@ router.put('/shops/:shopId/plan', async (req, res) => {
     // Auto-create in-app notification for the shopkeeper
     try {
       const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-      const expiryStr = newExpiry ? new Date(newExpiry).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'कायमस्वरूपी (Lifetime)';
+      const expiryStr = newExpiry ? new Date(newExpiry).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Lifetime';
       const planBadge = normalizedPlan === 'ultra_pro' ? '👑 Ultra Pro' : normalizedPlan === 'pro' ? '⚡ Pro' : normalizedPlan === 'plus' ? '🌟 Plus' : 'Free';
       await pool.query(
         `INSERT INTO notifications (id, shopId, title, message, type, channel, actionUrl, isRead, readBy, createdAt)
@@ -246,8 +246,8 @@ router.put('/shops/:shopId/plan', async (req, res) => {
         [
           notifId, 
           shopId, 
-          `🎉 सबस्क्रिप्शन अपग्रेड: ${planBadge}!`,
-          `अभिनंदन! Super Admin द्वारे आपल्या दुकानाचा प्लॅन *${planBadge}* वर सेट करण्यात आला आहे. सर्व संबंधित प्रिमियम फीचर्स आता ॲक्टिव्हेट झाली आहेत (वैधता: ${expiryStr}).`
+          `🎉 Subscription Upgraded: ${planBadge}!`,
+          `Congratulations! Your store plan has been updated to *${planBadge}* by Super Admin. All premium features are now activated (Validity: ${expiryStr}).`
         ]
       );
     } catch (notifErr) {

@@ -1,7 +1,10 @@
 {
   "name": "martgpt",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Smart AI Supermarket and Kirana POS Billing System",
+  "author": "MartGPT",
+  "main": "electron/main.cjs",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
@@ -16,7 +19,10 @@
     "start": "node backend/server.js",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tunnel": ".\\cloudflared.exe tunnel --url http://localhost:5173"
+    "tunnel": ".\\cloudflared.exe tunnel --url http://localhost:5173",
+    "electron:start": "electron electron/main.cjs",
+    "electron:dev": "node scripts/dev_electron.cjs",
+    "electron:build": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -27,7 +33,7 @@
     "@types/jsbarcode": "^3.11.4",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
-    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -56,11 +62,50 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vite-plugin-pwa": "^1.3.0"
+  },
+  "build": {
+    "appId": "com.martgpt.pos",
+    "productName": "MartGPT POS",
+    "copyright": "Copyright © 2026 MartGPT",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "dist/**/*",
+      "backend/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/data",
+        "to": "backend/data",
+        "filter": [
+          "*.db"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/pwa-512x512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MartGPT POS"
+    }
   }
 }

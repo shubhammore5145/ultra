@@ -206,6 +206,7 @@ export default function ProductForm() {
 
     try {
       const finalBarcode = formData.barcode.trim() || (formData.isLoose && formData.shortCode ? formData.shortCode.trim() : '');
+
       const productData = {
         shopId: shopData.shopId,
         name: formData.name,
@@ -223,7 +224,7 @@ export default function ProductForm() {
         shortCode: formData.shortCode?.trim() || null,
         isLoose: formData.isLoose ? 1 : 0,
         expiryDate: formData.expiryDate || null,
-        imageUrl: formData.imageUrl || null,
+        imageUrl: formData.imageUrl || null
       };
 
       if (isEditing && id) {
@@ -364,7 +365,7 @@ export default function ProductForm() {
                         </Button>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">Upload or capture product photo (max 2MB)</p>
+                    <p className="text-xs text-muted-foreground">Upload or capture product photo (Auto-compressed under 100 KB)</p>
                   </div>
                 </div>
               </div>
@@ -384,11 +385,11 @@ export default function ProductForm() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold flex items-center gap-2">
-                    खुली / विना-बारकोड वस्तू (Loose / Non-Barcode Item)
+                    Loose / Non-Barcode Grocery Item
                     {formData.isLoose && <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">Active</span>}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    उदा. साखर, शेंगदाणे, तांदूळ, तूरडाळ, गहू, पोहे ज्यावर बारकोड नसतो.
+                    For items without barcodes such as sugar, rice, grains, pulses, and spices.
                   </p>
                 </div>
               </div>
@@ -418,7 +419,7 @@ export default function ProductForm() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="shortCode" className="font-bold flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
-                      <Hash className="h-4 w-4 text-amber-600" /> शॉर्टकट नंबर / POS कोड (उदा. 1, 2, 3...) *
+                      <Hash className="h-4 w-4 text-amber-600" /> Shortcut Code / POS Number (e.g. 1, 2, 3...) *
                     </Label>
                     <Button 
                       type="button" 
@@ -427,30 +428,30 @@ export default function ProductForm() {
                       className="h-7 text-xs border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/50"
                       onClick={handleAutoShortCode}
                     >
-                      <Sparkles className="h-3 w-3 mr-1" /> ऑटो नंबर द्या
+                      <Sparkles className="h-3 w-3 mr-1" /> Auto Number
                     </Button>
                   </div>
                   <Input 
                     id="shortCode" 
                     value={formData.shortCode} 
                     onChange={handleChange} 
-                    placeholder="उदा. 1, 2, 3, 101..." 
+                    placeholder="e.g. 1, 2, 3, 101..." 
                     className="font-black text-xl bg-white dark:bg-card border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100" 
                   />
                   <p className="text-xs text-amber-800 dark:text-amber-300/80 leading-relaxed">
-                    💡 <strong>फास्ट बिलिंग:</strong> POS मध्ये फक्त <strong>"{formData.shortCode || '1'}"</strong> दाबून Enter मारल्यास ही वस्तू लगेच बिलात ॲड होईल!
+                    💡 <strong>Fast Billing:</strong> In POS billing, type <strong>"{formData.shortCode || '1'}"</strong> and press Enter to instantly add this item to cart!
                   </p>
                 </div>
 
                 <div className="rounded-xl bg-white/60 dark:bg-black/20 p-4 border border-amber-500/20 text-xs space-y-2 flex flex-col justify-center">
                   <p className="font-bold text-amber-900 dark:text-amber-200">
-                    🏪 किराणा दुकानासाठी विशेष सोय:
+                    🏪 Grocery Store Advantage:
                   </p>
                   <p className="text-muted-foreground">
-                    • बारकोड नसलेले धान्य, डाळी, साखर यांसारख्या वस्तूंना लहान नंबर (उदा. 1, 2, 3) देऊन जलद बिलिंग करता येते.
+                    • Quickly sell unpackaged items with single-digit short codes without scanning barcodes.
                   </p>
                   <p className="text-muted-foreground">
-                    • बिलिंग स्क्रीनवर या वस्तूंची स्वतंत्र जलद पट्टी (Quick Buttons) दिसेल.
+                    • These items also appear as 1-click Quick Buttons at the top of POS billing.
                   </p>
                 </div>
               </div>
@@ -533,11 +534,11 @@ export default function ProductForm() {
                   id="barcode" 
                   value={formData.barcode}
                   onChange={handleChange}
-                  placeholder={formData.isLoose ? `Optional (शॉर्ट कोड "${formData.shortCode || '1'}" वापरला जाईल)` : "Scan or enter barcode"} 
+                  placeholder={formData.isLoose ? `Optional (Short code "${formData.shortCode || '1'}" will be used)` : "Scan or enter barcode"} 
                 />
                 {formData.isLoose && (
                   <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                    ℹ️ विना-बारकोड वस्तूसाठी बारकोड रिकामा ठेवला तरी चालेल — शॉर्टकट नंबर <strong>{formData.shortCode || '1'}</strong> आपोआप काम करेल.
+                    ℹ️ For loose items without barcodes, leave blank — shortcut code <strong>{formData.shortCode || '1'}</strong> will be used automatically.
                   </p>
                 )}
               </div>

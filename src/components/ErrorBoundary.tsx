@@ -47,10 +47,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
             <div className="space-y-1.5">
               <h2 className="text-xl font-black text-foreground">
-                {this.props.fallbackTitle || 'सिस्टम तात्पुरती थांबली (System Recovered)'}
+                {this.props.fallbackTitle || 'System Recovered'}
               </h2>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                काही काळजी करू नका! दुकानातील चालू डेटा आणि बिलांचा डेटा सुरक्षित आहे. खालील बटण दाबून स्टोअर पुन्हा सुरू करा.
+                Your store and transaction data is completely safe. Click the button below to restart the screen.
               </p>
             </div>
 
@@ -67,14 +67,14 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={this.handleGoHome}
                 className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold"
               >
-                <Home className="h-4 w-4" /> मुख्य पान (Home)
+                <Home className="h-4 w-4" /> Home Screen
               </Button>
               <Button
                 size="sm"
                 onClick={this.handleReset}
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center gap-1.5 text-xs font-bold shadow-sm"
               >
-                <RefreshCw className="h-4 w-4" /> रीलोड करा (Reload)
+                <RefreshCw className="h-4 w-4" /> Reload Screen
               </Button>
             </div>
           </div>

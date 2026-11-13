@@ -28,6 +28,17 @@ export interface Shop {
   };
 }
 
+export interface ProductVariant {
+  id: string;
+  name: string; // e.g. "150 gm", "500 gm", "1 kg", "1 Liter"
+  unit?: string;
+  barcode?: string;
+  purchasePrice: number;
+  sellingPrice: number;
+  mrp: number;
+  stock: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -46,11 +57,16 @@ export interface Product {
   isLoose?: boolean | number;
   expiryDate?: string;
   imageUrl?: string;
+  variants?: ProductVariant[];
+  isDeleted?: number | boolean;
+  deletedAt?: string;
   createdAt: string;
 }
 
 export interface CartItem extends Product {
   qty: number;
+  variantId?: string;
+  variantName?: string;
 }
 
 export interface Transaction {
@@ -60,8 +76,10 @@ export interface Transaction {
   taxAmount?: number;
   discountAmount?: number;
   totalAmount: number;
-  paymentMethod: 'cash' | 'upi' | 'udhar';
+  paymentMethod: 'cash' | 'upi' | 'udhar' | 'card' | 'split';
   customerId?: string;
+  isDeleted?: number | boolean;
+  deletedAt?: string;
   createdAt: string; // ISO string
 }
 
@@ -88,6 +106,8 @@ export interface Customer {
   aadharNumber?: string;
   photoUrl?: string;
   aadharPhotoUrl?: string;
+  isDeleted?: number | boolean;
+  deletedAt?: string;
   createdAt: string;
 }
 
@@ -98,4 +118,47 @@ export interface UdharTransaction {
   type: 'credit' | 'payment'; // credit = gave udhar, payment = received money
   notes: string;
   createdAt: string;
+}
+
+export interface StaffMember {
+  id: string;
+  shopId?: string;
+  name: string;
+  phone?: string;
+  role: 'Cashier' | 'Helper' | 'Sales' | 'Delivery' | 'Manager' | 'Cleaner' | string;
+  salaryType: 'monthly' | 'daily';
+  salary: number;
+  joinDate?: string;
+  address?: string;
+  status: 'active' | 'inactive';
+  createdAt?: string;
+}
+
+export interface StaffAttendance {
+  id: string;
+  shopId?: string;
+  staffId: string;
+  date: string; // YYYY-MM-DD
+  status: 'present' | 'absent' | 'half_day' | 'paid_leave';
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface StaffSalaryPayment {
+  id: string;
+  shopId?: string;
+  staffId: string;
+  amount: number;
+  type: 'salary' | 'advance' | 'bonus' | 'deduction';
+  monthYear: string; // YYYY-MM
+  paymentDate: string; // YYYY-MM-DD
+  paymentMethod: 'Cash' | 'UPI' | 'Bank';
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface RecycleBinData {
+  products: Product[];
+  transactions: Transaction[];
+  customers: Customer[];
 }

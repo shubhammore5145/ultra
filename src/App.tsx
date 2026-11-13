@@ -21,6 +21,10 @@ import Receipt from './pages/Receipt';
 
 import BarcodePrint from './pages/BarcodePrint';
 import Notifications from './pages/Notifications';
+import RecycleBin from './pages/RecycleBin';
+import BillStore from './pages/BillStore';
+import Analytics from './pages/Analytics';
+import StaffManagement from './pages/StaffManagement';
 
 function App() {
   return (
@@ -35,6 +39,7 @@ function App() {
               <Route element={<Layout />}>
                 {/* Cashier + Admin Routes */}
                 <Route path="/pos" element={<POS />} />
+                <Route path="/bill-store" element={<BillStore />} />
                 <Route path="/barcode-print" element={<BarcodePrint />} />
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/udhar" element={<Udhar />} />
@@ -50,10 +55,13 @@ function App() {
               <Route element={<Layout />}>
                 {/* Admin Only Routes */}
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/staff" element={<StaffManagement />} />
                 <Route path="/purchases" element={<Purchases />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/expenses" element={<Expenses />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/recycle-bin" element={<RecycleBin />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/upgrade" element={<Upgrade />} />
               </Route>

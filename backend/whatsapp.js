@@ -263,12 +263,12 @@ async function sendMessage(phoneNumber, message, shopId = 'default', maxRetries 
 
   // If shop does not have saved credentials or is not connected
   if (!hasSavedCredentials(shopId) && session.clientStatus !== 'CONNECTED') {
-    throw new Error(`या दुकानाचा (${shopId}) WhatsApp अजून जोडलेला नाही. कृपया Settings -> WhatsApp मध्ये जाऊन स्वतःचा WhatsApp QR स्कॅन करा.`);
+    throw new Error(`WhatsApp is not linked for shop (${shopId}). Please link WhatsApp in Settings -> WhatsApp.`);
   }
 
   const isReady = await waitForReady(shopId, 12000);
   if (!isReady || !session.sock || session.clientStatus !== 'CONNECTED') {
-    throw new Error(`WhatsApp bot (${shopId}) कनेक्ट नाहीये (Status: ${session.clientStatus}). कृपया Settings मधून री-कनेक्ट करा.`);
+    throw new Error(`WhatsApp bot (${shopId}) is not connected (Status: ${session.clientStatus}). Please reconnect in Settings.`);
   }
 
   const clean = formatPhoneNumber(phoneNumber);

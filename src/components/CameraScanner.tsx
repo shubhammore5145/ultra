@@ -6,7 +6,7 @@ import {
   X, Camera, CheckCircle2, Loader2, Zap, ZapOff, 
   Sparkles, BrainCircuit, Keyboard, RefreshCw, 
   Upload, AlertTriangle, ShieldAlert, ShoppingCart, 
-  Check, Repeat, HelpCircle
+  Check, Repeat, HelpCircle, Globe, Smartphone
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -65,20 +65,20 @@ export function CameraScanner({
   const [manualBarcode, setManualBarcode] = useState('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const zxingControlsRef = useRef<{ stop: () => void } | null>(null);
+  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const loopRef = useRef<number>(0);
   const isMounted = useRef(true);
-  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
 
-  // Refs to track states inside requestAnimationFrame loops without stale closures
+  // Refs to track states inside async event loops without stale closures
   const scanSuccessRef = useRef(false);
   const isOCRProcessingRef = useRef(false);
   const isContinuousRef = useRef(isContinuous);
   const onScanRef = useRef(onScan);
 
-  // Cooldown tracker to prevent duplicate scans of the exact same barcode in continuous mode
+  // Cooldown tracker to prevent duplicate accidental scans of the exact same barcode in continuous mode
   const lastScannedCodeRef = useRef<string>('');
   const lastScannedTimeRef = useRef<number>(0);
 
@@ -88,7 +88,16 @@ export function CameraScanner({
   useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
 
   const stopScanner = useCallback(() => {
-    if (loopRef.current) cancelAnimationFrame(loopRef.current);
+    if (loopRef.current) {
+      cancelAnimationFrame(loopRef.current);
+      loopRef.current = 0;
+    }
+    if (zxingControlsRef.current) {
+      try {
+        zxingControlsRef.current.stop();
+      } catch (e) {}
+      zxingControlsRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         if (hasTorch && torchOn) {
@@ -113,7 +122,7 @@ export function CameraScanner({
       oscillator.type = 'sine';
       oscillator.frequency.value = 1750;
       gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.01);
+      gainNode.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.01);
       gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.08);
       oscillator.start(audioCtx.currentTime);
       oscillator.stop(audioCtx.currentTime + 0.08);
@@ -122,41 +131,22 @@ export function CameraScanner({
     }
   };
 
-  /** Create ZXing reader with common barcode formats enabled */
+  /** Create ZXing reader with all supermarket barcode formats enabled */
   const createZxingReader = () => {
     const hints = new Map<DecodeHintType, any>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.EAN_8,
       BarcodeFormat.EAN_13,
-      BarcodeFormat.QR_CODE,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,
       BarcodeFormat.UPC_A,
       BarcodeFormat.UPC_E,
-      BarcodeFormat.CODE_39
+      BarcodeFormat.QR_CODE,
+      BarcodeFormat.ITF,
+      BarcodeFormat.CODABAR,
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
     return new BrowserMultiFormatReader(hints);
-  };
-
-  /** Crop center scanning area for ZXing fallback */
-  const cropCenterScanner = (video: HTMLVideoElement, canvas: HTMLCanvasElement): boolean => {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return false;
-    
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    if (!vw || !vh) return false;
-    
-    const cw = Math.floor(vw * 0.85);
-    const ch = Math.floor(vh * 0.45);
-    const cx = Math.floor((vw - cw) / 2);
-    const cy = Math.floor((vh - ch) / 2);
-    
-    canvas.width = cw;
-    canvas.height = ch;
-    
-    ctx.drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch);
-    return true;
   };
 
   const handleFoundCode = (code: string) => {
@@ -165,8 +155,8 @@ export function CameraScanner({
     if (!cleanCode) return;
 
     const now = Date.now();
-    // Cooldown check: if the exact same barcode was scanned within 1.4 seconds, ignore duplicate
-    if (lastScannedCodeRef.current === cleanCode && (now - lastScannedTimeRef.current) < 1400) {
+    // Cooldown check: if the exact same barcode was scanned within 1.3 seconds, ignore duplicate
+    if (lastScannedCodeRef.current === cleanCode && (now - lastScannedTimeRef.current) < 1300) {
       return;
     }
 
@@ -177,7 +167,7 @@ export function CameraScanner({
 
     playBeep();
 
-    // Visual feedback for mobile user
+    // Visual feedback for cashier / staff
     setLastScannedCode(cleanCode);
     setFlashActive(true);
     setTimeout(() => {
@@ -188,10 +178,8 @@ export function CameraScanner({
       // Continuous mode: keep camera running and notify POS to add to cart
       onScanRef.current(cleanCode, false);
     } else {
-      // Single scan mode: cancel animation loop and auto-close
-      if (loopRef.current) {
-        cancelAnimationFrame(loopRef.current);
-      }
+      // Single scan mode: stop scanner, show success screen and auto-close
+      stopScanner();
       setScanSuccess(true);
       scanSuccessRef.current = true;
       setTimeout(() => {
@@ -210,7 +198,7 @@ export function CameraScanner({
     }
   };
 
-  /** Process barcode from uploaded image file */
+  /** Process barcode from uploaded photo or direct camera capture */
   const handleImageUpload = (file: File) => {
     if (!file) return;
     setIsOCRProcessing(true);
@@ -227,13 +215,36 @@ export function CameraScanner({
 
       const img = new Image();
       img.onload = async () => {
+        // Scale canvas down to max 1280px to prevent mobile GPU OOM and ensure instant decoding
+        const maxDim = 1280;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          setIsOCRProcessing(false);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+
         // 1. Try native BarcodeDetector if available
         if ('BarcodeDetector' in window) {
           try {
             const detector = new (window as any).BarcodeDetector({
               formats: ['code_128', 'ean_13', 'ean_8', 'qr_code', 'upc_a', 'upc_e', 'code_39']
             });
-            const barcodes = await detector.detect(img);
+            const barcodes = await detector.detect(canvas);
             if (barcodes.length > 0 && barcodes[0].rawValue) {
               setIsOCRProcessing(false);
               handleFoundCode(barcodes[0].rawValue);
@@ -245,18 +256,11 @@ export function CameraScanner({
         // 2. Try ZXing on canvas
         try {
           const zxing = createZxingReader();
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const result = zxing.decodeFromCanvas(canvas);
-            if (result && result.getText()) {
-              setIsOCRProcessing(false);
-              handleFoundCode(result.getText());
-              return;
-            }
+          const result = zxing.decodeFromCanvas(canvas);
+          if (result && result.getText()) {
+            setIsOCRProcessing(false);
+            handleFoundCode(result.getText());
+            return;
           }
         } catch (_zxingErr) {
           console.log('[CameraScanner] Image ZXing decode attempt failed, checking OCR');
@@ -265,7 +269,7 @@ export function CameraScanner({
         // 3. Fallback to Tesseract OCR to read barcode digits directly
         setOcrStatus('AI reading barcode numbers...');
         try {
-          const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng');
+          const { data: { text } } = await Tesseract.recognize(canvas.toDataURL('image/jpeg', 0.85), 'eng');
           const cleanedText = text
             .toUpperCase()
             .replace(/O/g, '0')
@@ -298,26 +302,43 @@ export function CameraScanner({
 
   /** Resilient Multi-tier Camera Stream Acquisition */
   const acquireCameraStream = async (targetDeviceId?: string | null): Promise<MediaStream> => {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    // Check HTTPS security requirement for mobile browsers
+    if (!window.isSecureContext && !isLocalhost) {
+      const err = new Error('Insecure HTTP context - HTTPS required for camera');
+      err.name = 'InsecureContextError';
+      throw err;
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      const isSecure = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const err = new Error(isSecure ? 'Camera API not supported on this browser' : 'Insecure context');
-      err.name = isSecure ? 'NotSupportedError' : 'InsecureContextError';
+      const err = new Error('Camera API not supported on this browser');
+      err.name = 'NotSupportedError';
       throw err;
     }
 
     const attempts: MediaStreamConstraints[] = [];
 
-    // 1. Explicit preferred device if chosen
+    // 1. Explicit preferred device if chosen and valid
     if (targetDeviceId) {
       attempts.push({
-        video: { deviceId: { exact: targetDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { deviceId: { exact: targetDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
       });
       attempts.push({
         video: { deviceId: { exact: targetDeviceId } }
       });
     }
 
-    // 2. High-speed 720p Environment (Back) camera - best for smartphones
+    // 2. High-speed 1080p Environment (Back) camera - standard for ultra-fast barcode recognition
+    attempts.push({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    });
+
+    // 3. Relaxed 720p environment camera
     attempts.push({
       video: {
         facingMode: { ideal: 'environment' },
@@ -326,17 +347,17 @@ export function CameraScanner({
       }
     });
 
-    // 3. Relaxed environment camera
+    // 4. Basic environment camera
     attempts.push({
       video: { facingMode: { ideal: 'environment' } }
     });
 
-    // 4. Standard 720p or any camera
+    // 5. Standard 720p any camera
     attempts.push({
       video: { width: { ideal: 1280 }, height: { ideal: 720 } }
     });
 
-    // 5. Bare video constraint (guaranteed compatibility with webcams and front cams)
+    // 6. Bare video constraint (guaranteed fallback for laptops, webcams, front cams)
     attempts.push({
       video: true
     });
@@ -357,8 +378,8 @@ export function CameraScanner({
           try { localStorage.removeItem('preferredCameraId'); } catch(e) {}
         }
         
-        // Only stop early on NotAllowedError if we are on generic attempts
-        if ((err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') && i >= 2) {
+        // Only stop early on NotAllowedError if we are past deviceId attempts
+        if ((err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') && (!targetDeviceId || i >= 2)) {
           throw err;
         }
       }
@@ -371,15 +392,27 @@ export function CameraScanner({
   const parseCameraError = (err: any): ErrorState => {
     const name = err?.name || '';
     const msg = err?.message || '';
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
+    // 1. Insecure HTTP Context (Mobile phone opened via http://192.168.x.x without HTTPS)
+    if (name === 'InsecureContextError' || (!window.isSecureContext && !isLocalhost)) {
+      return {
+        type: 'insecure',
+        title: 'HTTPS Connection Required For Phone Camera',
+        message: 'Google Chrome and mobile browsers automatically block live camera video on local HTTP addresses (e.g. http://192.168.x.x). To use live camera on phone, open via HTTPS or Vercel link, or use the "Take Photo" button below.'
+      };
+    }
+
+    // 2. Permission Denied
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || msg.toLowerCase().includes('permission')) {
       return {
         type: 'permission',
         title: 'Camera Permission Blocked',
-        message: 'Your browser has blocked camera access. Please allow camera permissions in your browser or site settings.'
+        message: 'Your browser has blocked camera access. Please click the lock 🔒 or camera icon in your address bar, set Camera to "Allow", and click Retry.'
       };
     }
 
+    // 3. No Camera Hardware
     if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
       return {
         type: 'notFound',
@@ -388,19 +421,12 @@ export function CameraScanner({
       };
     }
 
+    // 4. Camera In Use by Another App
     if (name === 'NotReadableError' || name === 'TrackStartError') {
       return {
         type: 'inUse',
         title: 'Camera Is In Use',
         message: 'The camera is currently being used by another app (e.g. WhatsApp, Instagram, or another browser tab). Please close that app and retry.'
-      };
-    }
-
-    if (name === 'InsecureContextError' || (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
-      return {
-        type: 'insecure',
-        title: 'HTTPS Connection Required',
-        message: 'Mobile browsers require a secure HTTPS connection or localhost to access camera video streams. Run "npm run tunnel" for remote phone scanning.'
       };
     }
 
@@ -415,7 +441,8 @@ export function CameraScanner({
     setIsInitializing(true);
     setErrorInfo(null);
 
-    let zxingControls: any = null;
+    // Stop existing stream if any
+    stopScanner();
 
     try {
       const stream = await acquireCameraStream(currentCameraId);
@@ -454,7 +481,7 @@ export function CameraScanner({
         console.warn('[CameraScanner] Advanced constraints check:', e);
       }
 
-      // Safe non-hanging video element initialization
+      // Safe video element initialization
       if (videoRef.current) {
         const video = videoRef.current;
         video.srcObject = stream;
@@ -488,73 +515,60 @@ export function CameraScanner({
 
       setIsInitializing(false);
 
-      // ========= MULTI-ENGINE SCAN LOOP =========
-      const hasNative = 'BarcodeDetector' in window;
-      let nativeDetector: any = null;
+      // ========= PRIMARY ENGINE 1: ZXing Direct Video Stream Decoder =========
+      // This is the proven rock-solid engine that decodes EAN-13 / Code-128 in milliseconds
+      try {
+        const codeReader = createZxingReader();
+        zxingReaderRef.current = codeReader;
+        if (videoRef.current) {
+          const controls = await codeReader.decodeFromVideoElement(
+            videoRef.current,
+            (result) => {
+              if (!isMounted.current || scanSuccessRef.current || isOCRProcessingRef.current) return;
+              if (result && result.getText()) {
+                handleFoundCode(result.getText());
+              }
+            }
+          );
+          zxingControlsRef.current = controls;
+        }
+      } catch (zxingErr) {
+        console.warn('[CameraScanner] ZXing live stream binding notice:', zxingErr);
+      }
 
-      if (hasNative) {
-        setUsingNative(true);
+      // ========= TURBO ENGINE 2: Hardware Accelerated Native BarcodeDetector =========
+      // Runs in parallel if supported by browser/device for instant sub-frame detection
+      if ('BarcodeDetector' in window) {
         try {
-          nativeDetector = new (window as any).BarcodeDetector({
+          const nativeDetector = new (window as any).BarcodeDetector({
             formats: [
               'code_128', 'code_39', 'code_93', 'codabar', 
               'data_matrix', 'ean_13', 'ean_8', 'itf', 'pdf417', 
               'qr_code', 'upc_a', 'upc_e'
             ]
           });
-        } catch (_e) {
-          nativeDetector = null;
-        }
-      }
+          setUsingNative(true);
 
-      // Prepare ZXing reader
-      zxingReaderRef.current = createZxingReader();
-
-      let frameCount = 0;
-
-      const scanLoop = async () => {
-        if (!isMounted.current || scanSuccessRef.current || isOCRProcessingRef.current) return;
-        
-        const video = videoRef.current;
-        if (!video || video.readyState < 2) {
-          loopRef.current = requestAnimationFrame(scanLoop);
-          return;
-        }
-
-        frameCount++;
-
-        // Strategy 1: Hardware-Accelerated Native BarcodeDetector directly on the full video frame
-        if (nativeDetector) {
-          try {
-            const results = await nativeDetector.detect(video);
-            if (results.length > 0 && results[0].rawValue) {
-              handleFoundCode(results[0].rawValue);
-              if (!isContinuousRef.current) return;
-            }
-          } catch (_e) { /* continue */ }
-        }
-
-        // Strategy 2: ZXing decoder on cropped canvas (every 3rd frame to conserve mobile CPU)
-        if ((!nativeDetector || frameCount % 3 === 0) && zxingReaderRef.current) {
-          const c1 = canvasRef.current;
-          if (c1) {
-            const successCrop = cropCenterScanner(video, c1);
-            if (successCrop) {
+          const nativeScanLoop = async () => {
+            if (!isMounted.current || scanSuccessRef.current || isOCRProcessingRef.current) return;
+            const video = videoRef.current;
+            if (video && video.readyState >= 2) {
               try {
-                const result = zxingReaderRef.current.decodeFromCanvas(c1);
-                if (result && result.getText()) {
-                  handleFoundCode(result.getText());
+                const barcodes = await nativeDetector.detect(video);
+                if (barcodes.length > 0 && barcodes[0].rawValue) {
+                  handleFoundCode(barcodes[0].rawValue);
                   if (!isContinuousRef.current) return;
                 }
-              } catch (_e) { /* continue */ }
+              } catch (_e) {}
             }
-          }
+            loopRef.current = requestAnimationFrame(nativeScanLoop);
+          };
+
+          loopRef.current = requestAnimationFrame(nativeScanLoop);
+        } catch (_e) {
+          setUsingNative(false);
         }
-
-        loopRef.current = requestAnimationFrame(scanLoop);
-      };
-
-      loopRef.current = requestAnimationFrame(scanLoop);
+      }
 
     } catch (err: any) {
       console.error('[CameraScanner] Camera access failed:', err);
@@ -563,12 +577,6 @@ export function CameraScanner({
         setIsInitializing(false);
       }
     }
-
-    return () => {
-      if (zxingControls) {
-        try { zxingControls.stop(); } catch (_e) {}
-      }
-    };
   };
 
   useEffect(() => {
@@ -615,13 +623,13 @@ export function CameraScanner({
 
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      canvas.width = videoRef.current.videoWidth || 1280;
+      canvas.height = videoRef.current.videoHeight || 720;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error("Canvas context failed");
       ctx.drawImage(videoRef.current, 0, 0);
       
-      const imageData = canvas.toDataURL('image/png');
+      const imageData = canvas.toDataURL('image/jpeg', 0.85);
       setOcrStatus('Reading printed barcode numbers...');
       
       const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
@@ -713,7 +721,7 @@ export function CameraScanner({
               onClick={() => fileInputRef.current?.click()}
               className="py-1.5 px-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 text-slate-400 hover:text-white transition-all"
             >
-              <Upload className="h-3.5 w-3.5" /> Upload
+              <Upload className="h-3.5 w-3.5" /> Upload / Photo
             </button>
 
             <button
@@ -745,7 +753,7 @@ export function CameraScanner({
           </button>
         </div>
 
-        {/* Hidden File Input for Image Scanning */}
+        {/* Hidden File Input for Native Camera & Photo Scanning */}
         <input 
           ref={fileInputRef}
           type="file" 
@@ -760,9 +768,6 @@ export function CameraScanner({
 
         {/* Viewfinder Main Stage */}
         <div className="relative flex-1 bg-black min-h-[320px] sm:min-h-[380px] flex items-center justify-center overflow-hidden">
-          {/* Hidden Canvas for ZXing frame reading */}
-          <canvas ref={canvasRef} className="hidden" />
-
           {/* Single-Scan Mode Success Overlay */}
           {scanSuccess && !isContinuous ? (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-emerald-600 text-white animate-in zoom-in duration-300">
@@ -820,6 +825,8 @@ export function CameraScanner({
               <div className="h-14 w-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-3 ring-4 ring-amber-500/10">
                 {errorInfo.type === 'permission' ? (
                   <ShieldAlert className="h-8 w-8 text-amber-400" />
+                ) : errorInfo.type === 'insecure' ? (
+                  <Globe className="h-8 w-8 text-blue-400" />
                 ) : (
                   <AlertTriangle className="h-8 w-8 text-rose-400" />
                 )}
@@ -830,6 +837,22 @@ export function CameraScanner({
                 {errorInfo.message}
               </p>
 
+              {/* Specific Guidance for Insecure HTTP on Mobile Network */}
+              {errorInfo.type === 'insecure' && (
+                <div className="w-full bg-slate-950/80 border border-slate-800 p-3 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-1.5">
+                  <p className="font-bold text-blue-400 flex items-center gap-1.5 text-xs">
+                    <Smartphone className="h-3.5 w-3.5" /> मोबाईलवर कॅमेरा कसा वापरावा (Phone Options):
+                  </p>
+                  <p className="leading-snug text-[11px] text-slate-300">
+                    <strong>पर्याय १:</strong> खालील <strong>"Upload / Take Photo"</strong> दाबा — याने फोनचा मूळ कॅमेरा थेट उघडतो आणि बारकोड स्कॅन होतो (कोणतीही अडचण येत नाही).
+                  </p>
+                  <p className="leading-snug text-[11px] text-slate-300">
+                    <strong>पर्याय २:</strong> PC वर <code>npm run tunnel</code> रन करून मिळालेली सुरक्षित HTTPS लिंक फोनवर उघडा.
+                  </p>
+                </div>
+              )}
+
+              {/* Specific Guidance for Blocked Permissions */}
               {errorInfo.type === 'permission' && (
                 <div className="w-full bg-slate-950/80 border border-slate-800 p-3 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-1.5">
                   <p className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
@@ -889,6 +912,7 @@ export function CameraScanner({
                 <video 
                   ref={videoRef} 
                   playsInline
+                  webkit-playsinline="true"
                   muted
                   autoPlay
                   className={`w-full h-full object-cover transition-opacity duration-300 ${isOCRProcessing ? 'opacity-30 blur-sm' : 'opacity-100'}`}
@@ -924,7 +948,7 @@ export function CameraScanner({
                   </div>
                 )}
 
-                {/* Floating Top Left Badge: Native Hardware Acceleration */}
+                {/* Floating Top Left Badge: Engine Indicator */}
                 {!isInitializing && !isOCRProcessing && (
                   <div className="absolute top-3 left-3 flex flex-col gap-1 z-20">
                     <div className="px-2.5 py-1 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white font-mono flex items-center gap-1.5 border border-white/15 shadow-md">
@@ -982,79 +1006,73 @@ export function CameraScanner({
                   </div>
                 )}
               </div>
+              
+              {/* Bottom Quick-Action Toolbar inside camera view */}
+              {!isInitializing && !isOCRProcessing && (
+                <div className="p-2.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-around w-full shrink-0 z-20">
+                  <Button 
+                    size="sm"
+                    onClick={runOCR} 
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs h-9 px-3"
+                  >
+                    <BrainCircuit className="mr-1.5 h-3.5 w-3.5 text-emerald-400" />
+                    AI OCR Read
+                  </Button>
+                  <Button 
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()} 
+                    variant="outline"
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs h-9 px-3"
+                  >
+                    <Upload className="mr-1.5 h-3.5 w-3.5 text-blue-400" />
+                    Photo Scan
+                  </Button>
+                  <Button 
+                    size="sm"
+                    onClick={() => setActiveTab('manual')} 
+                    variant="outline"
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs h-9 px-3"
+                  >
+                    <Keyboard className="mr-1.5 h-3.5 w-3.5 text-amber-400" />
+                    Type Code
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Kirana Staff Control Bar: Live Cart Summary + Finish Button */}
-        <div className="bg-slate-950 border-t border-slate-800 p-3 sm:p-4 shrink-0 flex flex-col gap-2.5 text-white">
-          {cartCount !== undefined ? (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold">
-                  <ShoppingCart className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-slate-400 font-medium">Cart:</span>
-                    <span className="text-sm font-bold text-white">{cartCount} items</span>
-                  </div>
-                  <p className="text-base font-black text-emerald-400 leading-tight">
-                    ₹{Number(cartTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-
-              <Button
-                onClick={onClose}
-                className="h-11 px-5 font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg flex items-center gap-2 text-sm"
-              >
-                <Check className="h-4 w-4" />
-                Done Scanning
-              </Button>
+        {/* Bottom Cart Status & Done Scanning Action Bar */}
+        <div className="bg-slate-900 border-t border-slate-800 p-3 sm:p-4 flex items-center justify-between shrink-0 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400">
+              <ShoppingCart className="h-5 w-5" />
             </div>
-          ) : null}
-
-          {/* Quick Tools Row (AI OCR / Upload / Enter Code) */}
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={runOCR}
-              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-800 transition-all"
-            >
-              <BrainCircuit className="h-3.5 w-3.5 text-emerald-400" /> AI OCR
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-800 transition-all"
-            >
-              <Upload className="h-3.5 w-3.5 text-blue-400" /> Photo Scan
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('manual')}
-              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-800 transition-all"
-            >
-              <Keyboard className="h-3.5 w-3.5 text-amber-400" /> Type Code
-            </button>
+            <div>
+              <p className="text-xs text-slate-400 font-medium">
+                Cart: <span className="text-white font-bold">{cartCount !== undefined ? cartCount : 0} items</span>
+              </p>
+              <p className="text-base font-black text-emerald-400 leading-tight">
+                ₹{cartTotal !== undefined ? cartTotal.toFixed(2) : '0.00'}
+              </p>
+            </div>
           </div>
+
+          <Button
+            onClick={onClose}
+            className="h-11 px-5 font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg flex items-center gap-2"
+          >
+            <Check className="h-4 w-4" /> Done Scanning
+          </Button>
         </div>
       </div>
       
       <style>{`
         @keyframes scan {
-          0% { top: 2%; opacity: 0; }
+          0% { top: 0%; opacity: 0; }
           15% { opacity: 1; }
           85% { opacity: 1; }
-          100% { top: 98%; opacity: 0; }
-        }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin-slow {
-          animation: spin-slow 8s linear infinite;
+          100% { top: 100%; opacity: 0; }
         }
       `}</style>
     </div>

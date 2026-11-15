@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS users (
   "displayName" TEXT,
   role TEXT DEFAULT 'staff',
   "shopId" TEXT REFERENCES shops("shopId") ON DELETE SET NULL,
+  permissions TEXT DEFAULT '[]',
   "createdAt" TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -210,6 +211,47 @@ CREATE TABLE IF NOT EXISTS promo_codes (
   "createdAt" TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Staff Table
+CREATE TABLE IF NOT EXISTS staff (
+  id TEXT PRIMARY KEY,
+  "shopId" TEXT REFERENCES shops("shopId") ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  phone TEXT,
+  role TEXT DEFAULT 'Helper',
+  "salaryType" TEXT DEFAULT 'monthly',
+  salary NUMERIC(12, 2) DEFAULT 0,
+  "joinDate" DATE DEFAULT CURRENT_DATE,
+  address TEXT,
+  status TEXT DEFAULT 'active',
+  permissions TEXT DEFAULT '[]',
+  "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Staff Attendance Table
+CREATE TABLE IF NOT EXISTS staff_attendance (
+  id TEXT PRIMARY KEY,
+  "shopId" TEXT REFERENCES shops("shopId") ON DELETE CASCADE,
+  "staffId" TEXT REFERENCES staff(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  status TEXT NOT NULL,
+  notes TEXT,
+  "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Staff Salary Payments Table
+CREATE TABLE IF NOT EXISTS staff_salary_payments (
+  id TEXT PRIMARY KEY,
+  "shopId" TEXT REFERENCES shops("shopId") ON DELETE CASCADE,
+  "staffId" TEXT REFERENCES staff(id) ON DELETE CASCADE,
+  amount NUMERIC(12, 2) NOT NULL,
+  type TEXT DEFAULT 'salary',
+  "monthYear" TEXT,
+  "paymentDate" DATE NOT NULL,
+  "paymentMethod" TEXT DEFAULT 'Cash',
+  notes TEXT,
+  "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==========================================================
 -- 3. PERMISSIONS / DISABLE ROW LEVEL SECURITY (RLS)
 -- Enables direct reading/writing via Supabase REST API & anon key
@@ -225,6 +267,9 @@ ALTER TABLE suppliers DISABLE ROW LEVEL SECURITY;
 ALTER TABLE purchases DISABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications DISABLE ROW LEVEL SECURITY;
 ALTER TABLE promo_codes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE staff DISABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_attendance DISABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_salary_payments DISABLE ROW LEVEL SECURITY;
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 
@@ -244,7 +289,10 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, servi
     'suppliers',
     'purchases',
     'notifications',
-    'promo_codes'
+    'promo_codes',
+    'staff',
+    'staff_attendance',
+    'staff_salary_payments'
   ];
 
   for (const table of tables) {

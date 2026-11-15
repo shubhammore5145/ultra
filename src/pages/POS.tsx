@@ -307,12 +307,12 @@ export default function POS() {
     });
   }, []);
 
-  const handleBarcodeScan = useCallback((code: string) => {
+  const handleBarcodeScan = useCallback((code: string): boolean => {
     // If the quick add modal is open, don't trigger another scan
-    if (quickAddBarcode) return;
+    if (quickAddBarcode) return false;
 
     const trimmed = code.trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
     const lower = trimmed.toLowerCase();
 
     // Play supermarket scanner audio beep if enabled
@@ -344,12 +344,15 @@ export default function POS() {
       addToCart(product);
       setShowPhysicalScannerReady(false);
       setSearchTerm('');
+      return true;
     } else {
-      // Open Quick Add Modal
+      // Open Quick Add Modal and close camera so staff can immediately enter details
       setQuickAddBarcode(code);
       setQuickAddName('');
       setQuickAddPrice('');
       setShowPhysicalScannerReady(false);
+      setShowScanner(false);
+      return false;
     }
   }, [products, quickAddBarcode, addToCart, shopData]);
 
@@ -1951,11 +1954,16 @@ export default function POS() {
 
       {showScanner && (
         <CameraScanner 
-          onScan={(code) => {
-            handleBarcodeScan(code);
-            setShowScanner(false);
+          continuous={true}
+          onScan={(code, autoClose) => {
+            const found = handleBarcodeScan(code);
+            if (autoClose || !found) {
+              setShowScanner(false);
+            }
           }}
           onClose={() => setShowScanner(false)}
+          cartCount={cart.reduce((sum, item) => sum + item.qty, 0)}
+          cartTotal={cart.reduce((sum, item) => sum + (item.price * item.qty), 0)}
         />
       )}
 

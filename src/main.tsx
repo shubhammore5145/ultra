@@ -6,15 +6,16 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { registerSW } from 'virtual:pwa-register'
 
 // Register PWA Service Worker for offline capability & automatic updates
-registerSW({
+const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    console.log('New MartGPT PWA update available.');
+    console.log('[PWA] New update available, applying immediately...');
+    updateSW(true);
   },
   onOfflineReady() {
-    console.log('MartGPT PWA is ready for offline use.');
+    console.log('[PWA] MartGPT PWA is ready for offline use.');
   }
-})
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

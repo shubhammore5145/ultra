@@ -1969,16 +1969,11 @@ export default function POS() {
 
       {showScanner && (
         <CameraScanner 
-          continuous={true}
-          onScan={(code, autoClose) => {
-            const found = handleBarcodeScan(code);
-            if (autoClose || !found) {
-              setShowScanner(false);
-            }
+          onScan={(code) => {
+            handleBarcodeScan(code);
+            setShowScanner(false);
           }}
           onClose={() => setShowScanner(false)}
-          cartCount={cart.reduce((sum, item) => sum + item.qty, 0)}
-          cartTotal={cart.reduce((sum, item) => sum + (item.price * item.qty), 0)}
         />
       )}
 

@@ -112,6 +112,22 @@ async function createWindow() {
   // Remove default menu bar for clean modern POS interface
   mainWindow.setMenuBarVisibility(false);
 
+  // Automatically approve media permissions (camera for barcode scanner & mic for voice billing)
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'camera' || permission === 'microphone') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media' || permission === 'camera' || permission === 'microphone') {
+      return true;
+    }
+    return false;
+  });
+
   // In development, load Vite dev server if running
   const isDev = process.env.ELECTRON_DEV === 'true';
   const targetUrl = isDev ? 'http://localhost:5173' : `http://localhost:${PORT}`;

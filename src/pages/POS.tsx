@@ -1034,99 +1034,102 @@ export default function POS() {
       )}
 
       {/* Products & Search Section */}
-      <div className={`flex-1 flex flex-col gap-3.5 min-w-0 md:h-full md:overflow-hidden ${cart.length > 0 ? 'pb-36' : 'pb-24'} md:pb-0`}>
-        <div className="relative flex items-center">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
-          <Input 
-            ref={searchInputRef}
-            placeholder="Search items or scan barcode (F2)..." 
-            className="pl-11 pr-36 h-12 md:h-14 text-sm md:text-base shadow-xs rounded-2xl font-medium bg-background border-border/80"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                const term = searchTerm.trim().toLowerCase();
-                if (!term) return;
+      <div className={`flex-1 flex flex-col gap-3 min-w-0 md:h-full md:overflow-hidden ${cart.length > 0 ? 'pb-32' : 'pb-20'} md:pb-0`}>
+        {/* Sticky Search & Actions Bar for Mobile & Desktop */}
+        <div className="sticky top-0 bg-background/95 backdrop-blur-md pt-0.5 pb-2 z-20">
+          <div className="relative flex items-center">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input 
+              ref={searchInputRef}
+              placeholder="Search item / barcode..." 
+              className="pl-10 pr-28 sm:pr-36 h-11 sm:h-12 md:h-14 text-sm md:text-base shadow-xs rounded-xl sm:rounded-2xl font-medium bg-background border-border/80"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const term = searchTerm.trim().toLowerCase();
+                  if (!term) return;
 
-                // 1. Exact match on shortCode, barcode, or sku
-                const exactMatch = products.find(p => 
-                  ((p as any).shortCode && String((p as any).shortCode).trim().toLowerCase() === term) ||
-                  (p.barcode && p.barcode.trim().toLowerCase() === term) ||
-                  (p.sku && p.sku.trim().toLowerCase() === term)
-                );
+                  // 1. Exact match on shortCode, barcode, or sku
+                  const exactMatch = products.find(p => 
+                    ((p as any).shortCode && String((p as any).shortCode).trim().toLowerCase() === term) ||
+                    (p.barcode && p.barcode.trim().toLowerCase() === term) ||
+                    (p.sku && p.sku.trim().toLowerCase() === term)
+                  );
 
-                if (exactMatch) {
-                  addToCart(exactMatch);
-                  setSearchTerm('');
-                  e.preventDefault();
-                  return;
+                  if (exactMatch) {
+                    addToCart(exactMatch);
+                    setSearchTerm('');
+                    e.preventDefault();
+                    return;
+                  }
+
+                  // 2. Fallback to first filtered product
+                  if (filteredProducts.length > 0) {
+                    addToCart(filteredProducts[0]);
+                    setSearchTerm('');
+                    e.preventDefault();
+                  }
                 }
-
-                // 2. Fallback to first filtered product
-                if (filteredProducts.length > 0) {
-                  addToCart(filteredProducts[0]);
-                  setSearchTerm('');
-                  e.preventDefault();
-                }
-              }
-            }}
-            autoFocus
-          />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="icon"
-              title="Scan Parchi (List)"
-              className="rounded-xl shadow-2xs hover:border-blue-500/50 text-blue-600 bg-blue-50/80 dark:bg-blue-900/20 dark:text-blue-400 h-9 w-9"
-              onClick={() => setShowParchiModal(true)}
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              title="Barcode Scanner"
-              className="rounded-xl shadow-2xs hover:border-primary/50 text-primary bg-primary/5 h-9 w-9"
-              onClick={() => setShowScanner(true)}
-            >
-              <Barcode className="h-4 w-4" />
-            </Button>
-            {voiceSupported && (
+              }}
+              autoFocus
+            />
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-1.5">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
-                className={`rounded-xl transition-all h-9 w-9 relative ${
-                  isListening 
-                    ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 animate-pulse' 
-                    : 'text-muted-foreground hover:text-primary hover:bg-muted'
-                }`}
-                onClick={handleVoiceSearch}
-                title={canAccess('voice_billing') ? "MartGPT Voice Billing" : "Voice Billing (Pro Feature - Click to Upgrade)"}
+                title="Scan Parchi (List)"
+                className="rounded-lg sm:rounded-xl shadow-2xs hover:border-blue-500/50 text-blue-600 bg-blue-50/80 dark:bg-blue-900/20 dark:text-blue-400 h-8 w-8 sm:h-9 sm:w-9"
+                onClick={() => setShowParchiModal(true)}
               >
-                <Mic className="h-4 w-4" />
-                {!canAccess('voice_billing') && (
-                  <span className="absolute -top-1 -right-1 text-[8px] bg-indigo-600 text-white font-black px-1 rounded-full shadow-xs">
-                    PRO
-                  </span>
-                )}
+                <FileText className="h-4 w-4" />
               </Button>
-            )}
+              <Button
+                variant="default"
+                size="icon"
+                title="Barcode Scanner (Staff Mode)"
+                className="rounded-lg sm:rounded-xl shadow-xs text-white bg-emerald-600 hover:bg-emerald-700 h-8 w-8 sm:h-9 sm:w-9"
+                onClick={() => setShowScanner(true)}
+              >
+                <Barcode className="h-4 w-4" />
+              </Button>
+              {voiceSupported && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`rounded-lg sm:rounded-xl transition-all h-8 w-8 sm:h-9 sm:w-9 relative ${
+                    isListening 
+                      ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 animate-pulse' 
+                      : 'text-muted-foreground hover:text-primary hover:bg-muted'
+                  }`}
+                  onClick={handleVoiceSearch}
+                  title={canAccess('voice_billing') ? "MartGPT Voice Billing" : "Voice Billing (Pro Feature - Click to Upgrade)"}
+                >
+                  <Mic className="h-4 w-4" />
+                  {!canAccess('voice_billing') && (
+                    <span className="absolute -top-1 -right-1 text-[8px] bg-indigo-600 text-white font-black px-1 rounded-full shadow-xs">
+                      PRO
+                    </span>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Category Tabs & WhatsApp Bot Live Indicator */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-hide flex-nowrap touch-pan-x shrink-0">
+          <div className="flex gap-1.5 sm:gap-2 shrink-0">
             <Button 
               variant={activeTab === 'all' ? 'default' : 'outline'} 
-              className="rounded-xl px-4 h-8 text-xs font-semibold whitespace-nowrap"
+              className="rounded-xl px-3 sm:px-4 h-8 text-xs font-semibold whitespace-nowrap"
               onClick={() => setActiveTab('all')}
             >
               All Items ({products.length})
             </Button>
             <Button 
               variant={activeTab === 'loose' ? 'default' : 'outline'} 
-              className="rounded-xl px-4 h-8 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5"
+              className="rounded-xl px-3 sm:px-4 h-8 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5"
               onClick={() => setActiveTab('loose')}
             >
               <span className="w-2 h-2 rounded-full bg-amber-500"></span>
@@ -1134,14 +1137,14 @@ export default function POS() {
             </Button>
             <Button 
               variant={activeTab === 'barcoded' ? 'default' : 'outline'} 
-              className="rounded-xl px-4 h-8 text-xs font-semibold whitespace-nowrap"
+              className="rounded-xl px-3 sm:px-4 h-8 text-xs font-semibold whitespace-nowrap"
               onClick={() => setActiveTab('barcoded')}
             >
               Barcoded
             </Button>
           </div>
 
-          <div className="shrink-0">
+          <div className="shrink-0 hidden sm:block">
             {liveWaStatus === 'CONNECTED' || liveWaStatus === 'AUTHENTICATED' ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-300 border border-green-300 dark:border-green-800 shadow-2xs" title="Auto WhatsApp Bot is active.">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -1158,7 +1161,7 @@ export default function POS() {
 
         {/* Compact Quick Loose Items Strip */}
         {looseQuickItems.length > 0 && (
-          <div className="bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/40 dark:border-amber-800/40 rounded-xl p-2.5 shadow-2xs">
+          <div className="bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/40 dark:border-amber-800/40 rounded-xl p-2.5 shadow-2xs shrink-0">
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200">
                 <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
@@ -1168,13 +1171,13 @@ export default function POS() {
                 {looseQuickItems.length} items
               </span>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide flex-nowrap touch-pan-x">
               {looseQuickItems.slice(0, 15).map(item => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => addToCart(item)}
-                  className="shrink-0 flex items-center gap-1.5 bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/80 rounded-lg px-2.5 py-1 shadow-2xs transition-all active:scale-95 group text-left"
+                  className="shrink-0 flex items-center gap-1.5 bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/80 rounded-lg px-2.5 py-1.5 shadow-2xs transition-all active:scale-95 group text-left"
                   title={`Click to add or enter code ${(item as any).shortCode || item.barcode || ''}`}
                 >
                   {((item as any).shortCode) && (
@@ -1191,7 +1194,7 @@ export default function POS() {
         )}
 
         {/* Clean, Compact Product Cards Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 overflow-y-auto flex-1 min-h-0 pr-1 pb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3 md:overflow-y-auto md:flex-1 md:min-h-0 pr-0.5 pb-28 md:pb-4">
           {loading ? (
             <div className="col-span-full flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1263,17 +1266,29 @@ export default function POS() {
 
       {/* Mobile Floating Cart Summary - Only visible when cart has items */}
       {cart.length > 0 && (
-        <div className="md:hidden fixed bottom-[64px] left-0 right-0 p-3 bg-card/95 backdrop-blur-md border-t border-border shadow-[0_-4px_25px_rgba(0,0,0,0.18)] z-30 animate-in slide-in-from-bottom-4 duration-200">
+        <div className="md:hidden fixed bottom-[60px] left-2 right-2 sm:left-4 sm:right-4 p-2.5 sm:p-3 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.25)] z-40 animate-in slide-in-from-bottom-3 duration-200">
           <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
-            <div className="flex-1">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{cart.reduce((s, i) => s + i.qty, 0)} Items</p>
-              <p className="text-xl font-black text-foreground">₹{total.toFixed(2)}</p>
+            <div className="flex items-center gap-2.5">
+              <div className="h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                <ShoppingCart className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide leading-tight">
+                  {cart.reduce((s, i) => s + i.qty, 0)} Items
+                </p>
+                <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-tight">
+                  ₹{total.toFixed(2)}
+                </p>
+              </div>
             </div>
             <Button 
-              className="flex-1 h-12 text-base font-bold shadow-md bg-gradient-to-r from-primary to-purple-600 hover:opacity-90 rounded-xl"
+              className="h-11 px-5 text-sm font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center gap-2 active:scale-95 transition-transform"
               onClick={() => setShowMobileCart(true)}
             >
-              <ShoppingCart className="mr-2 h-5 w-5" /> View Bill ({cart.length})
+              <span>View Bill</span>
+              <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+                {cart.length}
+              </span>
             </Button>
           </div>
         </div>
@@ -1355,15 +1370,15 @@ export default function POS() {
 
       {/* Cart Section (Sidebar on Desktop, Full Overlay on Mobile) */}
       <div className={`
-        fixed inset-0 z-[100] bg-white dark:bg-zinc-950 text-zinc-950 dark:text-zinc-50 flex flex-col
+        fixed inset-0 z-[120] bg-background text-foreground flex flex-col
         md:static md:w-[380px] lg:w-[420px] md:bg-card md:text-card-foreground md:rounded-2xl md:border md:shadow-sm md:h-full md:overflow-hidden md:z-auto shrink-0
         transition-transform duration-300 ease-in-out
         ${showMobileCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
       `}>
         {/* Mobile Header for Cart Overlay */}
-        <div className="md:hidden p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex items-center justify-between shadow-sm">
+        <div className="md:hidden p-4 border-b border-border bg-card flex items-center justify-between shadow-xs">
           <h2 className="font-bold text-xl flex items-center gap-2">
-            <ShoppingCart className="h-6 w-6 text-primary" /> Checkout
+            <ShoppingCart className="h-6 w-6 text-primary" /> Current Bill ({cart.reduce((s, i) => s + i.qty, 0)})
           </h2>
           <div className="flex items-center gap-2">
             {lastBill && cart.length === 0 && (
@@ -1376,7 +1391,7 @@ export default function POS() {
                 <Printer className="h-3.5 w-3.5" /> Last Bill
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={() => setShowMobileCart(false)} className="rounded-full bg-muted/50">
+            <Button variant="ghost" size="icon" onClick={() => setShowMobileCart(false)} className="rounded-full bg-muted">
               <X className="h-6 w-6" />
             </Button>
           </div>
@@ -1405,9 +1420,9 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 overscroll-contain">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-2">
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-2 py-12">
               <ShoppingCart className="h-12 w-12 opacity-20" />
               <p>Cart is empty</p>
               <p className="text-xs">Scan a barcode to add products</p>
@@ -1427,23 +1442,23 @@ export default function POS() {
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.id} className="flex items-center justify-between border-b pb-3">
+              <div key={item.id} className="flex items-center justify-between border-b border-border/70 pb-3">
                 <div className="flex-1 pr-2">
                   <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
                   <p className="text-muted-foreground text-xs mt-1">₹{item.sellingPrice} x {item.qty}</p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <p className="font-bold text-sm">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
-                  <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQty(item.id, -1)}>
-                      <Minus className="h-3 w-3" />
+                  <p className="font-bold text-sm text-foreground">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
+                  <div className="flex items-center gap-1 bg-muted rounded-xl p-1 border border-border/40">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg active:scale-90" onClick={() => updateQty(item.id, -1)}>
+                      <Minus className="h-3.5 w-3.5" />
                     </Button>
-                    <span className="w-6 text-center text-sm font-semibold">{item.qty}</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQty(item.id, 1)}>
-                      <Plus className="h-3 w-3" />
+                    <span className="w-7 text-center text-sm font-bold">{item.qty}</span>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg active:scale-90 text-primary" onClick={() => updateQty(item.id, 1)}>
+                      <Plus className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={() => removeItem(item.id)}>
-                      <Trash className="h-3 w-3" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-rose-500 hover:bg-rose-500/10 active:scale-90" onClick={() => removeItem(item.id)}>
+                      <Trash className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -1452,7 +1467,7 @@ export default function POS() {
           )}
         </div>
 
-        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
+        <div className="p-4 border-t border-border bg-card md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
           <div className="flex flex-col gap-1.5 pb-2 border-b border-zinc-200 dark:border-zinc-800">
             <div className="flex justify-between items-center">
               <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Customer Mobile No. (For WhatsApp Bill)</label>
@@ -1523,7 +1538,7 @@ export default function POS() {
 
           <div className="pt-2">
             <Button 
-              className="w-full h-14 text-lg font-bold shadow-md bg-gradient-to-r from-primary to-purple-600 hover:opacity-90" 
+              className="w-full h-13 text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl active:scale-98 transition-transform" 
               disabled={cart.length === 0 || checkoutLoading}
               onClick={() => {
                 setSplitAmounts({ cash: total, upi: 0, udhar: 0 });
@@ -1542,8 +1557,8 @@ export default function POS() {
       </div>
 
       {showPaymentModal && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-3 sm:p-4">
-          <div className="bg-card text-card-foreground p-5 sm:p-6 rounded-3xl border shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[150] flex flex-col justify-end sm:items-center sm:justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-0 sm:p-4">
+          <div className="bg-card text-card-foreground p-5 sm:p-6 rounded-t-3xl sm:rounded-3xl border shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[92dvh] animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
             {/* Header */}
             <div className="flex justify-between items-center mb-4">
               <div>

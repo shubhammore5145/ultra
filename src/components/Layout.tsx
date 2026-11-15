@@ -18,7 +18,7 @@ export default function Layout() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const isPosPage = location.pathname === '/pos' || location.pathname === '/';
+  const isPosPage = location.pathname === '/pos';
 
   useEffect(() => {
     // Listen for PWA installation prompt
@@ -307,16 +307,16 @@ export default function Layout() {
           <Sidebar />
         </aside>
 
-        {/* Main Content */}
-        <main className={`flex-1 bg-background ${isPosPage ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
-          <div className={`${isPosPage ? 'p-3 pb-24 md:p-4 md:pb-4 max-w-[1600px] h-full flex flex-col min-h-0' : 'p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1`}>
+        {/* Main Content with Native Touch Scrolling on Mobile */}
+        <main className={`flex-1 bg-background ${isPosPage ? 'md:overflow-hidden md:flex md:flex-col overflow-y-auto' : 'overflow-y-auto'} overscroll-y-contain`}>
+          <div className={`${isPosPage ? 'p-2 sm:p-3 md:p-4 md:pb-4 max-w-[1600px] md:h-full md:flex md:flex-col min-h-0' : 'p-3 sm:p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1`}>
             <Outlet />
           </div>
         </main>
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav />
+      <MobileBottomNav onOpenMore={() => setMoreMenuOpen(true)} />
 
       {/* Mobile Drawer */}
       <MobileMoreMenu isOpen={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} unreadNotifs={unreadNotifs} />

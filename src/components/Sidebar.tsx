@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet, Crown,
   HelpCircle, ClipboardList, LogOut, X, Barcode, Bell,
-  Receipt, TrendingUp, UserCheck, Trash2
+  Receipt, TrendingUp, UserCheck, Trash2, Menu
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
@@ -138,17 +138,22 @@ export function Sidebar() {
 }
 
 /** Mobile Bottom Navigation Bar */
-export function MobileBottomNav() {
+export function MobileBottomNav({ onOpenMore }: { onOpenMore?: () => void }) {
   const { userData } = useAuth();
   const userRole = userData?.role || 'cashier';
-  const mobileNavItems = navItems
-    .filter(item => item.roles.includes(userRole))
-    .slice(0, 5);
+
+  // Primary mobile tabs curated for daily Kirana / Supermarket operations
+  const primaryTabs = [
+    ...(userRole === 'admin' ? [{ name: 'Home', href: '/', icon: LayoutDashboard }] : []),
+    { name: 'POS', href: '/pos', icon: ShoppingCart },
+    { name: 'Products', href: '/products', icon: Package },
+    { name: 'Udhar', href: '/udhar', icon: CreditCard },
+  ].slice(0, 4);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border bg-card/95 backdrop-blur-lg safe-area-bottom">
-      <div className="flex items-center justify-around px-2 py-1.5">
-        {mobileNavItems.map((item) => {
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border bg-card/95 backdrop-blur-lg safe-area-bottom shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+      <div className="flex items-center justify-around px-1 py-1">
+        {primaryTabs.map((item) => {
           const Icon = item.icon;
           return (
             <NavLink
@@ -156,19 +161,29 @@ export function MobileBottomNav() {
               to={item.href}
               end={item.href === '/'}
               className={({ isActive }) =>
-                'flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-1.5 min-w-[56px] transition-all duration-200 ' +
-                (isActive ? 'text-primary' : 'text-muted-foreground')
+                'flex flex-col items-center justify-center gap-0.5 rounded-xl px-2.5 py-1 min-w-[54px] transition-all duration-150 ' +
+                (isActive ? 'text-primary font-bold' : 'text-muted-foreground hover:text-foreground')
               }
             >
               {({ isActive }: { isActive: boolean }) => (
                 <>
-                  <Icon className={'h-5 w-5' + (isActive ? ' text-primary' : '')} />
-                  <span className="text-[10px] font-semibold leading-tight">{item.name.split(' ')[0]}</span>
+                  <Icon className={'h-5 w-5' + (isActive ? ' text-primary scale-105' : '')} />
+                  <span className="text-[10px] font-semibold leading-tight">{item.name}</span>
                 </>
               )}
             </NavLink>
           );
         })}
+
+        {/* More / All Features Drawer Button */}
+        <button
+          type="button"
+          onClick={onOpenMore}
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl px-2.5 py-1 min-w-[54px] text-muted-foreground hover:text-foreground active:scale-95 transition-all"
+        >
+          <Menu className="h-5 w-5 text-amber-500" />
+          <span className="text-[10px] font-semibold leading-tight text-foreground">More ☰</span>
+        </button>
       </div>
     </nav>
   );

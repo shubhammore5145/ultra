@@ -9,26 +9,27 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
 import { api } from '../lib/api';
+import { hasPermission } from '../lib/permissions';
 
 const navItems = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin'], color: 'text-indigo-500' },
-  { name: 'POS Billing', href: '/pos', icon: ShoppingCart, roles: ['admin', 'cashier'], color: 'text-emerald-500' },
-  { name: 'Bill Store', href: '/bill-store', icon: Receipt, roles: ['admin', 'cashier'], color: 'text-teal-500' },
-  { name: 'Products', href: '/products', icon: Package, roles: ['admin', 'cashier'], color: 'text-blue-500' },
-  { name: 'Barcode Print', href: '/barcode-print', icon: Barcode, roles: ['admin', 'cashier'], color: 'text-violet-500' },
-  { name: 'Inventory & AI', href: '/inventory', icon: ClipboardList, roles: ['admin', 'cashier'], color: 'text-purple-500' },
-  { name: 'Customers', href: '/customers', icon: Users, roles: ['admin', 'cashier'], color: 'text-cyan-500' },
-  { name: 'Udhar Book', href: '/udhar', icon: CreditCard, roles: ['admin', 'cashier'], color: 'text-rose-500' },
-  { name: 'Staff & Salary', href: '/staff', icon: UserCheck, roles: ['admin'], color: 'text-blue-500' },
-  { name: 'Digital Analytics', href: '/analytics', icon: TrendingUp, roles: ['admin'], color: 'text-emerald-600' },
-  { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, roles: ['admin'], color: 'text-orange-500' },
-  { name: 'Expenses', href: '/expenses', icon: Wallet, roles: ['admin'], color: 'text-amber-500' },
-  { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin'], color: 'text-indigo-400' },
-  { name: 'Recycle Bin', href: '/recycle-bin', icon: Trash2, roles: ['admin'], color: 'text-rose-500' },
-  { name: 'Notifications', href: '/notifications', icon: Bell, roles: ['admin', 'cashier'], color: 'text-amber-500' },
-  { name: 'Settings', href: '/settings', icon: Settings, roles: ['admin'], color: 'text-slate-500' },
-  { name: 'Upgrade', href: '/upgrade', icon: Crown, roles: ['admin'], color: 'text-yellow-500' },
-  { name: 'Support', href: '/support', icon: HelpCircle, roles: ['admin', 'cashier'], color: 'text-green-500' },
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard, permissionKey: 'dashboard', roles: ['admin'], color: 'text-indigo-500' },
+  { name: 'POS Billing', href: '/pos', icon: ShoppingCart, permissionKey: 'pos', roles: ['admin', 'cashier'], color: 'text-emerald-500' },
+  { name: 'Bill Store', href: '/bill-store', icon: Receipt, permissionKey: 'bill_store', roles: ['admin', 'cashier'], color: 'text-teal-500' },
+  { name: 'Products', href: '/products', icon: Package, permissionKey: 'products', roles: ['admin', 'cashier'], color: 'text-blue-500' },
+  { name: 'Barcode Print', href: '/barcode-print', icon: Barcode, permissionKey: 'barcode_print', roles: ['admin', 'cashier'], color: 'text-violet-500' },
+  { name: 'Inventory & AI', href: '/inventory', icon: ClipboardList, permissionKey: 'inventory_ai', roles: ['admin', 'cashier'], color: 'text-purple-500' },
+  { name: 'Customers', href: '/customers', icon: Users, permissionKey: 'customers', roles: ['admin', 'cashier'], color: 'text-cyan-500' },
+  { name: 'Udhar Book', href: '/udhar', icon: CreditCard, permissionKey: 'udhar', roles: ['admin', 'cashier'], color: 'text-rose-500' },
+  { name: 'Staff & Salary', href: '/staff', icon: UserCheck, permissionKey: 'staff', roles: ['admin'], color: 'text-blue-500' },
+  { name: 'Digital Analytics', href: '/analytics', icon: TrendingUp, permissionKey: 'analytics', roles: ['admin'], color: 'text-emerald-600' },
+  { name: 'Purchases', href: '/purchases', icon: ArrowLeftRight, permissionKey: 'purchases', roles: ['admin'], color: 'text-orange-500' },
+  { name: 'Expenses', href: '/expenses', icon: Wallet, permissionKey: 'expenses', roles: ['admin'], color: 'text-amber-500' },
+  { name: 'Reports', href: '/reports', icon: FileText, permissionKey: 'reports', roles: ['admin'], color: 'text-indigo-400' },
+  { name: 'Recycle Bin', href: '/recycle-bin', icon: Trash2, permissionKey: 'recycle_bin', roles: ['admin'], color: 'text-rose-500' },
+  { name: 'Notifications', href: '/notifications', icon: Bell, permissionKey: 'notifications', roles: ['admin', 'cashier'], color: 'text-amber-500' },
+  { name: 'Settings', href: '/settings', icon: Settings, permissionKey: 'settings', roles: ['admin'], color: 'text-slate-500' },
+  { name: 'Upgrade', href: '/upgrade', icon: Crown, permissionKey: 'upgrade', roles: ['admin'], color: 'text-yellow-500' },
+  { name: 'Support', href: '/support', icon: HelpCircle, permissionKey: 'support', roles: ['admin', 'cashier'], color: 'text-green-500' },
 ];
 
 /** Desktop Sidebar */
@@ -36,8 +37,11 @@ export function Sidebar() {
   const { userData, shopData, logout } = useAuth();
   const { plan, canAccess, openUpgradeModal } = usePlan();
   const [unreadNotifs, setUnreadNotifs] = useState(0);
-  const userRole = userData?.role || 'cashier';
-  const filteredNav = navItems.filter(item => item.roles.includes(userRole));
+  const filteredNav = navItems.filter(item => {
+    if (userData?.role === 'admin') return true;
+    if (item.permissionKey === 'notifications' || item.permissionKey === 'support') return true;
+    return hasPermission(userData, item.permissionKey);
+  });
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -142,12 +146,12 @@ export function MobileBottomNav({ onOpenMore }: { onOpenMore?: () => void }) {
   const { userData } = useAuth();
   const userRole = userData?.role || 'cashier';
 
-  // Primary mobile tabs curated for daily Kirana / Supermarket operations
+  // Primary mobile tabs curated based on assigned staff permissions
   const primaryTabs = [
     ...(userRole === 'admin' ? [{ name: 'Home', href: '/', icon: LayoutDashboard }] : []),
-    { name: 'POS', href: '/pos', icon: ShoppingCart },
-    { name: 'Products', href: '/products', icon: Package },
-    { name: 'Udhar', href: '/udhar', icon: CreditCard },
+    ...(hasPermission(userData, 'pos') ? [{ name: 'POS', href: '/pos', icon: ShoppingCart }] : []),
+    ...(hasPermission(userData, 'products') ? [{ name: 'Products', href: '/products', icon: Package }] : []),
+    ...(hasPermission(userData, 'udhar') ? [{ name: 'Udhar', href: '/udhar', icon: CreditCard }] : []),
   ].slice(0, 4);
 
   return (
@@ -201,8 +205,11 @@ export function MobileMoreMenu({
 }) {
   const { userData, shopData, logout } = useAuth();
   const { canAccess } = usePlan();
-  const userRole = userData?.role || 'cashier';
-  const allItems = navItems.filter(item => item.roles.includes(userRole));
+  const allItems = navItems.filter(item => {
+    if (userData?.role === 'admin') return true;
+    if (item.permissionKey === 'notifications' || item.permissionKey === 'support') return true;
+    return hasPermission(userData, item.permissionKey);
+  });
 
   if (!isOpen) return null;
 

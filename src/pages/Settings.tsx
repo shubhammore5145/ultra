@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles, Printer, Barcode, Bluetooth, Usb, Volume2, VolumeX, CheckCircle2, Play, Sliders, Download, Upload, Database, HardDrive, RefreshCw, AlertCircle, FileCheck } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles, Printer, Barcode, Bluetooth, Usb, Volume2, VolumeX, CheckCircle2, Play, Sliders, Download, Upload, Database, HardDrive, RefreshCw, AlertCircle, FileCheck, Shield, X } from 'lucide-react';
+import { APP_PERMISSIONS, STAFF_ROLE_PRESETS } from '../lib/permissions';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
@@ -85,6 +86,44 @@ export default function Settings() {
       console.error('Failed to load staff list', err);
     } finally {
       setLoadingStaff(false);
+    }
+  };
+
+  // Staff Permissions Modal State
+  const [selectedStaffForPerms, setSelectedStaffForPerms] = useState<any | null>(null);
+  const [editingPermissions, setEditingPermissions] = useState<string[]>([]);
+  const [savingPermissions, setSavingPermissions] = useState(false);
+
+  const handleOpenPermissionsModal = (staff: any) => {
+    setSelectedStaffForPerms(staff);
+    const existingPerms = Array.isArray(staff.permissions) && staff.permissions.length > 0
+      ? [...staff.permissions]
+      : ['pos', 'bill_store', 'products', 'barcode_print', 'customers'];
+    setEditingPermissions(existingPerms);
+  };
+
+  const handleTogglePermission = (permId: string) => {
+    setEditingPermissions(prev => 
+      prev.includes(permId) ? prev.filter(p => p !== permId) : [...prev, permId]
+    );
+  };
+
+  const handleApplyPreset = (presetPerms: string[]) => {
+    setEditingPermissions([...presetPerms]);
+  };
+
+  const handleSaveStaffPermissions = async () => {
+    if (!selectedStaffForPerms) return;
+    setSavingPermissions(true);
+    try {
+      await api.staff.updatePermissions(selectedStaffForPerms.uid, editingPermissions);
+      alert(`Permissions updated successfully for ${selectedStaffForPerms.displayName || selectedStaffForPerms.email}!`);
+      setSelectedStaffForPerms(null);
+      fetchStaff();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update staff permissions.');
+    } finally {
+      setSavingPermissions(false);
     }
   };
 
@@ -1002,24 +1041,44 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">No staff accounts found.</p>
             ) : (
               staffList.map((member) => (
-                <div key={member.uid} className="flex items-center justify-between p-4 border rounded-xl bg-background">
+                <div key={member.uid} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-xl bg-background gap-3">
                   <div>
-                    <p className="font-bold text-foreground">{member.displayName || member.email}</p>
-                    <p className="text-sm text-muted-foreground">{member.email}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-foreground text-sm sm:text-base">{member.displayName || member.email}</p>
+                      <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider ${
+                        member.role === 'admin' 
+                          ? 'bg-primary/10 text-primary border border-primary/20' 
+                          : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                      }`}>
+                        {member.role || 'Staff'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{member.email}</p>
+                    {member.role !== 'admin' && (
+                      <p className="text-[11px] text-primary/80 font-medium mt-1 flex items-center gap-1">
+                        <ShieldCheck className="h-3 w-3" />
+                        {Array.isArray(member.permissions) && member.permissions.length > 0 
+                          ? `${member.permissions.length} module permissions assigned`
+                          : 'Standard Cashier access (Default)'}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider ${
-                      member.role === 'admin' 
-                        ? 'bg-primary/10 text-primary border border-primary/20' 
-                        : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-                    }`}>
-                      {member.role || 'Staff'}
-                    </span>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
                     {member.role !== 'admin' && (
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        className="text-xs h-8 border-primary/30 text-primary hover:bg-primary/10 flex items-center gap-1"
+                        onClick={() => handleOpenPermissionsModal(member)}
+                      >
+                        <Shield className="h-3.5 w-3.5" /> Permissions
+                      </Button>
+                    )}
+                    {member.role !== 'admin' && (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="text-xs h-8 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                         onClick={() => handleRemoveStaff(member.uid, member.displayName || member.email)}
                       >
                         Remove
@@ -1598,6 +1657,157 @@ export default function Settings() {
           MartGPT POS • Cut Here
         </div>
       </div>
+
+      {/* Staff Granular Permissions Modal */}
+      {selectedStaffForPerms && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-6 border-b bg-muted/30 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base sm:text-lg text-foreground flex items-center gap-2">
+                    Staff Permissions
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 font-bold">
+                      {editingPermissions.length} Active
+                    </span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Assign feature access for <strong>{selectedStaffForPerms.displayName || selectedStaffForPerms.email}</strong>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedStaffForPerms(null)}
+                className="rounded-full h-8 w-8 hover:bg-muted flex items-center justify-center text-muted-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              {/* Quick Role Presets */}
+              <div>
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2.5 block">
+                  ⚡ Quick Role Presets (एक-क्लिक प्रीसेट्स)
+                </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {STAFF_ROLE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleApplyPreset(preset.permissions)}
+                      className="p-2.5 rounded-xl border text-left hover:border-primary/50 hover:bg-primary/5 transition-all text-xs flex flex-col justify-between group active:scale-95 bg-card"
+                    >
+                      <div>
+                        <span className="font-bold text-foreground block group-hover:text-primary">
+                          {preset.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground block line-clamp-1">
+                          {preset.marathiName}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-primary/80 font-mono mt-1 block">
+                        {preset.permissions.length} modules
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Module-by-Module Permission Checkboxes */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Granular Module Access (वैयक्तिक परवानग्या)
+                  </Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingPermissions(APP_PERMISSIONS.map(p => p.id))}
+                      className="text-[11px] text-primary hover:underline font-medium"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingPermissions([])}
+                      className="text-[11px] text-muted-foreground hover:underline"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {APP_PERMISSIONS.map((perm) => {
+                    const isChecked = editingPermissions.includes(perm.id);
+                    const Icon = perm.icon;
+                    return (
+                      <div
+                        key={perm.id}
+                        onClick={() => handleTogglePermission(perm.id)}
+                        className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all select-none ${
+                          isChecked 
+                            ? 'bg-primary/5 border-primary/40 shadow-xs' 
+                            : 'bg-muted/10 border-border hover:border-border/80 opacity-75'
+                        }`}
+                      >
+                        <div className={`h-5 w-5 rounded-md mt-0.5 flex items-center justify-center shrink-0 border transition-all ${
+                          isChecked 
+                            ? 'bg-primary text-primary-foreground border-primary' 
+                            : 'border-muted-foreground/40'
+                        }`}>
+                          {isChecked && <CheckCircle className="h-3.5 w-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className={`h-4 w-4 shrink-0 ${isChecked ? 'text-primary' : 'text-muted-foreground'}`} />
+                            <span className="font-bold text-xs text-foreground truncate">{perm.name}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+                            {perm.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 border-t bg-muted/20 flex items-center justify-between gap-3 shrink-0">
+              <p className="text-xs text-muted-foreground">
+                Permissions take effect immediately for this staff member.
+              </p>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setSelectedStaffForPerms(null)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  size="sm" 
+                  disabled={savingPermissions}
+                  onClick={handleSaveStaffPermissions}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-4 flex items-center gap-1.5"
+                >
+                  {savingPermissions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Permissions
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

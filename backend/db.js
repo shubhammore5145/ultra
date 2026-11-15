@@ -287,6 +287,8 @@ function getSQLiteDb() {
     try { sqliteDb.exec('ALTER TABLE transactions ADD COLUMN deletedAt TEXT;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE customers ADD COLUMN isDeleted INTEGER DEFAULT 0;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE customers ADD COLUMN deletedAt TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE users ADD COLUMN permissions TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE staff ADD COLUMN permissions TEXT;'); } catch (e) {}
 
     return sqliteDb;
   } catch (err) {

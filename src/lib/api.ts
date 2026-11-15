@@ -660,6 +660,37 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
   }
 
+  // 10.2 Staff Login Accounts & Permissions Fallback
+  if (endpoint.startsWith('/staff')) {
+    if (endpoint.includes('/permissions') && method === 'PUT') {
+      const uid = endpoint.split('/staff/')[1]?.split('/permissions')[0];
+      const body = JSON.parse(options.body as string);
+      try {
+        await supabase.from('users').update({ permissions: body.permissions }).eq('uid', uid);
+      } catch {}
+      return { success: true, permissions: body.permissions };
+    }
+
+    if (method === 'GET') {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('uid, email, displayName, role, permissions')
+          .eq('shopId', shopId || 'default');
+        if (!error && Array.isArray(data)) return data;
+      } catch {}
+      return [];
+    }
+
+    if (method === 'DELETE') {
+      const uid = endpoint.split('/staff/')[1]?.split('?')[0];
+      try {
+        await supabase.from('users').delete().eq('uid', uid);
+      } catch {}
+      return { success: true };
+    }
+  }
+
   // 10.3 Recycle Bin Fallback
   if (endpoint.startsWith('/recycle-bin')) {
     if (method === 'GET') {
@@ -1019,7 +1050,9 @@ export const api = {
   },
   staff: {
     list: () => fetchAPI('/staff', { method: 'GET' }),
-    remove: (uid: string) => fetchAPI(`/staff/${uid}`, { method: 'DELETE' })
+    remove: (uid: string) => fetchAPI(`/staff/${uid}`, { method: 'DELETE' }),
+    updatePermissions: (uid: string, permissions: string[]) => 
+      fetchAPI(`/staff/${uid}/permissions`, { method: 'PUT', body: JSON.stringify({ permissions }) })
   },
   suppliers: {
     list: () => fetchAPI('/suppliers', { method: 'GET' }),

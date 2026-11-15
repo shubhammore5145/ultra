@@ -1,0 +1,221 @@
+import { 
+  ShoppingCart, Receipt, Package, Barcode, ClipboardList, 
+  Users, CreditCard, ArrowLeftRight, Wallet, FileText, 
+  TrendingUp, UserCheck, Trash2, Settings, Shield
+} from 'lucide-react';
+import type { UserData } from '../types';
+
+export interface PermissionDef {
+  id: string;
+  name: string;
+  marathiName: string;
+  description: string;
+  category: 'Billing' | 'Inventory' | 'Khata & Finance' | 'Management';
+  icon: any;
+  defaultCashier: boolean;
+}
+
+export const APP_PERMISSIONS: PermissionDef[] = [
+  // 1. Billing
+  {
+    id: 'pos',
+    name: 'POS Billing',
+    marathiName: 'पीओएस बिलिंग',
+    description: 'Create bills, scan product barcodes & take payments',
+    category: 'Billing',
+    icon: ShoppingCart,
+    defaultCashier: true,
+  },
+  {
+    id: 'bill_store',
+    name: 'Bill Store & Receipts',
+    marathiName: 'जुनी बिले व पावती प्रिंट',
+    description: 'View past bills, reprint receipts and WhatsApp bills',
+    category: 'Billing',
+    icon: Receipt,
+    defaultCashier: true,
+  },
+  {
+    id: 'customers',
+    name: 'Customer Directory',
+    marathiName: 'ग्राहक खाते / यादी',
+    description: 'Add and view customer contact and loyalty info',
+    category: 'Billing',
+    icon: Users,
+    defaultCashier: true,
+  },
+
+  // 2. Inventory
+  {
+    id: 'products',
+    name: 'Products & Pricing',
+    marathiName: 'वस्तू व दर यादी',
+    description: 'View products, edit selling prices and add stock',
+    category: 'Inventory',
+    icon: Package,
+    defaultCashier: true,
+  },
+  {
+    id: 'barcode_print',
+    name: 'Barcode Sticker Print',
+    marathiName: 'बारकोड स्टीकर प्रिंट',
+    description: 'Generate and print custom barcode stickers',
+    category: 'Inventory',
+    icon: Barcode,
+    defaultCashier: true,
+  },
+  {
+    id: 'inventory_ai',
+    name: 'Smart Stock & AI Insights',
+    marathiName: 'स्मार्ट स्टॉक व इन्व्हेंटरी',
+    description: 'View low-stock alerts, expiry tracking and restocking',
+    category: 'Inventory',
+    icon: ClipboardList,
+    defaultCashier: false,
+  },
+  {
+    id: 'purchases',
+    name: 'Suppliers & Purchases',
+    marathiName: 'सप्लायर्स व खरेदी नोंद',
+    description: 'Enter purchase bills from wholesale distributors',
+    category: 'Inventory',
+    icon: ArrowLeftRight,
+    defaultCashier: false,
+  },
+
+  // 3. Khata & Finance
+  {
+    id: 'udhar',
+    name: 'Udhar / Khata Book',
+    marathiName: 'उधारी / खातावही',
+    description: 'Track customer udhar, send WhatsApp reminders & record repayments',
+    category: 'Khata & Finance',
+    icon: CreditCard,
+    defaultCashier: false,
+  },
+  {
+    id: 'expenses',
+    name: 'Shop Expenses',
+    marathiName: 'दुकान खर्च नोंद',
+    description: 'Record daily shop operational expenses (chai, light bill, rent)',
+    category: 'Khata & Finance',
+    icon: Wallet,
+    defaultCashier: false,
+  },
+  {
+    id: 'reports',
+    name: 'Reports & Day-Close',
+    marathiName: 'विक्री अहवाल व नफा-तोटा',
+    description: 'View daily profit, gross sales, GST reports and Z-close',
+    category: 'Khata & Finance',
+    icon: FileText,
+    defaultCashier: false,
+  },
+  {
+    id: 'analytics',
+    name: 'Digital Sales Analytics',
+    marathiName: 'खरेदीदार व विक्री अ‍ॅनालिटिक्स',
+    description: 'Hourly customer footfall and product sales velocity trends',
+    category: 'Khata & Finance',
+    icon: TrendingUp,
+    defaultCashier: false,
+  },
+
+  // 4. Management & Admin
+  {
+    id: 'staff',
+    name: 'Staff & Attendance',
+    marathiName: 'कर्मचारी हजेरी व पगार',
+    description: 'Track staff daily attendance, advances and monthly salary slips',
+    category: 'Management',
+    icon: UserCheck,
+    defaultCashier: false,
+  },
+  {
+    id: 'recycle_bin',
+    name: 'Recycle Bin',
+    marathiName: 'रिसायकल बिन (कचरा पेटी)',
+    description: 'Restore accidentally deleted bills, products or customers',
+    category: 'Management',
+    icon: Trash2,
+    defaultCashier: false,
+  },
+  {
+    id: 'settings',
+    name: 'Store & Hardware Settings',
+    marathiName: 'दुकान व हार्डवेअर सेटिंग्ज',
+    description: 'Configure thermal printers, WhatsApp automation and store details',
+    category: 'Management',
+    icon: Settings,
+    defaultCashier: false,
+  },
+];
+
+export interface RolePreset {
+  id: string;
+  name: string;
+  marathiName: string;
+  description: string;
+  color: string;
+  permissions: string[];
+}
+
+export const STAFF_ROLE_PRESETS: RolePreset[] = [
+  {
+    id: 'cashier',
+    name: 'Cashier (Billing Only)',
+    marathiName: 'कॅशियर (फक्त बिलिंग)',
+    description: 'Can only scan barcodes, make bills and add customers. Cannot see profit, expenses or reports.',
+    color: 'emerald',
+    permissions: ['pos', 'bill_store', 'customers'],
+  },
+  {
+    id: 'sales_clerk',
+    name: 'Sales & Inventory Clerk',
+    marathiName: 'सेल्स व स्टॉक मदतनीस',
+    description: 'Can bill items, view products and print barcode labels.',
+    color: 'blue',
+    permissions: ['pos', 'bill_store', 'products', 'barcode_print', 'customers'],
+  },
+  {
+    id: 'store_manager',
+    name: 'Store Manager',
+    marathiName: 'स्टोअर मॅनेजर (सर्वसामान्य व्यवस्थापक)',
+    description: 'Full access to billing, products, udhar, purchases, expenses and daily reports.',
+    color: 'indigo',
+    permissions: [
+      'pos', 'bill_store', 'products', 'barcode_print', 'inventory_ai', 
+      'customers', 'udhar', 'purchases', 'expenses', 'reports'
+    ],
+  },
+  {
+    id: 'all_access',
+    name: 'All Access (Everything)',
+    marathiName: 'सर्व अधिकार (फुल अ‍ॅक्सेस)',
+    description: 'Access to all 14 store modules and features.',
+    color: 'amber',
+    permissions: APP_PERMISSIONS.map(p => p.id),
+  },
+];
+
+/**
+ * Check whether a user has permission to access a specific module
+ */
+export function hasPermission(userData: UserData | null | undefined, permissionKey: string): boolean {
+  if (!userData) return false;
+
+  // 1. Admin always has access to everything
+  if (userData.role === 'admin') return true;
+
+  // 2. Notifications and Support are accessible to all logged in users
+  if (permissionKey === 'notifications' || permissionKey === 'support') return true;
+
+  // 3. Custom assigned permissions
+  if (Array.isArray(userData.permissions) && userData.permissions.length > 0) {
+    return userData.permissions.includes(permissionKey);
+  }
+
+  // 4. Fallback for unconfigured cashier / staff accounts
+  const def = APP_PERMISSIONS.find(p => p.id === permissionKey);
+  return def ? def.defaultCashier : false;
+}

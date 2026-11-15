@@ -37,33 +37,37 @@ function App() {
             
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
-                {/* Cashier + Admin Routes */}
-                <Route path="/pos" element={<POS />} />
-                <Route path="/bill-store" element={<BillStore />} />
-                <Route path="/barcode-print" element={<BarcodePrint />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/udhar" element={<Udhar />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/products/new" element={<ProductForm />} />
-                <Route path="/products/:id" element={<ProductForm />} />
+                {/* Admin Only Dashboard */}
+                <Route path="/" element={<ProtectedRoute allowedRoles={['admin']}><Dashboard /></ProtectedRoute>} />
+
+                {/* Billing & Sales */}
+                <Route path="/pos" element={<ProtectedRoute requiredPermission="pos"><POS /></ProtectedRoute>} />
+                <Route path="/bill-store" element={<ProtectedRoute requiredPermission="bill_store"><BillStore /></ProtectedRoute>} />
+                <Route path="/barcode-print" element={<ProtectedRoute requiredPermission="barcode_print"><BarcodePrint /></ProtectedRoute>} />
+                <Route path="/customers" element={<ProtectedRoute requiredPermission="customers"><Customers /></ProtectedRoute>} />
+
+                {/* Inventory & Products */}
+                <Route path="/products" element={<ProtectedRoute requiredPermission="products"><Products /></ProtectedRoute>} />
+                <Route path="/products/new" element={<ProtectedRoute requiredPermission="products"><ProductForm /></ProtectedRoute>} />
+                <Route path="/products/:id" element={<ProtectedRoute requiredPermission="products"><ProductForm /></ProtectedRoute>} />
+                <Route path="/inventory" element={<ProtectedRoute requiredPermission="inventory_ai"><Inventory /></ProtectedRoute>} />
+                <Route path="/purchases" element={<ProtectedRoute requiredPermission="purchases"><Purchases /></ProtectedRoute>} />
+
+                {/* Khata & Finance */}
+                <Route path="/udhar" element={<ProtectedRoute requiredPermission="udhar"><Udhar /></ProtectedRoute>} />
+                <Route path="/expenses" element={<ProtectedRoute requiredPermission="expenses"><Expenses /></ProtectedRoute>} />
+                <Route path="/reports" element={<ProtectedRoute requiredPermission="reports"><Reports /></ProtectedRoute>} />
+                <Route path="/analytics" element={<ProtectedRoute requiredPermission="analytics"><Analytics /></ProtectedRoute>} />
+
+                {/* Management & Administration */}
+                <Route path="/staff" element={<ProtectedRoute requiredPermission="staff"><StaffManagement /></ProtectedRoute>} />
+                <Route path="/recycle-bin" element={<ProtectedRoute requiredPermission="recycle_bin"><RecycleBin /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute requiredPermission="settings"><Settings /></ProtectedRoute>} />
+                <Route path="/upgrade" element={<ProtectedRoute allowedRoles={['admin']}><Upgrade /></ProtectedRoute>} />
+
+                {/* Common Utilities */}
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/support" element={<Support />} />
-              </Route>
-            </Route>
-            
-            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route element={<Layout />}>
-                {/* Admin Only Routes */}
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="/staff" element={<StaffManagement />} />
-                <Route path="/purchases" element={<Purchases />} />
-                <Route path="/inventory" element={<Inventory />} />
-                <Route path="/expenses" element={<Expenses />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/recycle-bin" element={<RecycleBin />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/upgrade" element={<Upgrade />} />
               </Route>
             </Route>
             

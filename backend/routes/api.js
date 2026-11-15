@@ -684,10 +684,44 @@ router.put('/shops/plan', async (req, res) => {
 router.get('/staff', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT uid, email, displayName, role FROM users WHERE shopId = ? ORDER BY role ASC, displayName ASC',
+      'SELECT uid, email, displayName, role, permissions FROM users WHERE shopId = ? ORDER BY role ASC, displayName ASC',
       [req.user.shopId]
     );
-    res.json(rows);
+    const parsed = (rows || []).map(r => {
+      let perms = [];
+      if (Array.isArray(r.permissions)) perms = r.permissions;
+      else if (typeof r.permissions === 'string' && r.permissions.trim()) {
+        try { perms = JSON.parse(r.permissions); } catch(e) {}
+      }
+      return { ...r, permissions: perms };
+    });
+    res.json(parsed);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/staff/:uid/permissions', async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only shop admin can modify staff permissions.' });
+  }
+
+  const targetUid = req.params.uid;
+  const permissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+  const permString = JSON.stringify(permissions);
+
+  try {
+    await pool.query(
+      'UPDATE users SET permissions = ? WHERE uid = ? AND shopId = ?',
+      [permString, targetUid, req.user.shopId]
+    );
+
+    try {
+      const supabase = require('../supabase');
+      await supabase.from('users').update({ permissions }).eq('uid', targetUid);
+    } catch (_sbErr) {}
+
+    res.json({ success: true, permissions });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

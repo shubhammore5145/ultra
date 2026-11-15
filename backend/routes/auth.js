@@ -102,6 +102,11 @@ router.post('/login', async (req, res) => {
     
     // Remove password before sending to client
     delete user.password;
+    if (typeof user.permissions === 'string') {
+      try { user.permissions = JSON.parse(user.permissions); } catch(e) { user.permissions = []; }
+    } else if (!user.permissions) {
+      user.permissions = [];
+    }
     
     let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [user.shopId]);
     let shop = shops[0] || null;
@@ -153,7 +158,7 @@ router.get('/me', async (req, res) => {
       }
     }
     
-    let [users] = await pool.query('SELECT uid, email, displayName, role, shopId FROM users WHERE uid = ?', [uid]);
+    let [users] = await pool.query('SELECT uid, email, displayName, role, shopId, permissions FROM users WHERE uid = ?', [uid]);
     if (!users || users.length === 0) {
       try {
         const supabase = require('../supabase');
@@ -166,6 +171,11 @@ router.get('/me', async (req, res) => {
     if (!users || users.length === 0) return res.status(404).json({ error: 'User not found' });
     
     const user = users[0];
+    if (typeof user.permissions === 'string') {
+      try { user.permissions = JSON.parse(user.permissions); } catch(e) { user.permissions = []; }
+    } else if (!user.permissions) {
+      user.permissions = [];
+    }
     const targetShopId = user.shopId || shopId;
     let [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [targetShopId]);
     let shop = shops?.[0] || null;

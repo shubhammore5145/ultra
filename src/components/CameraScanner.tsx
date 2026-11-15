@@ -6,7 +6,7 @@ import {
   X, Camera, CheckCircle2, Loader2, Zap, ZapOff, 
   Sparkles, BrainCircuit, Keyboard, RefreshCw, 
   Upload, AlertTriangle, ShieldAlert, ShoppingCart, 
-  Check, Repeat
+  Check, Repeat, HelpCircle
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -53,7 +53,9 @@ export function CameraScanner({
 
   // Camera Selection State
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [currentCameraId, setCurrentCameraId] = useState<string | null>(localStorage.getItem('preferredCameraId'));
+  const [currentCameraId, setCurrentCameraId] = useState<string | null>(() => {
+    try { return localStorage.getItem('preferredCameraId'); } catch(e) { return null; }
+  });
   
   // OCR & Image processing states
   const [isOCRProcessing, setIsOCRProcessing] = useState(false);
@@ -340,16 +342,23 @@ export function CameraScanner({
     });
 
     let lastError: any = null;
-    for (const constraints of attempts) {
+    for (let i = 0; i < attempts.length; i++) {
+      const constraints = attempts[i];
       try {
-        console.log('[CameraScanner] Trying camera constraints:', constraints);
+        console.log('[CameraScanner] Trying camera constraints attempt', i + 1, constraints);
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (stream) return stream;
       } catch (err: any) {
         console.warn('[CameraScanner] Constraint attempt failed:', err.name, err.message);
         lastError = err;
-        // If user actively denied permission, stop immediately
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        
+        // If preferred device failed, clear it so it doesn't break future attempts
+        if (targetDeviceId && i <= 1) {
+          try { localStorage.removeItem('preferredCameraId'); } catch(e) {}
+        }
+        
+        // Only stop early on NotAllowedError if we are on generic attempts
+        if ((err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') && i >= 2) {
           throw err;
         }
       }
@@ -367,7 +376,7 @@ export function CameraScanner({
       return {
         type: 'permission',
         title: 'Camera Permission Blocked',
-        message: 'Your browser has blocked camera access. Please click the lock 🔒 or camera icon in your address bar, set Camera to "Allow", and click Retry.'
+        message: 'Your browser has blocked camera access. Please allow camera permissions in your browser or site settings.'
       };
     }
 
@@ -391,7 +400,7 @@ export function CameraScanner({
       return {
         type: 'insecure',
         title: 'HTTPS Connection Required',
-        message: 'Mobile browsers require a secure HTTPS connection or localhost to access camera video streams.'
+        message: 'Mobile browsers require a secure HTTPS connection or localhost to access camera video streams. Run "npm run tunnel" for remote phone scanning.'
       };
     }
 
@@ -593,7 +602,9 @@ export function CameraScanner({
     
     stopScanner();
     setCurrentCameraId(nextCameraId);
-    localStorage.setItem('preferredCameraId', nextCameraId);
+    try {
+      localStorage.setItem('preferredCameraId', nextCameraId);
+    } catch(e) {}
     setIsInitializing(true);
   };
 
@@ -649,11 +660,11 @@ export function CameraScanner({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col justify-between sm:items-center sm:justify-center bg-black/95 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-card text-card-foreground p-0 rounded-none sm:rounded-2xl border-0 sm:border border-border shadow-2xl w-full sm:max-w-md h-full sm:h-auto max-h-full sm:max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+    <div className="dark fixed inset-0 z-[100] flex flex-col justify-between sm:items-center sm:justify-center bg-black/95 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200 text-white">
+      <div className="bg-slate-950 text-white p-0 rounded-none sm:rounded-2xl border-0 sm:border border-slate-800 shadow-2xl w-full sm:max-w-md h-full sm:h-auto max-h-full sm:max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
         
         {/* Top Header */}
-        <div className="bg-primary p-3.5 sm:p-4 text-white flex justify-between items-center shrink-0">
+        <div className="bg-emerald-600 p-3.5 sm:p-4 text-white flex justify-between items-center shrink-0 shadow-md">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center shadow-inner">
               <Camera className="h-5 w-5" />
@@ -680,7 +691,7 @@ export function CameraScanner({
         </div>
 
         {/* Action Tabs & Mode Switcher */}
-        <div className="flex items-center justify-between border-b border-border bg-muted/40 p-1.5 shrink-0 gap-1">
+        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/90 p-1.5 shrink-0 gap-1 text-white">
           <div className="flex gap-1 flex-1">
             <button
               type="button"
@@ -690,8 +701,8 @@ export function CameraScanner({
               }}
               className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
                 activeTab === 'camera' 
-                  ? 'bg-card text-primary shadow-xs' 
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? 'bg-slate-800 text-emerald-400 shadow-xs border border-slate-700' 
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
               <Camera className="h-3.5 w-3.5" /> Camera
@@ -700,7 +711,7 @@ export function CameraScanner({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="py-1.5 px-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground transition-all"
+              className="py-1.5 px-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 text-slate-400 hover:text-white transition-all"
             >
               <Upload className="h-3.5 w-3.5" /> Upload
             </button>
@@ -710,8 +721,8 @@ export function CameraScanner({
               onClick={() => setActiveTab('manual')}
               className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
                 activeTab === 'manual' 
-                  ? 'bg-card text-primary shadow-xs' 
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? 'bg-slate-800 text-emerald-400 shadow-xs border border-slate-700' 
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
               <Keyboard className="h-3.5 w-3.5" /> Type Code
@@ -725,8 +736,8 @@ export function CameraScanner({
             title={isContinuous ? 'Continuous multi-scan enabled' : 'Single-item scan mode'}
             className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all ${
               isContinuous 
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' 
-                : 'bg-muted border-border text-muted-foreground'
+                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' 
+                : 'bg-slate-800 border-slate-700 text-slate-400'
             }`}
           >
             <Repeat className={`h-3 w-3 ${isContinuous ? 'animate-spin-slow' : ''}`} />
@@ -748,7 +759,7 @@ export function CameraScanner({
         />
 
         {/* Viewfinder Main Stage */}
-        <div className="relative flex-1 bg-black min-h-[300px] sm:min-h-[360px] flex items-center justify-center overflow-hidden">
+        <div className="relative flex-1 bg-black min-h-[320px] sm:min-h-[380px] flex items-center justify-center overflow-hidden">
           {/* Hidden Canvas for ZXing frame reading */}
           <canvas ref={canvasRef} className="hidden" />
 
@@ -761,13 +772,13 @@ export function CameraScanner({
             </div>
           ) : activeTab === 'manual' ? (
             /* Manual Barcode Entry Mode */
-            <div className="w-full h-full p-6 flex flex-col items-center justify-center gap-4 z-10 bg-card text-card-foreground">
-              <div className="h-14 w-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+            <div className="w-full h-full p-6 flex flex-col items-center justify-center gap-4 z-10 bg-slate-950 text-white">
+              <div className="h-14 w-14 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center ring-4 ring-emerald-500/10">
                 <Keyboard className="h-7 w-7" />
               </div>
               <div className="text-center">
-                <h3 className="font-bold text-lg">Enter Barcode Number</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <h3 className="font-bold text-lg text-white">Enter Barcode Number</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
                   Type the digits printed below the barcode on the package
                 </p>
               </div>
@@ -779,13 +790,13 @@ export function CameraScanner({
                   value={manualBarcode}
                   onChange={(e) => setManualBarcode(e.target.value)}
                   placeholder="e.g. 8901030384729"
-                  className="h-14 text-2xl text-center font-mono tracking-widest font-bold border-2 focus-visible:ring-primary"
+                  className="h-14 text-2xl text-center font-mono tracking-widest font-bold border-2 border-slate-700 bg-slate-900 text-white focus-visible:ring-emerald-500"
                 />
                 <div className="flex gap-2 mt-2">
                   <Button
                     type="button"
                     variant="outline"
-                    className="flex-1 h-11"
+                    className="flex-1 h-11 bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
                     onClick={() => {
                       setActiveTab('camera');
                       if (errorInfo) startCamera();
@@ -796,7 +807,7 @@ export function CameraScanner({
                   <Button
                     type="submit"
                     disabled={manualBarcode.trim().length < 2}
-                    className="flex-1 h-11 font-bold bg-primary hover:bg-primary/90 text-primary-foreground"
+                    className="flex-1 h-11 font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
                   >
                     Add Product
                   </Button>
@@ -804,25 +815,42 @@ export function CameraScanner({
               </form>
             </div>
           ) : errorInfo ? (
-            /* Helpful Camera Error & Permission Recovery View */
-            <div className="w-full max-w-sm p-6 bg-card text-card-foreground rounded-2xl border border-destructive/20 shadow-xl flex flex-col items-center text-center z-10 animate-in fade-in zoom-in-95 m-4">
-              <div className="h-14 w-14 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mb-3">
+            /* High-Contrast Helpful Camera Error & Permission Recovery View */
+            <div className="w-full max-w-sm p-5 sm:p-6 bg-slate-900/95 text-white rounded-2xl border border-slate-700/80 shadow-2xl flex flex-col items-center text-center z-10 animate-in fade-in zoom-in-95 m-3">
+              <div className="h-14 w-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-3 ring-4 ring-amber-500/10">
                 {errorInfo.type === 'permission' ? (
-                  <ShieldAlert className="h-7 w-7" />
+                  <ShieldAlert className="h-8 w-8 text-amber-400" />
                 ) : (
-                  <AlertTriangle className="h-7 w-7" />
+                  <AlertTriangle className="h-8 w-8 text-rose-400" />
                 )}
               </div>
               
-              <h3 className="font-bold text-lg text-foreground mb-1">{errorInfo.title}</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed mb-5">
+              <h3 className="font-bold text-lg text-white mb-1">{errorInfo.title}</h3>
+              <p className="text-xs text-slate-300 leading-relaxed mb-3">
                 {errorInfo.message}
               </p>
+
+              {errorInfo.type === 'permission' && (
+                <div className="w-full bg-slate-950/80 border border-slate-800 p-3 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-1.5">
+                  <p className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+                    <HelpCircle className="h-3.5 w-3.5" /> कॅमेरा कसा सुरू करावा (How to Unblock):
+                  </p>
+                  <p className="leading-snug text-[11px] text-slate-300">
+                    1. ब्राउझरच्या वर <strong>Address Bar</strong> मध्ये <strong>Lock 🔒</strong> किंवा <strong>Camera ❌</strong> आयकॉन दाबा.
+                  </p>
+                  <p className="leading-snug text-[11px] text-slate-300">
+                    2. <strong>Camera</strong> समोर <strong>Allow (चालू करा)</strong> निवडा.
+                  </p>
+                  <p className="leading-snug text-[11px] text-slate-300">
+                    3. खालील <strong>"Try Camera Again"</strong> बटनावर टॅप करा.
+                  </p>
+                </div>
+              )}
 
               <div className="w-full space-y-2.5">
                 <Button 
                   onClick={startCamera} 
-                  className="w-full h-11 font-semibold flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                  className="w-full h-11 font-bold flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg"
                 >
                   <RefreshCw className="h-4 w-4" /> Try Camera Again
                 </Button>
@@ -830,17 +858,17 @@ export function CameraScanner({
                 <Button 
                   variant="outline" 
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-11 font-medium flex items-center justify-center gap-2"
+                  className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700"
                 >
-                  <Upload className="h-4 w-4 text-primary" /> Upload / Take Photo
+                  <Upload className="h-4 w-4 text-emerald-400" /> Upload / Take Photo
                 </Button>
 
                 <Button 
                   variant="secondary" 
                   onClick={() => setActiveTab('manual')}
-                  className="w-full h-11 font-medium flex items-center justify-center gap-2"
+                  className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
                 >
-                  <Keyboard className="h-4 w-4" /> Enter Barcode Manually
+                  <Keyboard className="h-4 w-4 text-amber-400" /> Enter Barcode Manually
                 </Button>
               </div>
             </div>
@@ -848,10 +876,10 @@ export function CameraScanner({
             /* Live Camera Stream View */
             <div className="w-full h-full flex flex-col items-center justify-center relative">
               {isInitializing && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/90 text-white/80 p-6 text-center">
-                  <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-                  <p className="text-sm font-semibold">Starting Smartphone Camera...</p>
-                  <p className="text-xs text-white/50 mt-1 max-w-xs">
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/90 text-white/90 p-6 text-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-emerald-400 mb-3" />
+                  <p className="text-sm font-semibold text-white">Starting Smartphone Camera...</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
                     Please allow camera access permission in your browser if prompted
                   </p>
                 </div>
@@ -870,7 +898,7 @@ export function CameraScanner({
                 {!isInitializing && !isOCRProcessing && (
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
                     <div 
-                      className={`w-[85%] max-w-[340px] h-44 rounded-2xl border-2 transition-all duration-200 relative shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] ${
+                      className={`w-[85%] max-w-[340px] h-44 rounded-2xl border-2 transition-all duration-200 relative shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] ${
                         flashActive 
                           ? 'border-emerald-400 ring-4 ring-emerald-400/70 shadow-[0_0_35px_rgba(52,211,153,0.9)]' 
                           : 'border-white/80'
@@ -891,7 +919,7 @@ export function CameraScanner({
                 {/* OCR AI Processing Overlay */}
                 {isOCRProcessing && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-30 bg-black/75">
-                    <BrainCircuit className="h-12 w-12 text-primary animate-pulse mb-3" />
+                    <BrainCircuit className="h-12 w-12 text-emerald-400 animate-pulse mb-3" />
                     <p className="font-bold tracking-wide text-sm">{ocrStatus}</p>
                   </div>
                 )}
@@ -899,7 +927,7 @@ export function CameraScanner({
                 {/* Floating Top Left Badge: Native Hardware Acceleration */}
                 {!isInitializing && !isOCRProcessing && (
                   <div className="absolute top-3 left-3 flex flex-col gap-1 z-20">
-                    <div className="px-2.5 py-1 bg-black/65 backdrop-blur-md rounded-lg text-[10px] text-white/90 font-mono flex items-center gap-1.5 border border-white/15">
+                    <div className="px-2.5 py-1 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white font-mono flex items-center gap-1.5 border border-white/15 shadow-md">
                       <Sparkles className="h-3 w-3 text-emerald-400" /> 
                       {usingNative ? 'Turbo Hardware Engine' : 'ZXing Optical Engine'}
                     </div>
@@ -928,7 +956,7 @@ export function CameraScanner({
                         title={torchOn ? 'Turn Off Flashlight' : 'Turn On Flashlight'}
                         className={`rounded-full shadow-lg h-9 w-9 backdrop-blur-md border border-white/20 transition-all ${
                           torchOn 
-                            ? 'bg-amber-500 text-black hover:bg-amber-400' 
+                            ? 'bg-amber-500 text-black hover:bg-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.6)]' 
                             : 'bg-black/60 hover:bg-black/80 text-white'
                         }`}
                       >
@@ -940,7 +968,7 @@ export function CameraScanner({
 
                 {/* Multi-Scan Floating Feedback Toast on Item Detection */}
                 {lastScannedCode && isContinuous && (
-                  <div className="absolute bottom-4 left-3 right-3 z-30 flex items-center justify-between bg-emerald-600/95 text-white px-3.5 py-2.5 rounded-xl shadow-2xl border border-emerald-400/50 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-150">
+                  <div className="absolute bottom-4 left-3 right-3 z-30 flex items-center justify-between bg-emerald-600 text-white px-3.5 py-2.5 rounded-xl shadow-2xl border border-emerald-400/50 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-150">
                     <div className="flex items-center gap-2 overflow-hidden">
                       <CheckCircle2 className="h-5 w-5 text-white shrink-0 animate-bounce" />
                       <div className="leading-tight truncate">
@@ -959,19 +987,19 @@ export function CameraScanner({
         </div>
 
         {/* Kirana Staff Control Bar: Live Cart Summary + Finish Button */}
-        <div className="bg-card border-t border-border p-3 sm:p-4 shrink-0 flex flex-col gap-2.5">
+        <div className="bg-slate-950 border-t border-slate-800 p-3 sm:p-4 shrink-0 flex flex-col gap-2.5 text-white">
           {cartCount !== undefined ? (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                <div className="h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold">
                   <ShoppingCart className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-muted-foreground font-medium">Cart:</span>
-                    <span className="text-sm font-bold text-foreground">{cartCount} items</span>
+                    <span className="text-xs text-slate-400 font-medium">Cart:</span>
+                    <span className="text-sm font-bold text-white">{cartCount} items</span>
                   </div>
-                  <p className="text-base font-black text-emerald-600 dark:text-emerald-400 leading-tight">
+                  <p className="text-base font-black text-emerald-400 leading-tight">
                     ₹{Number(cartTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -979,7 +1007,7 @@ export function CameraScanner({
 
               <Button
                 onClick={onClose}
-                className="h-11 px-5 font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md flex items-center gap-2 text-sm"
+                className="h-11 px-5 font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg flex items-center gap-2 text-sm"
               >
                 <Check className="h-4 w-4" />
                 Done Scanning
@@ -992,23 +1020,23 @@ export function CameraScanner({
             <button
               type="button"
               onClick={runOCR}
-              className="flex-1 py-1.5 px-2 bg-muted/60 hover:bg-muted text-foreground text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-border/50 transition-all"
+              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-800 transition-all"
             >
-              <BrainCircuit className="h-3.5 w-3.5 text-primary" /> AI OCR Read
+              <BrainCircuit className="h-3.5 w-3.5 text-emerald-400" /> AI OCR
             </button>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex-1 py-1.5 px-2 bg-muted/60 hover:bg-muted text-foreground text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-border/50 transition-all"
+              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-800 transition-all"
             >
-              <Upload className="h-3.5 w-3.5 text-blue-500" /> Photo Scan
+              <Upload className="h-3.5 w-3.5 text-blue-400" /> Photo Scan
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('manual')}
-              className="flex-1 py-1.5 px-2 bg-muted/60 hover:bg-muted text-foreground text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-border/50 transition-all"
+              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-800 transition-all"
             >
-              <Keyboard className="h-3.5 w-3.5 text-amber-500" /> Type Code
+              <Keyboard className="h-3.5 w-3.5 text-amber-400" /> Type Code
             </button>
           </div>
         </div>

@@ -79,6 +79,10 @@ function cleanRow(table, row) {
       val = null;
     }
 
+    if (table === 'products' && k === 'shopId' && (!val || val === 'SHOP_PERSIST_TEST' || val === 'dswuxrtm5f9')) {
+      val = 'mg4q6ov7ym';
+    }
+
     out[k] = val;
   }
   return out;
@@ -103,8 +107,27 @@ async function upsertTable(table, pkField) {
   let errors = 0;
 
   for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH).map(r => cleanRow(table, r));
-    const { error } = await supabase.from(table).upsert(batch, { onConflict: pkField });
+    let batch = rows.slice(i, i + BATCH).map(r => cleanRow(table, r));
+    let { error } = await supabase.from(table).upsert(batch, { onConflict: pkField });
+
+    // Auto-detect missing columns in Supabase and strip them automatically!
+    while (error && error.message && error.message.includes("Could not find the '")) {
+      const colMatch = error.message.match(/Could not find the '([^']+)' column/);
+      if (colMatch && colMatch[1]) {
+        const missingCol = colMatch[1];
+        console.warn(`  ⚠️ Supabase table "${table}" is missing column "${missingCol}". Stripping and retrying...`);
+        batch = batch.map(item => {
+          const clone = { ...item };
+          delete clone[missingCol];
+          return clone;
+        });
+        const retryRes = await supabase.from(table).upsert(batch, { onConflict: pkField });
+        error = retryRes.error;
+      } else {
+        break;
+      }
+    }
+
     if (error) {
       console.error(`  ❌ ${table} batch [${i}–${i + batch.length}] error:`, error.message);
       errors += batch.length;

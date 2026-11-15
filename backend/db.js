@@ -51,6 +51,25 @@ function getSQLiteDb() {
 
   const dbPath = path.join(dataDir, 'kirana.db');
 
+  if (!fs.existsSync(dbPath)) {
+    const candidates = [
+      path.join(__dirname, 'data', 'kirana.db'),
+      path.join(process.cwd(), 'backend', 'data', 'kirana.db'),
+      path.join(__dirname, '..', 'backend', 'data', 'kirana.db')
+    ];
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate) && path.resolve(candidate) !== path.resolve(dbPath)) {
+        try {
+          fs.copyFileSync(candidate, dbPath);
+          console.log('Seeded SQLite database from:', candidate);
+          break;
+        } catch (copyErr) {
+          console.warn('Could not copy seed database:', copyErr.message);
+        }
+      }
+    }
+  }
+
   try {
     const { DatabaseSync } = require('node:sqlite');
     sqliteDb = new DatabaseSync(dbPath);

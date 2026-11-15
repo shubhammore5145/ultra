@@ -593,16 +593,60 @@ router.get('/shops', async (req, res) => {
 });
 
 router.put('/shops', async (req, res) => {
-  const { name, ownerName, phone, email, address, upiId, publicUrl, settings, gstNumber } = req.body;
+  const { 
+    name, ownerName, phone, email, address, upiId, publicUrl, settings, gstNumber,
+    receiptHeader, receiptFooter, receiptPaperSize, fssaiNumber, invoiceTerms
+  } = req.body;
   try {
     const serializedSettings = typeof settings === 'object' && settings !== null 
       ? JSON.stringify(settings) 
       : (settings || null);
 
-    await pool.query(
-      'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, gstNumber=?, upiId=?, publicUrl=?, settings=? WHERE shopId=?',
-      [name, ownerName, phone, email, address, gstNumber || null, upiId, publicUrl || null, serializedSettings, req.user.shopId]
-    );
+    const [existing] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [req.user.shopId]);
+    if (existing.length === 0) {
+      await pool.query(
+        'INSERT INTO shops (shopId, name, ownerName, phone, email, address, gstNumber, upiId, publicUrl, settings, receiptHeader, receiptFooter, receiptPaperSize, fssaiNumber, invoiceTerms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          req.user.shopId,
+          name || 'My Kirana Store',
+          ownerName || '',
+          phone || null,
+          email || null,
+          address || null,
+          gstNumber || null,
+          upiId || null,
+          publicUrl || null,
+          serializedSettings,
+          receiptHeader || null,
+          receiptFooter || null,
+          receiptPaperSize || 'thermal',
+          fssaiNumber || null,
+          invoiceTerms || null
+        ]
+      );
+    } else {
+      const sh = existing[0];
+      await pool.query(
+        'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, gstNumber=?, upiId=?, publicUrl=?, settings=?, receiptHeader=?, receiptFooter=?, receiptPaperSize=?, fssaiNumber=?, invoiceTerms=? WHERE shopId=?',
+        [
+          name !== undefined ? name : sh.name,
+          ownerName !== undefined ? ownerName : sh.ownerName,
+          phone !== undefined ? phone : sh.phone,
+          email !== undefined ? email : sh.email,
+          address !== undefined ? address : sh.address,
+          gstNumber !== undefined ? (gstNumber || null) : sh.gstNumber,
+          upiId !== undefined ? upiId : sh.upiId,
+          publicUrl !== undefined ? (publicUrl || null) : sh.publicUrl,
+          serializedSettings !== undefined ? serializedSettings : sh.settings,
+          receiptHeader !== undefined ? receiptHeader : sh.receiptHeader,
+          receiptFooter !== undefined ? receiptFooter : sh.receiptFooter,
+          receiptPaperSize !== undefined ? receiptPaperSize : sh.receiptPaperSize,
+          fssaiNumber !== undefined ? fssaiNumber : sh.fssaiNumber,
+          invoiceTerms !== undefined ? invoiceTerms : sh.invoiceTerms,
+          req.user.shopId
+        ]
+      );
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

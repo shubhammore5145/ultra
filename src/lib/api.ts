@@ -423,7 +423,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     }
     if (method === 'PUT') {
       const body = JSON.parse(options.body as string);
-      const { data, error } = await supabase.from('shops').update(body).eq('shopId', shopId);
+      const { data, error } = await supabase.from('shops').upsert({ ...body, shopId });
       if (error) throw new Error(error.message);
       return { success: true, data };
     }

@@ -579,13 +579,26 @@ export function CameraScanner({
     }
   };
 
+  const handleDirectPermissionRequest = async () => {
+    setIsInitializing(true);
+    setErrorInfo(null);
+    try {
+      const directStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      directStream.getTracks().forEach(t => t.stop());
+      await startCamera();
+    } catch (err: any) {
+      console.warn('[CameraScanner] Direct user permission trigger result:', err);
+      setErrorInfo(parseCameraError(err));
+      setIsInitializing(false);
+    }
+  };
+
   useEffect(() => {
     isMounted.current = true;
-    const timer = setTimeout(startCamera, 150);
+    startCamera();
 
     return () => {
       isMounted.current = false;
-      clearTimeout(timer);
       stopScanner();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -838,62 +851,112 @@ export function CameraScanner({
               </p>
 
               {/* Specific Guidance for Insecure HTTP on Mobile Network */}
-              {errorInfo.type === 'insecure' && (
-                <div className="w-full bg-slate-950/80 border border-slate-800 p-3 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-1.5">
-                  <p className="font-bold text-blue-400 flex items-center gap-1.5 text-xs">
-                    <Smartphone className="h-3.5 w-3.5" /> मोबाईलवर कॅमेरा कसा वापरावा (Phone Options):
-                  </p>
-                  <p className="leading-snug text-[11px] text-slate-300">
-                    <strong>पर्याय १:</strong> खालील <strong>"Upload / Take Photo"</strong> दाबा — याने फोनचा मूळ कॅमेरा थेट उघडतो आणि बारकोड स्कॅन होतो (कोणतीही अडचण येत नाही).
-                  </p>
-                  <p className="leading-snug text-[11px] text-slate-300">
-                    <strong>पर्याय २:</strong> PC वर <code>npm run tunnel</code> रन करून मिळालेली सुरक्षित HTTPS लिंक फोनवर उघडा.
-                  </p>
+              {errorInfo.type === 'insecure' ? (
+                <>
+                  <div className="w-full bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-2">
+                    <p className="font-bold text-blue-400 flex items-center gap-1.5 text-xs">
+                      <Smartphone className="h-3.5 w-3.5" /> मोबाईलवर कॅमेरा का सुरू होत नाही?
+                    </p>
+                    <p className="leading-snug text-[11px] text-slate-300">
+                      गुगल क्रोम (Chrome) <strong>http://</strong> लोकल वायफायवर कॅमेरा सिक्युरिटीमुळे ब्लॉक करतो आणि परमिशन विचारतच नाही.
+                    </p>
+                    <p className="leading-snug text-[11px] text-emerald-400 font-semibold">
+                      👉 सर्वात सोपे: खालील हिरव्या बटनाने फोनचा कॅमेरा थेट उघडून फोटो घ्या (कोणतीही परमिशन लागत नाही)!
+                    </p>
+                  </div>
+
+                  <div className="w-full space-y-2.5">
+                    <Button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full h-12 font-bold flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl text-sm"
+                    >
+                      <Camera className="h-5 w-5" /> 📷 फोन कॅमेरा उघडा (Take Photo)
+                    </Button>
+
+                    <Button 
+                      variant="outline" 
+                      onClick={handleDirectPermissionRequest} 
+                      className="w-full h-10 text-xs font-semibold flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> परमिशनसाठी पुन्हा प्रयत्न करा (Retry)
+                    </Button>
+
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => setActiveTab('manual')}
+                      className="w-full h-10 text-xs font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                    >
+                      <Keyboard className="h-3.5 w-3.5 text-amber-400" /> बारकोड नंबर टाईप करा
+                    </Button>
+                  </div>
+                </>
+              ) : errorInfo.type === 'permission' ? (
+                <>
+                  <div className="w-full bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-2">
+                    <p className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+                      <HelpCircle className="h-3.5 w-3.5" /> क्रोम परमिशन का विचारत नाही?
+                    </p>
+                    <p className="leading-snug text-[11px] text-slate-300">
+                      कदाचित आधी <strong>"Block"</strong> झाले आहे. अनब्लॉक करण्यासाठी:
+                    </p>
+                    <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-300">
+                      <li>ब्राउझरच्या वर <strong>Address Bar</strong> मध्ये <strong>Lock 🔒</strong> किंवा <strong>Tune 🎚️</strong> आयकॉन दाबा.</li>
+                      <li><strong>Permissions / Site settings</strong> मध्ये <strong>Camera: Allow</strong> करा.</li>
+                      <li>पेज रिफ्रेश करा.</li>
+                    </ol>
+                  </div>
+
+                  <div className="w-full space-y-2.5">
+                    <Button 
+                      onClick={handleDirectPermissionRequest} 
+                      className="w-full h-12 font-bold flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl text-sm"
+                    >
+                      <RefreshCw className="h-5 w-5" /> 🔓 परमिशन द्या (Grant Permission)
+                    </Button>
+
+                    <Button 
+                      variant="outline" 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700"
+                    >
+                      <Camera className="h-4 w-4 text-emerald-400" /> थेट फोन कॅमेरा वापरा (नो परमिशन)
+                    </Button>
+
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => setActiveTab('manual')}
+                      className="w-full h-10 text-xs font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                    >
+                      <Keyboard className="h-3.5 w-3.5 text-amber-400" /> बारकोड नंबर टाईप करा
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="w-full space-y-2.5">
+                  <Button 
+                    onClick={startCamera} 
+                    className="w-full h-11 font-bold flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg"
+                  >
+                    <RefreshCw className="h-4 w-4" /> Try Camera Again
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700"
+                  >
+                    <Upload className="h-4 w-4 text-emerald-400" /> Upload / Take Photo
+                  </Button>
+
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setActiveTab('manual')}
+                    className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
+                  >
+                    <Keyboard className="h-4 w-4 text-amber-400" /> Enter Barcode Manually
+                  </Button>
                 </div>
               )}
-
-              {/* Specific Guidance for Blocked Permissions */}
-              {errorInfo.type === 'permission' && (
-                <div className="w-full bg-slate-950/80 border border-slate-800 p-3 rounded-xl text-left text-xs text-slate-200 mb-4 space-y-1.5">
-                  <p className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
-                    <HelpCircle className="h-3.5 w-3.5" /> कॅमेरा कसा सुरू करावा (How to Unblock):
-                  </p>
-                  <p className="leading-snug text-[11px] text-slate-300">
-                    1. ब्राउझरच्या वर <strong>Address Bar</strong> मध्ये <strong>Lock 🔒</strong> किंवा <strong>Camera ❌</strong> आयकॉन दाबा.
-                  </p>
-                  <p className="leading-snug text-[11px] text-slate-300">
-                    2. <strong>Camera</strong> समोर <strong>Allow (चालू करा)</strong> निवडा.
-                  </p>
-                  <p className="leading-snug text-[11px] text-slate-300">
-                    3. खालील <strong>"Try Camera Again"</strong> बटनावर टॅप करा.
-                  </p>
-                </div>
-              )}
-
-              <div className="w-full space-y-2.5">
-                <Button 
-                  onClick={startCamera} 
-                  className="w-full h-11 font-bold flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg"
-                >
-                  <RefreshCw className="h-4 w-4" /> Try Camera Again
-                </Button>
-
-                <Button 
-                  variant="outline" 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700"
-                >
-                  <Upload className="h-4 w-4 text-emerald-400" /> Upload / Take Photo
-                </Button>
-
-                <Button 
-                  variant="secondary" 
-                  onClick={() => setActiveTab('manual')}
-                  className="w-full h-11 font-medium flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
-                >
-                  <Keyboard className="h-4 w-4 text-amber-400" /> Enter Barcode Manually
-                </Button>
-              </div>
             </div>
           ) : (
             /* Live Camera Stream View */

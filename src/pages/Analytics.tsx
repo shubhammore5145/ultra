@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { 
-  TrendingUp, Clock, AlertTriangle, ShoppingBag, 
+  TrendingUp, AlertTriangle, ShoppingBag, 
   IndianRupee, CreditCard, Users, BarChart3, Sparkles,
   ArrowUpRight, ArrowDownRight, Flame, Calendar,
-  PieChart as PieChartIcon, Star, Gem, HelpCircle,
-  Share2, Check, MessageSquare, ShieldAlert, Zap,
-  Layers, ChevronRight, Award, RefreshCw, Box
+  Star, Gem, Share2, Check, MessageSquare, ShieldAlert, Zap,
+  Layers, Award, Box, Crown, HeartHandshake
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, AreaChart, Area, Cell
+  ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';

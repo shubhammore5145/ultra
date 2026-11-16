@@ -290,6 +290,19 @@ export default function Receipt() {
                     <span>NET PAYABLE</span>
                     <span className="flex items-center text-lg"><IndianRupee className="h-4 w-4 mr-0.5" />{finalTotal.toFixed(2)}</span>
                   </div>
+
+                  {receipt.cashTendered && Number(receipt.cashTendered) > 0 && (
+                    <div className="flex justify-between text-xs text-zinc-600 dark:text-zinc-400 pt-1.5 border-t border-dashed">
+                      <span>Cash Tendered (दिलेली रोकड):</span>
+                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">₹{Number(receipt.cashTendered).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {Number(receipt.changeReturn || 0) > 0 && (
+                    <div className="flex justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      <span>Change Return (परत बाकी):</span>
+                      <span>₹{Number(receipt.changeReturn).toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Savings Banner - Clean & Minimal */}

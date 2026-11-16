@@ -7,7 +7,8 @@ import {
   Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, 
   Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, 
   Barcode, Smartphone, Sparkles, Clock, Send, User, AlertTriangle, UserCheck,
-  RotateCcw, BadgePercent, Calculator, Receipt, ShieldAlert
+  RotateCcw, BadgePercent, Calculator, Receipt, ShieldAlert,
+  Coins, Wallet
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
@@ -139,6 +140,8 @@ export default function POS() {
     taxAmount?: number,
     paymentMethod?: string,
     splitAmounts?: { cash: number, upi: number, udhar: number },
+    cashTendered?: number,
+    changeReturn?: number,
     items: CartItem[], 
     customerName?: string,
     customerPhone: string,
@@ -163,6 +166,8 @@ export default function POS() {
   // Split Payment State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState({ cash: 0, upi: 0, udhar: 0 });
+  const [cashTendered, setCashTendered] = useState('');
+  const [cartCashReceived, setCartCashReceived] = useState('');
   const [customerAadhar, setCustomerAadhar] = useState('');
   const [customerPhoto, setCustomerPhoto] = useState('');
   const [autoRemainderToUdhar, setAutoRemainderToUdhar] = useState(true);
@@ -876,7 +881,36 @@ export default function POS() {
   
   const total = Math.max(0, subtotal + tax - discountAmount);
 
-  const handleCheckout = async (paymentMethod: 'cash' | 'upi' | 'udhar' | 'split' = 'cash', splitAmounts?: { cash: number, upi: number, udhar: number }) => {
+  // Smart Quick Cash Suggestions (e.g. for bill ₹2589 -> ₹2600, ₹3000, ₹5000)
+  const quickCashSuggestions = useMemo(() => {
+    if (total <= 0) return [];
+    const suggestions: number[] = [];
+    const roundedUp10 = Math.ceil(total / 10) * 10;
+    const roundedUp50 = Math.ceil(total / 50) * 50;
+    const roundedUp100 = Math.ceil(total / 100) * 100;
+    const roundedUp500 = Math.ceil(total / 500) * 500;
+
+    if (roundedUp10 > total) suggestions.push(roundedUp10);
+    if (roundedUp50 > total && !suggestions.includes(roundedUp50)) suggestions.push(roundedUp50);
+    if (roundedUp100 > total && !suggestions.includes(roundedUp100)) suggestions.push(roundedUp100);
+    if (roundedUp500 > total && !suggestions.includes(roundedUp500)) suggestions.push(roundedUp500);
+
+    const commonNotes = [100, 200, 500, 1000, 2000, 3000, 5000];
+    commonNotes.forEach(note => {
+      if (note > total && !suggestions.includes(note)) {
+        suggestions.push(note);
+      }
+    });
+
+    return suggestions.sort((a, b) => a - b).slice(0, 4);
+  }, [total]);
+
+  const handleCheckout = async (
+    paymentMethod: 'cash' | 'upi' | 'udhar' | 'split' = 'cash', 
+    splitAmounts?: { cash: number, upi: number, udhar: number },
+    cashTenderedVal?: number,
+    changeReturnVal?: number
+  ) => {
     if (!shopData?.shopId || cart.length === 0) return;
     
     setCheckoutLoading(true);
@@ -936,6 +970,8 @@ export default function POS() {
         items: cart,
         paymentMethod: paymentMethod,
         splitAmounts: splitAmounts,
+        cashTendered: cashTenderedVal,
+        changeReturn: changeReturnVal,
         customerId: finalCustomerId,
         createdAt: new Date().toISOString()
       });
@@ -951,6 +987,8 @@ export default function POS() {
           items: [...cart],
           paymentMethod,
           splitAmounts,
+          cashTendered: cashTenderedVal,
+          changeReturn: changeReturnVal,
           customerId: finalCustomerId,
           customerName: nameToSend,
           customerPhone: phoneToSend,
@@ -973,6 +1011,8 @@ export default function POS() {
         taxAmount: tax,
         paymentMethod: paymentMethod,
         splitAmounts: splitAmounts,
+        cashTendered: cashTenderedVal,
+        changeReturn: changeReturnVal,
         items: [...cart],
         customerName: nameToSend,
         customerPhone: phoneToSend,
@@ -1018,6 +1058,8 @@ export default function POS() {
 
       // Clear cart on success
       setCart([]);
+      setCashTendered('');
+      setCartCashReceived('');
       setSearchTerm('');
       setCustomerName('');
       setCustomerPhone('');
@@ -1185,6 +1227,24 @@ export default function POS() {
                     <span>🎉 Customer Saved ₹{modalTotalSavings.toFixed(2)} ({modalSavingsPercent}% OFF)!</span>
                   </div>
                 )}
+
+                {/* Change Return Highlight Card */}
+                {Number(checkoutResult.changeReturn || 0) > 0 && (
+                  <div className="mt-3.5 p-3.5 bg-white text-zinc-950 rounded-2xl shadow-lg border-2 border-emerald-400 flex items-center justify-between animate-in zoom-in-95">
+                    <div className="text-left">
+                      <span className="text-[11px] font-extrabold text-zinc-500 uppercase tracking-wider block">
+                        ग्राहकाला परत द्या (Change Due)
+                      </span>
+                      <span className="text-2xl font-black text-emerald-600">
+                        ₹{Number(checkoutResult.changeReturn).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-right text-xs space-y-0.5">
+                      <p className="text-zinc-600">दिलेली रोकड: <strong className="text-zinc-950 font-bold">₹{Number(checkoutResult.cashTendered || checkoutResult.total).toFixed(2)}</strong></p>
+                      <p className="text-zinc-600">बिल रक्कम: <strong className="text-zinc-950 font-bold">₹{checkoutResult.total.toFixed(2)}</strong></p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* WhatsApp Status Banner in Modal */}
@@ -1296,6 +1356,18 @@ export default function POS() {
                       <span>Grand Total:</span>
                       <span>₹{checkoutResult.total.toFixed(2)}</span>
                     </div>
+                    {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 && (
+                      <div className="flex justify-between text-muted-foreground pt-1 border-t border-dashed">
+                        <span>दिलेली रोकड (Cash):</span>
+                        <span className="font-semibold text-foreground">₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(checkoutResult.changeReturn || 0) > 0 && (
+                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
+                        <span>परत बाकी (Change):</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2152,12 +2224,51 @@ export default function POS() {
             <span className="text-primary">₹{total.toFixed(2)}</span>
           </div>
 
+          {/* Quick Cash Given & Change Helper right in Cart */}
+          {cart.length > 0 && total > 0 && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1">
+                  <Coins className="h-3.5 w-3.5 text-emerald-600" /> ग्राहकाने दिलेली रोकड (Cash):
+                </span>
+                {parseFloat(cartCashReceived) > 0 && parseFloat(cartCashReceived) >= total && (
+                  <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 bg-emerald-200/80 dark:bg-emerald-900/80 px-2 py-0.5 rounded-md">
+                    परत: ₹{(parseFloat(cartCashReceived) - total).toFixed(2)}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-1.5">
+                <div className="relative flex-1">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500">₹</span>
+                  <Input
+                    type="number"
+                    placeholder={`उदा. ${quickCashSuggestions[0] || 3000}`}
+                    value={cartCashReceived}
+                    onChange={(e) => setCartCashReceived(e.target.value)}
+                    className="h-8 pl-6 text-xs font-black bg-white text-zinc-950 border-emerald-300 dark:border-emerald-700"
+                  />
+                </div>
+                {quickCashSuggestions.slice(0, 2).map(amt => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setCartCashReceived(amt.toString())}
+                    className="text-[10px] font-bold px-2 h-8 rounded-lg bg-white dark:bg-card border border-emerald-400/50 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100"
+                  >
+                    ₹{amt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="pt-2">
             <Button 
               className="w-full h-13 text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl active:scale-98 transition-transform" 
               disabled={cart.length === 0 || checkoutLoading}
               onClick={() => {
                 setSplitAmounts({ cash: total, upi: 0, udhar: 0 });
+                setCashTendered(cartCashReceived || '');
                 setShowPaymentModal(true);
               }}
             >
@@ -2166,7 +2277,9 @@ export default function POS() {
               ) : (
                 <IndianRupee className="mr-2 h-5 w-5" />
               )}
-              Pay ₹{total.toFixed(2)}
+              {parseFloat(cartCashReceived) >= total 
+                ? `Pay & Return ₹${(parseFloat(cartCashReceived) - total).toFixed(0)} Change ↵` 
+                : `Pay ₹${total.toFixed(2)}`}
             </Button>
           </div>
         </div>
@@ -2197,27 +2310,156 @@ export default function POS() {
                 <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-white/20">
                   <button
                     type="button"
-                    onClick={() => setSplitAmounts({ cash: total, upi: 0, udhar: 0 })}
+                    onClick={() => {
+                      setSplitAmounts({ cash: total, upi: 0, udhar: 0 });
+                      setCashTendered(cartCashReceived || '');
+                    }}
                     className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
                   >
                     💵 All Cash
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSplitAmounts({ cash: 0, upi: total, udhar: 0 })}
+                    onClick={() => {
+                      setSplitAmounts({ cash: 0, upi: total, udhar: 0 });
+                      setCashTendered('');
+                    }}
                     className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
                   >
                     📱 All UPI
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSplitAmounts({ cash: 0, upi: 0, udhar: total })}
+                    onClick={() => {
+                      setSplitAmounts({ cash: 0, upi: 0, udhar: total });
+                      setCashTendered('');
+                    }}
                     className="text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white py-1.5 px-1 rounded-xl transition-all text-center"
                   >
                     📝 All Udhar
                   </button>
                 </div>
               </div>
+
+              {/* D-MART CASH RECEIVED & CHANGE RETURN CALCULATOR */}
+              {(splitAmounts.cash > 0 || (splitAmounts.upi === 0 && splitAmounts.udhar === 0)) && (
+                <div className="bg-emerald-50/80 dark:bg-emerald-950/30 border-2 border-emerald-500/40 dark:border-emerald-700/50 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                      <Coins className="h-4 w-4 text-emerald-600" />
+                      <span>ग्राहकाने दिलेली रोकड (Cash Received)</span>
+                    </div>
+                    {(() => {
+                      const tenderedNum = parseFloat(cashTendered) || splitAmounts.cash || 0;
+                      const cashNeeded = splitAmounts.cash > 0 ? splitAmounts.cash : Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                      const changeDue = Math.max(0, tenderedNum - cashNeeded);
+                      return changeDue > 0 ? (
+                        <span className="text-[11px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full animate-pulse shadow-xs">
+                          परत: ₹{changeDue.toFixed(2)}
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold text-zinc-500">₹</span>
+                      <Input
+                        type="number"
+                        placeholder={`उदा. ${quickCashSuggestions[0] || total}`}
+                        value={cashTendered || (splitAmounts.cash > total ? splitAmounts.cash.toString() : '')}
+                        onChange={(e) => {
+                          const valStr = e.target.value;
+                          setCashTendered(valStr);
+                          const val = parseFloat(valStr) || 0;
+                          if (val > 0) {
+                            const maxNeeded = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                            setSplitAmounts(p => ({ ...p, cash: Math.min(val, maxNeeded) }));
+                          }
+                        }}
+                        className="pl-7 h-11 text-lg font-black bg-white text-zinc-950 border-2 border-emerald-400 dark:border-emerald-600 rounded-xl shadow-xs"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-11 px-3 text-xs font-bold border-emerald-400 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60"
+                      onClick={() => {
+                        const exact = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                        setCashTendered(exact.toString());
+                        setSplitAmounts(p => ({ ...p, cash: exact }));
+                      }}
+                    >
+                      Exact ₹{(total - splitAmounts.upi - splitAmounts.udhar).toFixed(0)}
+                    </Button>
+                  </div>
+
+                  {/* Smart Quick Cash Chips based on bill total */}
+                  {quickCashSuggestions.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-muted-foreground mr-0.5">Quick:</span>
+                      {quickCashSuggestions.map((amt) => {
+                        const tenderedNum = parseFloat(cashTendered) || 0;
+                        const isSelected = tenderedNum === amt;
+                        return (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              setCashTendered(amt.toString());
+                              const maxNeeded = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                              setSplitAmounts(p => ({ ...p, cash: maxNeeded }));
+                            }}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white dark:bg-card border-emerald-300 dark:border-emerald-800 hover:border-emerald-500 text-foreground'
+                            }`}
+                          >
+                            ₹{amt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Change Return Result Highlight Card */}
+                  {(() => {
+                    const tenderedNum = parseFloat(cashTendered) || (splitAmounts.cash > total ? splitAmounts.cash : 0);
+                    const cashNeeded = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                    const changeDue = tenderedNum - cashNeeded;
+
+                    if (tenderedNum >= cashNeeded && tenderedNum > 0) {
+                      return (
+                        <div className="p-3 bg-white dark:bg-card border-2 border-emerald-500 rounded-xl flex items-center justify-between shadow-xs">
+                          <div>
+                            <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-wider block">
+                              ग्राहकाला परत करायची रक्कम (Change Return)
+                            </span>
+                            <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 leading-tight">
+                              ₹{Math.max(0, changeDue).toFixed(2)}
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground space-y-0.5">
+                            <p>दिलेले: <strong className="text-foreground">₹{tenderedNum.toFixed(2)}</strong></p>
+                            <p>बिल: <strong className="text-foreground">₹{cashNeeded.toFixed(2)}</strong></p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (tenderedNum > 0 && changeDue < 0) {
+                      return (
+                        <div className="p-2.5 bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 flex justify-between items-center">
+                          <span>कमी पडणारी रक्कम (Short Amount):</span>
+                          <span className="text-rose-600 dark:text-rose-400 font-black">₹{Math.abs(changeDue).toFixed(2)}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
               
               {/* Customer Mobile & Name for WhatsApp & Udhar */}
               {selectedCustomer ? (
@@ -2490,9 +2732,21 @@ export default function POS() {
                       </div>
                     );
                   }
+                  const excessAmount = Math.abs(diff);
                   return (
-                    <div className="p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded-xl text-xs font-bold text-red-600 text-center">
-                      Excess amount entered: ₹{Math.abs(diff).toFixed(2)} more than total bill.
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500 rounded-2xl flex items-center justify-between shadow-xs">
+                      <div>
+                        <span className="text-[11px] font-extrabold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider block">
+                          ग्राहकाला परत करायची रक्कम (Change Return)
+                        </span>
+                        <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-tight">
+                          ₹{excessAmount.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground font-semibold">
+                        <p>दिलेले: <strong className="text-foreground">₹{currentSum.toFixed(2)}</strong></p>
+                        <p>बिल: <strong className="text-foreground">₹{total.toFixed(2)}</strong></p>
+                      </div>
                     </div>
                   );
                 })()}
@@ -2569,23 +2823,52 @@ export default function POS() {
                 Cancel
               </Button>
               <Button 
-                className="w-2/3 h-12 text-base font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-lg"
+                className="w-2/3 h-12 text-base font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-90 text-white shadow-lg"
                 onClick={() => {
                   setShowPaymentModal(false);
                   let mainMethod: 'cash' | 'upi' | 'udhar' | 'split' = 'split';
-                  if (Math.abs(splitAmounts.cash - total) < 0.01) mainMethod = 'cash';
+                  
+                  const tenderedNum = parseFloat(cashTendered) || 0;
+                  const cashInputVal = splitAmounts.cash || 0;
+                  const effectiveTendered = tenderedNum > 0 ? tenderedNum : (cashInputVal > 0 ? cashInputVal : total);
+                  
+                  const cashNeededForBill = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                  const actualCashPortion = Math.min(cashInputVal > 0 ? cashInputVal : total, cashNeededForBill);
+                  
+                  const actualSplit = {
+                    cash: actualCashPortion,
+                    upi: splitAmounts.upi,
+                    udhar: splitAmounts.udhar
+                  };
+                  
+                  const changeToReturn = Math.max(0, effectiveTendered - actualCashPortion);
+
+                  if (Math.abs(actualCashPortion - total) < 0.01) mainMethod = 'cash';
                   else if (Math.abs(splitAmounts.upi - total) < 0.01) mainMethod = 'upi';
                   else if (Math.abs(splitAmounts.udhar - total) < 0.01) mainMethod = 'udhar';
                   
-                  handleCheckout(mainMethod, splitAmounts);
+                  handleCheckout(mainMethod, actualSplit, effectiveTendered, changeToReturn);
                 }}
                 disabled={
                   checkoutLoading || 
                   (splitAmounts.udhar > 0 && !customerPhone) || 
-                  Math.abs(Number((splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar).toFixed(2)) - total) >= 0.01
+                  (
+                    Number((splitAmounts.cash + splitAmounts.upi + splitAmounts.udhar).toFixed(2)) < (total - 0.01) &&
+                    (parseFloat(cashTendered) || 0) < (total - 0.01)
+                  )
                 }
               >
-                {checkoutLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : `Complete Bill (₹${total.toFixed(2)})`}
+                {checkoutLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (() => {
+                  const tenderedNum = parseFloat(cashTendered) || (splitAmounts.cash > total ? splitAmounts.cash : 0);
+                  const cashNeeded = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
+                  const changeDue = tenderedNum - cashNeeded;
+                  if (changeDue > 0) {
+                    return `Complete Bill • Return ₹${changeDue.toFixed(0)} Change ↵`;
+                  }
+                  return `Complete Bill (₹${total.toFixed(2)})`;
+                })()}
               </Button>
             </div>
           </div>
@@ -2829,6 +3112,22 @@ export default function POS() {
               <span>NET TOTAL:</span>
               <span>₹{checkoutResult.total.toFixed(2)}</span>
             </div>
+
+            {/* CASH TENDERED & CHANGE RETURN */}
+            {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 ? (
+              <div style={{ fontSize: '11px', padding: '3px 0', borderTop: '1px dashed #666', marginTop: '2px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Cash Tendered (दिलेली रोकड):</span>
+                  <span>₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
+                </div>
+                {Number(checkoutResult.changeReturn || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                    <span>Change Return (परत बाकी):</span>
+                    <span>₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
 

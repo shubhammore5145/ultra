@@ -326,6 +326,10 @@ export default function BillStore() {
           ${Number(bill.taxAmount) > 0 ? `<div class="row"><span>Tax (GST):</span><span>+₹${Number(bill.taxAmount).toFixed(2)}</span></div>` : ''}
           <div class="dashed"></div>
           <div class="row bold" style="font-size:15px;margin-top:4px;"><span>GRAND TOTAL:</span><span>₹${Number(bill.totalAmount || 0).toFixed(2)}</span></div>
+          ${Number(bill.cashTendered || 0) > 0 ? `
+            <div class="row" style="margin-top:3px;border-top:1px dashed #555;padding-top:2px;"><span>Cash Tendered:</span><span>₹${Number(bill.cashTendered).toFixed(2)}</span></div>
+            ${Number(bill.changeReturn || 0) > 0 ? `<div class="row bold"><span>Change Return:</span><span>₹${Number(bill.changeReturn).toFixed(2)}</span></div>` : ''}
+          ` : ''}
           <div class="dashed"></div>
           <p class="center" style="margin:10px 0 2px;font-size:11px;font-weight:bold;">धन्यवाद! पुन्हा भेट द्या! 🙏</p>
           <p class="center" style="margin:0;font-size:9px;color:#555;">Thank you for shopping with us!</p>
@@ -1055,6 +1059,18 @@ export default function BillStore() {
                   <span>Grand Total (एकूण देय):</span>
                   <span className="text-primary">₹{Number(selectedBill.totalAmount || 0).toFixed(2)}</span>
                 </div>
+                {Number(selectedBill.cashTendered || 0) > 0 && (
+                  <div className="flex justify-between text-muted-foreground pt-1 border-t border-dashed">
+                    <span>दिलेली रोकड (Cash):</span>
+                    <span className="font-semibold text-foreground">₹{Number(selectedBill.cashTendered).toFixed(2)}</span>
+                  </div>
+                )}
+                {Number(selectedBill.changeReturn || 0) > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
+                    <span>परत बाकी (Change):</span>
+                    <span>₹{Number(selectedBill.changeReturn).toFixed(2)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Modal Actions */}

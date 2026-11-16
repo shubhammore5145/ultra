@@ -86,6 +86,8 @@ export interface Transaction {
   totalAmount: number;
   paymentMethod: 'cash' | 'upi' | 'udhar' | 'card' | 'split';
   splitAmounts?: { cash: number; upi: number; udhar: number };
+  cashTendered?: number;
+  changeReturn?: number;
   customerId?: string;
   customerName?: string;
   customerPhone?: string;

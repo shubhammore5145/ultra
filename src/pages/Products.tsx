@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { 
   Plus, 
   Search, 
@@ -14,7 +15,12 @@ import {
   Loader2,
   Save,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  IndianRupee,
+  TrendingUp,
+  X,
+  CheckCircle2,
+  Tag
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,6 +38,62 @@ export default function Products() {
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [editedProducts, setEditedProducts] = useState<Record<string, Partial<Product>>>({});
   const [isSaving, setIsSaving] = useState(false);
+
+  // Quick Price Change Modal State
+  const [priceModalProduct, setPriceModalProduct] = useState<Product | null>(null);
+  const [modalPurchasePrice, setModalPurchasePrice] = useState<string>('');
+  const [modalSellingPrice, setModalSellingPrice] = useState<string>('');
+  const [modalMrp, setModalMrp] = useState<string>('');
+  const [priceSaving, setPriceSaving] = useState(false);
+  const [priceSuccessMsg, setPriceSuccessMsg] = useState<string | null>(null);
+
+  const openPriceModal = (product: Product) => {
+    setPriceModalProduct(product);
+    setModalPurchasePrice(product.purchasePrice !== undefined && product.purchasePrice !== null ? String(product.purchasePrice) : '');
+    setModalSellingPrice(product.sellingPrice !== undefined && product.sellingPrice !== null ? String(product.sellingPrice) : '');
+    setModalMrp(product.mrp !== undefined && product.mrp !== null ? String(product.mrp) : '');
+    setPriceSuccessMsg(null);
+  };
+
+  const handleSaveProductPrice = async () => {
+    if (!priceModalProduct) return;
+    setPriceSaving(true);
+    try {
+      const pp = parseFloat(modalPurchasePrice) || 0;
+      const sp = parseFloat(modalSellingPrice) || 0;
+      const mrpVal = parseFloat(modalMrp) || 0;
+
+      await api.products.update(priceModalProduct.id, {
+        purchasePrice: pp,
+        sellingPrice: sp,
+        mrp: mrpVal
+      });
+
+      // Update local products state immediately
+      setProducts(prev => prev.map(p => {
+        if (p.id === priceModalProduct.id) {
+          return {
+            ...p,
+            purchasePrice: pp,
+            sellingPrice: sp,
+            mrp: mrpVal
+          };
+        }
+        return p;
+      }));
+
+      setPriceSuccessMsg(`₹ किंमत यशस्वीरित्या सेव्ह झाली! (खरेदी: ₹${pp.toFixed(2)}, विक्री: ₹${sp.toFixed(2)})`);
+      setTimeout(() => {
+        setPriceSuccessMsg(null);
+        setPriceModalProduct(null);
+      }, 700);
+    } catch (err: any) {
+      console.error('Failed to update product price:', err);
+      alert('Failed to update price: ' + (err.message || 'Unknown error'));
+    } finally {
+      setPriceSaving(false);
+    }
+  };
 
   // Scanner State
   const [showScanner, setShowScanner] = useState(false);
@@ -294,10 +356,24 @@ export default function Products() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {bulkEditMode ? (
-            <Button size="sm" onClick={handleSaveBulkEdits} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white font-bold">
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save Changes
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => { setBulkEditMode(false); setEditedProducts({}); }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={handleSaveBulkEdits} 
+                disabled={isSaving} 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              >
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Changes {Object.keys(editedProducts).length > 0 ? `(${Object.keys(editedProducts).length})` : ''}
+              </Button>
+            </div>
           ) : (
             <>
               {/* CSV Import */}
@@ -403,29 +479,46 @@ export default function Products() {
           </div>
         </div>
 
+        {/* Bulk Edit Notice Banner */}
+        {bulkEditMode && (
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 flex items-center justify-between text-xs text-blue-900 dark:text-blue-200 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-blue-600 shrink-0" />
+              <span>
+                <strong>⚡ Bulk Edit Mode चालू आहे:</strong> तुम्ही खालील तक्त्यामध्ये प्रत्येक वस्तूचा <strong>खरेदी भाव (Purchase)</strong>, <strong>विक्री भाव (Selling)</strong> आणि <strong>स्टॉक</strong> थेट बदलू शकता.
+              </span>
+            </div>
+            <span className="font-bold bg-blue-200/70 dark:bg-blue-900 px-2.5 py-0.5 rounded text-[11px]">
+              {Object.keys(editedProducts).length} प्रॉडक्ट्स बदलले
+            </span>
+          </div>
+        )}
+
         {/* Products Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b">
               <tr>
-                <th className="px-6 py-3.5 font-semibold">Product Details</th>
-                <th className="px-6 py-3.5 font-semibold">Category</th>
-                <th className="px-6 py-3.5 font-semibold">Price</th>
-                <th className="px-6 py-3.5 font-semibold">Stock</th>
-                <th className="px-6 py-3.5 font-semibold text-right">Actions</th>
+                <th className="px-5 py-3.5 font-semibold">Product Details</th>
+                <th className="px-4 py-3.5 font-semibold">Category</th>
+                <th className="px-4 py-3.5 font-semibold">खरेदी भाव (Purchase)</th>
+                <th className="px-4 py-3.5 font-semibold">विक्री भाव (Selling)</th>
+                <th className="px-4 py-3.5 font-semibold">मार्जिन / नफा</th>
+                <th className="px-4 py-3.5 font-semibold">Stock</th>
+                <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
                     Loading products...
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
                     <p className="font-semibold text-base text-foreground">No products found</p>
                     <p className="text-xs mt-1 max-w-sm mx-auto">
@@ -444,7 +537,7 @@ export default function Products() {
               ) : (
                 paginatedProducts.map((product) => (
                   <tr key={product.id} className="hover:bg-muted/40 transition-colors">
-                    <td className="px-6 py-3.5">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         {product.imageUrl ? (
                           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-white">
@@ -478,31 +571,131 @@ export default function Products() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-3.5">
+                    <td className="px-4 py-3.5">
                       <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
                         {product.category || 'General'}
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 font-bold">
+
+                    {/* Purchase Price (खरेदी भाव) */}
+                    <td className="px-4 py-3.5">
                       {bulkEditMode ? (
                         <div className="w-24">
-                          <Input 
-                            type="number" 
-                            className="h-8 text-xs font-bold" 
-                            defaultValue={product.sellingPrice} 
-                            onChange={(e) => handleBulkChange(product.id, 'sellingPrice', Number(e.target.value))}
-                          />
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">₹</span>
+                            <Input 
+                              type="number" 
+                              step="0.01"
+                              className="h-8 pl-5 text-xs font-bold bg-background" 
+                              defaultValue={product.purchasePrice || ''} 
+                              placeholder="0.00"
+                              onChange={(e) => handleBulkChange(product.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
+                            />
+                          </div>
                         </div>
                       ) : (
-                        `₹${Number(product.sellingPrice || 0).toFixed(2)}`
+                        <button
+                          type="button"
+                          onClick={() => openPriceModal(product)}
+                          className="group flex items-center gap-1.5 text-left hover:bg-muted/70 px-2 py-1 -mx-2 rounded-lg transition-colors cursor-pointer"
+                          title="खरेदी व विक्री किंमत बदलण्यासाठी क्लिक करा (Click to edit price)"
+                        >
+                          <span className="font-bold text-muted-foreground text-xs sm:text-sm group-hover:text-primary">
+                            ₹{Number(product.purchasePrice || 0).toFixed(2)}
+                          </span>
+                          <Edit className="h-3 w-3 opacity-0 group-hover:opacity-70 text-primary transition-opacity shrink-0" />
+                        </button>
                       )}
                     </td>
-                    <td className="px-6 py-3.5">
+
+                    {/* Selling Price (विक्री भाव) */}
+                    <td className="px-4 py-3.5">
+                      {bulkEditMode ? (
+                        <div className="w-24">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold">₹</span>
+                            <Input 
+                              type="number" 
+                              step="0.01"
+                              className="h-8 pl-5 text-xs font-bold text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 bg-background" 
+                              defaultValue={product.sellingPrice || ''} 
+                              placeholder="0.00"
+                              onChange={(e) => handleBulkChange(product.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openPriceModal(product)}
+                          className="group text-left hover:bg-muted/70 px-2 py-1 -mx-2 rounded-lg transition-colors cursor-pointer block"
+                          title="खरेदी व विक्री किंमत बदलण्यासाठी क्लिक करा (Click to edit price)"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-black text-foreground text-sm group-hover:text-primary">
+                              ₹{Number(product.sellingPrice || 0).toFixed(2)}
+                            </span>
+                            <Edit className="h-3 w-3 opacity-0 group-hover:opacity-70 text-primary transition-opacity shrink-0" />
+                          </div>
+                          {Number(product.mrp || 0) > Number(product.sellingPrice || 0) && (
+                            <span className="text-[10px] text-muted-foreground line-through block">
+                              MRP: ₹{Number(product.mrp).toFixed(2)}
+                            </span>
+                          )}
+                        </button>
+                      )}
+                    </td>
+
+                    {/* Margin / Profit (नफा) */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      {(() => {
+                        const sp = Number(product.sellingPrice || 0);
+                        const pp = Number(product.purchasePrice || 0);
+                        if (sp <= 0 && pp <= 0) return <span className="text-xs text-muted-foreground">—</span>;
+                        const profit = sp - pp;
+                        const marginPercent = pp > 0 ? (profit / pp) * 100 : (sp > 0 ? 100 : 0);
+                        if (pp <= 0) {
+                          return (
+                            <button 
+                              type="button" 
+                              onClick={() => openPriceModal(product)} 
+                              className="text-[11px] text-amber-600 dark:text-amber-400 font-bold hover:underline"
+                              title="खरेदी किंमत सेट करा"
+                            >
+                              + खरेदी सेट करा
+                            </button>
+                          );
+                        }
+                        if (profit > 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
+                              <TrendingUp className="h-3 w-3 text-emerald-600" />
+                              +₹{profit.toFixed(2)} ({marginPercent.toFixed(0)}%)
+                            </span>
+                          );
+                        }
+                        if (profit < 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300">
+                              -₹{Math.abs(profit).toFixed(2)} (तोटा)
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-muted text-muted-foreground">
+                            ₹0 (नो नफा)
+                          </span>
+                        );
+                      })()}
+                    </td>
+
+                    {/* Stock */}
+                    <td className="px-4 py-3.5">
                       {bulkEditMode ? (
                         <div className="w-20">
                           <Input 
                             type="number" 
-                            className="h-8 text-xs font-bold" 
+                            className="h-8 text-xs font-bold bg-background" 
                             defaultValue={product.stock} 
                             onChange={(e) => handleBulkChange(product.id, 'stock', Number(e.target.value))}
                           />
@@ -517,14 +710,26 @@ export default function Products() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
+
+                    {/* Actions */}
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 px-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                          onClick={() => openPriceModal(product)}
+                          title="खरेदी व विक्री किंमत बदला (Quick Price Change)"
+                        >
+                          <IndianRupee className="h-3.5 w-3.5 mr-1" />
+                          किंमत बदला
+                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8 text-muted-foreground hover:text-primary"
                           onClick={() => navigate(`/products/${product.id}`)}
-                          title="Edit product"
+                          title="संपूर्ण तपशील एडिट करा"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -583,6 +788,185 @@ export default function Products() {
           <FileSpreadsheet className="h-3.5 w-3.5" /> Download Sample CSV Template
         </button>
       </div>
+
+      {/* QUICK PRICE CHANGE MODAL */}
+      {priceModalProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b flex justify-between items-center bg-muted/40">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <IndianRupee className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground leading-tight">
+                    खरेदी व विक्री किंमत बदला
+                  </h3>
+                  <p className="text-xs text-muted-foreground truncate max-w-[260px]">
+                    {priceModalProduct.name}
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => { setPriceModalProduct(null); setPriceSuccessMsg(null); }} 
+                className="rounded-full"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {priceSuccessMsg && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{priceSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Product Info Pill */}
+              <div className="p-2.5 bg-muted/50 rounded-xl flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-medium">वर्तमान स्टॉक:</span>
+                <span className="font-bold text-foreground">
+                  {priceModalProduct.stock || 0} {priceModalProduct.unit || 'units'}
+                </span>
+              </div>
+
+              {/* Purchase Price Input */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs font-bold text-foreground">
+                    खरेदी किंमत (Purchase Price / CP):
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">सप्लायरकडून मिळालेला दर</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-bold">₹</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={modalPurchasePrice}
+                    onChange={(e) => setModalPurchasePrice(e.target.value)}
+                    className="pl-7 h-11 text-base font-bold bg-background"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Selling Price Input */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs font-bold text-foreground">
+                    विक्री किंमत (Selling Price / Retail Rate):
+                  </Label>
+                  <span className="text-[11px] text-emerald-600 font-bold">ग्राहकास देण्याचा दर</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-emerald-600 font-bold">₹</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={modalSellingPrice}
+                    onChange={(e) => setModalSellingPrice(e.target.value)}
+                    className="pl-7 h-11 text-lg font-black bg-background border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-300"
+                  />
+                </div>
+              </div>
+
+              {/* MRP Input (Optional) */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    MRP (छापील किंमत - ऐच्छिक):
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">पॅकेटवरील कमाल दर</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">₹</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={modalMrp}
+                    onChange={(e) => setModalMrp(e.target.value)}
+                    className="pl-7 h-9 text-xs font-medium bg-background"
+                  />
+                </div>
+              </div>
+
+              {/* Live Profit & Margin Calculation Card */}
+              {(() => {
+                const pp = parseFloat(modalPurchasePrice) || 0;
+                const sp = parseFloat(modalSellingPrice) || 0;
+                const mrpVal = parseFloat(modalMrp) || 0;
+                const profit = sp - pp;
+                const marginPercent = pp > 0 ? (profit / pp) * 100 : (sp > 0 ? 100 : 0);
+                const discount = mrpVal > sp ? mrpVal - sp : 0;
+
+                if (pp > 0 || sp > 0) {
+                  return (
+                    <div className={`p-3 rounded-xl border space-y-1.5 ${
+                      profit > 0 
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800' 
+                        : profit < 0 
+                        ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800'
+                        : 'bg-muted/50 border-muted'
+                    }`}>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-muted-foreground">प्रति नग अंदाजे नफा (Profit):</span>
+                        <span className={`text-sm font-black ${profit > 0 ? 'text-emerald-600 dark:text-emerald-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
+                          {profit > 0 ? `+₹${profit.toFixed(2)}` : profit < 0 ? `-₹${Math.abs(profit).toFixed(2)} (तोटा)` : '₹0.00'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                        <span>प्रॉफिट मार्जिन (Margin %):</span>
+                        <span className="font-bold text-foreground">{marginPercent.toFixed(1)}%</span>
+                      </div>
+                      {discount > 0 && (
+                        <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1 border-t border-dashed">
+                          <span>ग्राहकाची सूट (Discount on MRP):</span>
+                          <span className="font-bold text-blue-600 dark:text-blue-400">₹{discount.toFixed(2)} OFF</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t bg-muted/20 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-1/3 h-10 font-bold text-xs"
+                onClick={() => { setPriceModalProduct(null); setPriceSuccessMsg(null); }}
+              >
+                रद्द करा (Cancel)
+              </Button>
+              <Button
+                type="button"
+                className="w-2/3 h-10 font-black text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+                disabled={priceSaving || (!modalSellingPrice && !modalPurchasePrice)}
+                onClick={handleSaveProductPrice}
+              >
+                {priceSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                )}
+                किंमत सेव्ह करा (Save Price)
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Camera Barcode Quick Search Modal */}
       {showScanner && (

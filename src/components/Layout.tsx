@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, LogOut, Crown, Zap, Sparkles, Bell, Wifi, WifiOff, RefreshCw, CheckCircle2, Download } from 'lucide-react';
+import { Menu, LogOut, Bell, WifiOff, RefreshCw, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { usePlan } from '../contexts/PlanContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
-import { UpgradeModal } from './UpgradeModal';
 
 export default function Layout() {
   const { userData, shopData, logout } = useAuth();
-  const { plan, isExpired, openUpgradeModal } = usePlan();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -129,55 +126,6 @@ export default function Layout() {
     }
   };
 
-  const renderPlanPill = () => {
-    if (plan === 'ultra_pro') {
-      return (
-        <button
-          onClick={() => navigate('/upgrade')}
-          title="Ultra Pro Plan Active"
-          className="px-2.5 py-1 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 text-xs font-black flex items-center gap-1 hover:opacity-90 transition-opacity"
-        >
-          <Crown className="w-3.5 h-3.5 text-amber-400" />
-          <span>Ultra Pro</span>
-        </button>
-      );
-    }
-    if (plan === 'pro') {
-      return (
-        <button
-          onClick={() => navigate('/upgrade')}
-          title="Pro Plan Active"
-          className="px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 text-xs font-black flex items-center gap-1 hover:opacity-90 transition-opacity"
-        >
-          <Zap className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Pro</span>
-        </button>
-      );
-    }
-    if (plan === 'plus') {
-      return (
-        <button
-          onClick={() => navigate('/upgrade')}
-          title="Plus Plan Active"
-          className="px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30 text-xs font-bold flex items-center gap-1 hover:opacity-90 transition-opacity"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-          <span>Plus</span>
-        </button>
-      );
-    }
-    return (
-      <button
-        onClick={() => openUpgradeModal()}
-        title="Upgrade to unlock WhatsApp, AI Voice & Auto Reports"
-        className="px-3 py-1 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30 text-xs font-bold hover:bg-amber-500/25 transition-all flex items-center gap-1.5 shadow-sm animate-pulse"
-      >
-        <Crown className="w-3.5 h-3.5 text-amber-500" />
-        <span>Upgrade ⚡</span>
-      </button>
-    );
-  };
-
   return (
     <div className="flex h-[100dvh] flex-col bg-background text-foreground">
       {/* Top Navigation Bar */}
@@ -266,9 +214,6 @@ export default function Layout() {
               )}
             </button>
 
-            {/* Active Plan Pill */}
-            {renderPlanPill()}
-
             {/* Desktop User Info & Logout Button */}
             <div className="hidden md:flex items-center gap-3 border-l border-border pl-3 ml-1">
               <div className="text-right">
@@ -320,9 +265,6 @@ export default function Layout() {
 
       {/* Mobile Drawer */}
       <MobileMoreMenu isOpen={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} unreadNotifs={unreadNotifs} />
-
-      {/* Global Feature Upgrade Modal */}
-      <UpgradeModal />
     </div>
   );
 }

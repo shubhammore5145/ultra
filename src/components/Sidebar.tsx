@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
-  FileText, Settings, ArrowLeftRight, Wallet, Crown,
+  FileText, Settings, ArrowLeftRight, Wallet,
   HelpCircle, ClipboardList, LogOut, X, Barcode, Bell,
   Receipt, TrendingUp, UserCheck, Trash2, Menu
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { usePlan } from '../contexts/PlanContext';
 import { api } from '../lib/api';
 import { hasPermission } from '../lib/permissions';
 
@@ -28,14 +27,12 @@ const navItems = [
   { name: 'Recycle Bin', href: '/recycle-bin', icon: Trash2, permissionKey: 'recycle_bin', roles: ['admin'], color: 'text-rose-500' },
   { name: 'Notifications', href: '/notifications', icon: Bell, permissionKey: 'notifications', roles: ['admin', 'cashier'], color: 'text-amber-500' },
   { name: 'Settings', href: '/settings', icon: Settings, permissionKey: 'settings', roles: ['admin'], color: 'text-slate-500' },
-  { name: 'Upgrade', href: '/upgrade', icon: Crown, permissionKey: 'upgrade', roles: ['admin'], color: 'text-yellow-500' },
   { name: 'Support', href: '/support', icon: HelpCircle, permissionKey: 'support', roles: ['admin', 'cashier'], color: 'text-green-500' },
 ];
 
 /** Desktop Sidebar */
 export function Sidebar() {
   const { userData, shopData, logout } = useAuth();
-  const { plan, canAccess, openUpgradeModal } = usePlan();
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const filteredNav = navItems.filter(item => {
     if (userData?.role === 'admin') return true;
@@ -69,21 +66,6 @@ export function Sidebar() {
           <p className="truncate text-sm font-bold text-foreground leading-tight">{shopData?.name || 'MartGPT'}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="text-[11px] text-muted-foreground capitalize">{userData?.role || 'Admin'}</span>
-            <span className="text-[10px] text-muted-foreground">•</span>
-            {plan === 'ultra_pro' ? (
-              <span className="text-[10px] font-black text-purple-400">👑 Ultra</span>
-            ) : plan === 'pro' ? (
-              <span className="text-[10px] font-black text-indigo-400">⚡ Pro</span>
-            ) : plan === 'plus' ? (
-              <span className="text-[10px] font-bold text-blue-400">🌟 Plus</span>
-            ) : (
-              <button 
-                onClick={() => openUpgradeModal()}
-                className="text-[10px] font-bold text-amber-500 hover:underline"
-              >
-                Free ⚡
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -108,16 +90,6 @@ export function Sidebar() {
                   {item.href === '/notifications' && unreadNotifs > 0 && (
                     <span className="ml-auto text-[10px] font-black px-1.5 py-0.2 rounded-full bg-rose-500 text-white animate-pulse">
                       {unreadNotifs}
-                    </span>
-                  )}
-                  {item.href === '/barcode-print' && !canAccess('barcode_print') && (
-                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20">
-                      🔒 Plus
-                    </span>
-                  )}
-                  {item.href === '/upgrade' && (
-                    <span className="ml-auto text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">
-                      ⚡
                     </span>
                   )}
                 </>
@@ -204,7 +176,6 @@ export function MobileMoreMenu({
   unreadNotifs?: number;
 }) {
   const { userData, shopData, logout } = useAuth();
-  const { canAccess } = usePlan();
   const allItems = navItems.filter(item => {
     if (userData?.role === 'admin') return true;
     if (item.permissionKey === 'notifications' || item.permissionKey === 'support') return true;
@@ -257,16 +228,6 @@ export function MobileMoreMenu({
                     {item.href === '/notifications' && unreadNotifs > 0 && (
                       <span className="ml-auto text-[10px] font-black px-1.5 py-0.2 rounded-full bg-rose-500 text-white animate-pulse">
                         {unreadNotifs}
-                      </span>
-                    )}
-                    {item.href === '/barcode-print' && !canAccess('barcode_print') && (
-                      <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/20">
-                        🔒 Plus
-                      </span>
-                    )}
-                    {item.href === '/upgrade' && (
-                      <span className="ml-auto text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">
-                        ⚡
                       </span>
                     )}
                   </>

@@ -192,10 +192,6 @@ export default function Dashboard() {
 
   // Trigger Nightly Summary WhatsApp to Owner
   const handleSendNightlySummary = async () => {
-    if (!canAccess('nightly_summary')) {
-      openUpgradeModal('nightly_summary');
-      return;
-    }
     const phone = shopData?.phone;
     if (!phone) {
       alert('Please enter your shop phone number in Settings first.');

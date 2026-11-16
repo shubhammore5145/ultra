@@ -15,7 +15,6 @@ import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
 import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
-import Upgrade from './pages/Upgrade';
 import Support from './pages/Support';
 import Receipt from './pages/Receipt';
 
@@ -63,7 +62,7 @@ function App() {
                 <Route path="/staff" element={<ProtectedRoute requiredPermission="staff"><StaffManagement /></ProtectedRoute>} />
                 <Route path="/recycle-bin" element={<ProtectedRoute requiredPermission="recycle_bin"><RecycleBin /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute requiredPermission="settings"><Settings /></ProtectedRoute>} />
-                <Route path="/upgrade" element={<ProtectedRoute allowedRoles={['admin']}><Upgrade /></ProtectedRoute>} />
+                <Route path="/upgrade" element={<Navigate to="/pos" replace />} />
 
                 {/* Common Utilities */}
                 <Route path="/notifications" element={<Notifications />} />

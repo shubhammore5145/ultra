@@ -426,14 +426,9 @@ export default function Udhar() {
                       variant="ghost" 
                       className="text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center"
                       onClick={() => handleWhatsAppReminder(customer)}
-                      title={canAccess('whatsapp_reminders') ? "Send WhatsApp Reminder" : "WhatsApp Reminder (Plus Feature - Click to Upgrade)"}
+                      title="Send WhatsApp Reminder"
                     >
                       <MessageCircle className="h-3.5 w-3.5 mr-1" /> Reminder
-                      {!canAccess('whatsapp_reminders') && (
-                        <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-600 px-1 py-0.2 rounded font-black">
-                          🔒
-                        </span>
-                      )}
                     </Button>
                   )}
                 </div>

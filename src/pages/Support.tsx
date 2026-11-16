@@ -4,16 +4,12 @@ import { useState } from 'react';
 
 const faqs = [
   {
-    q: 'How do I add a Cashier?',
-    a: 'Upgrade to the Pro plan, then ask your cashier to sign up and choose "Join Shop". Give them your Shop ID from the Settings page.'
+    q: 'How do I add a Cashier / Staff?',
+    a: 'Go to Settings > Staff Accounts & Security. Ask your staff member to sign up and choose "Join Shop" with your Shop ID. You can also assign their specific permissions!'
   },
   {
     q: 'How does the Smart UPI QR work?',
-    a: 'Add your UPI ID in Settings. On the POS screen, a dynamic QR code generates for every bill with the exact amount. (Pro Feature)'
-  },
-  {
-    q: 'What happens when my Pro plan expires?',
-    a: 'Your account switches back to the Basic plan. You won\'t lose any data — premium features will be locked until you renew.'
+    a: 'Add your UPI ID in Settings. On the POS screen, a dynamic QR code generates for every bill with the exact amount.'
   },
   {
     q: 'Can I print thermal receipts?',

@@ -225,18 +225,6 @@ export default function Notifications() {
           </button>
 
           <button
-            onClick={() => setActiveTab('plan_upgrade')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'plan_upgrade'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            <Crown className="w-3.5 h-3.5 text-amber-400" />
-            Plan Updates
-          </button>
-
-          <button
             onClick={() => setActiveTab('announcement')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'announcement'

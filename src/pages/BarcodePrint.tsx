@@ -151,31 +151,10 @@ export default function BarcodePrint() {
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={handlePrint} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md">
-            <Printer className="h-4 w-4" /> Print {totalCopies} Labels Now {!canAccess('barcode_print') && '🔒'}
+            <Printer className="h-4 w-4" /> Print {totalCopies} Labels Now
           </Button>
         </div>
       </div>
-
-      {/* Lock Notice Banner for Free Plan */}
-      {!canAccess('barcode_print') && (
-        <div className="print:hidden p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm">
-          <div className="flex items-center gap-3 text-left">
-            <div className="p-2 bg-amber-500/20 text-amber-500 rounded-xl">
-              <Crown className="w-5 h-5 text-amber-500" />
-            </div>
-            <div>
-              <p className="font-bold text-foreground">Custom Barcode Sticker Label Generator is a Plus / Pro Feature</p>
-              <p className="text-muted-foreground text-xs">Upgrade your store plan to design and print barcode stickers for all your unbranded kirana goods.</p>
-            </div>
-          </div>
-          <Button 
-            onClick={() => openUpgradeModal('barcode_print')}
-            className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md whitespace-nowrap"
-          >
-            Upgrade to Unlock ⚡
-          </Button>
-        </div>
-      )}
 
       {/* Main Configuration Grid - Screen only */}
       <div className="print:hidden grid grid-cols-1 lg:grid-cols-12 gap-6">

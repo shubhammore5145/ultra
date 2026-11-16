@@ -78,10 +78,6 @@ export default function Inventory() {
   };
 
   const runAIPredictor = async () => {
-    if (!canAccess('demand_forecast')) {
-      openUpgradeModal('demand_forecast');
-      return;
-    }
     setAiLoading(true);
     setShowAiReport(true);
     

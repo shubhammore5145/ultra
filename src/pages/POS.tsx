@@ -1103,14 +1103,9 @@ export default function POS() {
                       : 'text-muted-foreground hover:text-primary hover:bg-muted'
                   }`}
                   onClick={handleVoiceSearch}
-                  title={canAccess('voice_billing') ? "MartGPT Voice Billing" : "Voice Billing (Pro Feature - Click to Upgrade)"}
+                  title="Voice Billing"
                 >
                   <Mic className="h-4 w-4" />
-                  {!canAccess('voice_billing') && (
-                    <span className="absolute -top-1 -right-1 text-[8px] bg-indigo-600 text-white font-black px-1 rounded-full shadow-xs">
-                      PRO
-                    </span>
-                  )}
                 </Button>
               )}
             </div>

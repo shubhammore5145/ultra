@@ -81,7 +81,7 @@ export default function Receipt() {
 
           const combined = {
             ...t,
-            shopName: sh.name || sh.shopName || 'MartGPT Kirana',
+            shopName: sh.name || sh.shopName || 'Nayashi Kirana',
             shopPhone: sh.phone || '',
             shopAddress: sh.address || '',
             shopGstNumber: sh.gstNumber || '',

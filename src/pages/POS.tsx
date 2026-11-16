@@ -1779,20 +1779,22 @@ export default function POS() {
               </div>
             </div>
           ) : (
-            <div ref={customerDropdownRef} className="relative flex flex-col gap-1.5 pb-2.5 border-b border-zinc-200 dark:border-zinc-800">
+            <div ref={customerDropdownRef} className="relative flex flex-col gap-2 p-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 pb-2.5">
               <div className="flex justify-between items-center">
-                <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5 text-primary" />
                   ग्राहक तपशील (नाव किंवा नंबर)
-                </label>
-                {customerPhone && (
-                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
+                </span>
+                {customerPhone ? (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600'}`}>
                     {customerPhone.length}/10
                   </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground font-medium">ऐच्छिक (Optional)</span>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 {/* Customer Name */}
                 <div className="relative">
                   <Input 
@@ -1804,17 +1806,17 @@ export default function POS() {
                       setShowCustomerSuggestions(true);
                     }}
                     onFocus={() => setShowCustomerSuggestions(true)}
-                    className="h-10 text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                    className="h-9.5 text-xs bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 rounded-xl"
                   />
                 </div>
 
                 {/* Customer Mobile */}
                 <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 select-none">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground select-none">
                     +91
                   </span>
                   <Input 
-                    placeholder="10-अंकी मोबाईल"
+                    placeholder="मोबाईल नंबर"
                     type="tel"
                     maxLength={10}
                     value={customerPhone}
@@ -1824,28 +1826,28 @@ export default function POS() {
                       setShowCustomerSuggestions(true);
                     }}
                     onFocus={() => setShowCustomerSuggestions(true)}
-                    className="h-10 pl-8.5 text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 font-mono tracking-wider"
+                    className="h-9.5 pl-8 text-xs bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 rounded-xl font-mono tracking-wider"
                   />
                 </div>
               </div>
 
               {/* Suggestions Dropdown */}
               {showCustomerSuggestions && customerSuggestions.length > 0 && (
-                <div className="absolute bottom-full left-0 right-0 z-50 mb-1 bg-popover text-popover-foreground border border-border rounded-xl shadow-2xl overflow-hidden divide-y divide-border/60 max-h-56 overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
-                  <div className="px-3 py-1 bg-muted/60 text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex justify-between items-center">
-                    <span>उपलब्ध ग्राहक ({customerSuggestions.length})</span>
-                    <span className="text-[9px] lowercase">क्लिक करा ऑटो-फिलसाठी</span>
+                <div className="absolute bottom-full left-0 right-0 z-50 mb-1.5 bg-card text-card-foreground border-2 border-primary/40 rounded-2xl shadow-2xl overflow-hidden divide-y divide-border max-h-56 overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-primary uppercase tracking-wider flex justify-between items-center">
+                    <span>जुने ग्राहक सापडले ({customerSuggestions.length})</span>
+                    <span className="text-[9px] lowercase font-semibold">क्लिक करून निवडा</span>
                   </div>
                   {customerSuggestions.map((cust) => (
                     <button
                       key={cust.id}
                       type="button"
                       onClick={() => handleSelectCustomer(cust)}
-                      className="w-full px-3 py-2 text-left hover:bg-muted/80 flex items-center justify-between transition-colors group cursor-pointer"
+                      className="w-full px-3 py-2 text-left hover:bg-primary/5 flex items-center justify-between transition-colors group cursor-pointer"
                     >
                       <div>
                         <p className="font-bold text-xs text-foreground group-hover:text-primary flex items-center gap-1.5">
-                          <User className="h-3 w-3 text-muted-foreground" />
+                          <User className="h-3.5 w-3.5 text-primary" />
                           {cust.name}
                         </p>
                         <p className="text-[11px] font-mono text-muted-foreground">
@@ -1854,12 +1856,12 @@ export default function POS() {
                       </div>
                       <div className="text-right">
                         {Number(cust.balance || 0) > 0 ? (
-                          <span className="text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded">
-                            उधार: ₹{Number(cust.balance).toFixed(2)}
+                          <span className="text-[10px] font-black text-rose-700 bg-rose-100 dark:bg-rose-950 px-2 py-0.5 rounded-md border border-rose-300">
+                            उधार: ₹{Number(cust.balance).toFixed(0)}
                           </span>
                         ) : (
-                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
-                            हिशोब क्लियर
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">
+                            क्लियर (₹0)
                           </span>
                         )}
                       </div>

@@ -1,16 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, Barcode, Smartphone, Sparkles, Clock, Send } from 'lucide-react';
+import { 
+  Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, 
+  Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, 
+  Barcode, Smartphone, Sparkles, Clock, Send, User, AlertTriangle, UserCheck 
+} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
-import type { Product, CartItem } from '../types';
+import type { Product, CartItem, Customer } from '../types';
 import { compressImage } from '../lib/imageCompressor';
 
 const playSoundboxAlert = (amount: number, method: string) => {
@@ -67,7 +71,26 @@ export default function POS() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Customer Selection & Auto-suggest State
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const cached = localStorage.getItem('pos_customers_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  const modalCustomerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Stock Warning Notification
+  const [stockWarning, setStockWarning] = useState<string>('');
+
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [discountType, setDiscountType] = useState<'flat' | 'percent'>('flat');
   const [discountValue, setDiscountValue] = useState('');
@@ -116,6 +139,7 @@ export default function POS() {
     paymentMethod?: string,
     splitAmounts?: { cash: number, upi: number, udhar: number },
     items: CartItem[], 
+    customerName?: string,
     customerPhone: string,
     loyaltyPointsEarned?: number,
     createdAt?: string
@@ -148,7 +172,8 @@ export default function POS() {
     phone: string, 
     itemsList: CartItem[] = checkoutResult?.items || [], 
     discount: number = checkoutResult?.discountAmount || 0,
-    paymentMode: string = 'Paid'
+    paymentMode: string = 'Paid',
+    custName: string = ''
   ) => {
     const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
     const shopPhone = shopData?.phone ? `📞 Ph: ${shopData.phone}` : '';
@@ -181,6 +206,9 @@ export default function POS() {
     text += `🧾 *RETAIL BILL*\n`;
     text += `*Inv:* #${txId.slice(0, 8).toUpperCase()}\n`;
     text += `*Date:* ${formattedDate}, ${formattedTime}\n`;
+    if (custName) {
+      text += `*Customer:* ${custName} (+91 ${phone})\n`;
+    }
     text += `*Items:* ${itemsList.length} (${totalQty} qty)\n`;
     text += `💰 *Total: ₹${numTotal.toFixed(2)}*\n`;
     text += `────────────────────\n`;
@@ -287,10 +315,137 @@ export default function POS() {
     return () => { isMounted = false; };
   }, [shopData?.shopId]);
 
+  // Fetch live customers for fast POS autocomplete
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCustomers = async () => {
+      try {
+        const custList = await api.customers.list();
+        if (Array.isArray(custList) && isMounted) {
+          setCustomers(custList);
+          try {
+            localStorage.setItem('pos_customers_cache', JSON.stringify(custList));
+          } catch (e) {
+            console.warn('Customer cache quota error', e);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load customers for POS auto-complete', err);
+      }
+    };
+    fetchCustomers();
+    return () => { isMounted = false; };
+  }, [shopData?.shopId]);
+
+  // Outside click dismiss listener for customer suggestion dropdowns
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        customerDropdownRef.current && 
+        !customerDropdownRef.current.contains(e.target as Node) &&
+        (!modalCustomerDropdownRef.current || !modalCustomerDropdownRef.current.contains(e.target as Node))
+      ) {
+        setShowCustomerSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Filter customer suggestions based on name or phone
+  const customerSuggestions = useMemo(() => {
+    const nameTerm = customerName.trim().toLowerCase();
+    const phoneTerm = cleanPhone(customerPhone);
+    
+    // Search when at least 1 letter in name or 2 digits in phone
+    if (!nameTerm && phoneTerm.length < 2) return [];
+
+    return customers.filter(c => {
+      const cName = (c.name || '').toLowerCase();
+      const cPhone = cleanPhone(c.phone || '');
+      const matchName = nameTerm.length > 0 && cName.includes(nameTerm);
+      const matchPhone = phoneTerm.length >= 2 && cPhone.includes(phoneTerm);
+      return matchName || matchPhone;
+    }).slice(0, 6);
+  }, [customers, customerName, customerPhone]);
+
+  // Auto-match existing customer when 10 digits are typed
+  useEffect(() => {
+    const clean = cleanPhone(customerPhone);
+    if (clean.length === 10) {
+      const matched = customers.find(c => cleanPhone(c.phone || '') === clean);
+      if (matched) {
+        setSelectedCustomer(matched);
+        if (!customerName || customerName === 'New Customer') {
+          setCustomerName(matched.name || '');
+        }
+        setShowCustomerSuggestions(false);
+      }
+    }
+  }, [customerPhone, customers, customerName]);
+
+  const handleSelectCustomer = (cust: Customer) => {
+    setSelectedCustomer(cust);
+    setCustomerName(cust.name || '');
+    setCustomerPhone(cleanPhone(cust.phone || ''));
+    setShowCustomerSuggestions(false);
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    setCustomerName('');
+    setCustomerPhone('');
+    setShowCustomerSuggestions(false);
+  };
+
+  // Stock Warning Beep and Notification Alert
+  const playWarningBeep = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, ctx.currentTime);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    } catch {}
+  }, []);
+
+  const triggerStockAlert = useCallback((msg: string) => {
+    setStockWarning(msg);
+    playWarningBeep();
+  }, [playWarningBeep]);
+
+  // Auto-dismiss stock alert after 4.5 seconds
+  useEffect(() => {
+    if (!stockWarning) return;
+    const timer = setTimeout(() => {
+      setStockWarning('');
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [stockWarning]);
+
   const addToCart = useCallback((product: Product) => {
+    const isLoose = Boolean((product as any).isLoose);
+    const availableStock = Number(product.stock ?? 0);
+
+    // If packaged product and stock is 0 or less, block adding
+    if (!isLoose && availableStock <= 0) {
+      triggerStockAlert(`⚠️ "${product.name}" चा स्टॉक संपला आहे! (उपलब्ध: 0)`);
+      return;
+    }
+
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
+        if (!isLoose && existing.qty >= availableStock) {
+          triggerStockAlert(`⚠️ "${product.name}" चा शिल्लक स्टॉक फक्त ${availableStock} आहे! यापेक्षा जास्त बिलिंग करता येत नाही.`);
+          return prev;
+        }
         return prev.map(item => 
           item.id === product.id ? { ...item, qty: item.qty + 1 } : item
         );
@@ -305,7 +460,7 @@ export default function POS() {
       };
       return [...prev, itemToAdd];
     });
-  }, []);
+  }, [triggerStockAlert]);
 
   const handleBarcodeScan = useCallback((code: string): boolean => {
     // If the quick add modal is open, don't trigger another scan
@@ -341,6 +496,17 @@ export default function POS() {
     );
 
     if (product) {
+      const isLoose = Boolean((product as any).isLoose);
+      const availableStock = Number(product.stock ?? 0);
+      const existingInCart = cart.find(c => c.id === product.id);
+      const currentQty = existingInCart ? existingInCart.qty : 0;
+
+      if (!isLoose && (availableStock <= 0 || currentQty >= availableStock)) {
+        triggerStockAlert(`⚠️ "${product.name}" चा शिल्लक स्टॉक फक्त ${availableStock} आहे! यापेक्षा जास्त ॲड करता येणार नाही.`);
+        setShowPhysicalScannerReady(false);
+        return false;
+      }
+
       addToCart(product);
       setShowPhysicalScannerReady(false);
       setSearchTerm('');
@@ -354,7 +520,7 @@ export default function POS() {
       setShowScanner(false);
       return false;
     }
-  }, [products, quickAddBarcode, addToCart, shopData]);
+  }, [products, quickAddBarcode, addToCart, shopData, cart, triggerStockAlert]);
 
   const barcodeBufferRef = useRef('');
   const barcodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -481,7 +647,15 @@ export default function POS() {
   const updateQty = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
+        const isLoose = Boolean((item as any).isLoose);
+        const maxStock = Number(item.stock ?? 999999);
         const newQty = item.qty + delta;
+
+        if (delta > 0 && !isLoose && newQty > maxStock) {
+          triggerStockAlert(`⚠️ "${item.name}" चा शिल्लक स्टॉक फक्त ${maxStock} आहे! यापेक्षा जास्त ॲड करता येणार नाही.`);
+          return item;
+        }
+
         return newQty > 0 ? { ...item, qty: newQty } : item;
       }
       return item;
@@ -510,35 +684,46 @@ export default function POS() {
     
     setCheckoutLoading(true);
     try {
-      let finalCustomerId = null;
+      let finalCustomerId = selectedCustomer?.id || null;
+      const phoneToSend = cleanPhone(customerPhone.trim());
+      const nameToSend = customerName.trim() || selectedCustomer?.name || '';
 
       // 1. Check or Create Customer if phone is provided
-      if (customerPhone.trim()) {
-        const phone = cleanPhone(customerPhone.trim());
-        const customers = await api.customers.list({ phone });
-        const existing = Array.isArray(customers) ? customers.find((c: any) => cleanPhone(c.phone) === phone) : null;
+      if (phoneToSend) {
+        if (!finalCustomerId) {
+          const matchedCust = customers.find(c => cleanPhone(c.phone || '') === phoneToSend);
+          if (matchedCust) {
+            finalCustomerId = matchedCust.id;
+          }
+        }
 
-        if (existing) {
-          finalCustomerId = existing.id;
-          if (customerAadhar || customerPhoto) {
-            await api.customers.update(existing.id, {
-              ...existing,
-              aadharNumber: customerAadhar || existing.aadharNumber,
-              photoUrl: customerPhoto || existing.photoUrl
-            });
+        if (finalCustomerId) {
+          const existing = customers.find(c => c.id === finalCustomerId);
+          if (existing) {
+            const shouldUpdateName = nameToSend && (existing.name === 'New Customer' || !existing.name);
+            if (shouldUpdateName || customerAadhar || customerPhoto) {
+              await api.customers.update(finalCustomerId, {
+                ...existing,
+                name: shouldUpdateName ? nameToSend : existing.name,
+                aadharNumber: customerAadhar || existing.aadharNumber,
+                photoUrl: customerPhoto || existing.photoUrl
+              });
+            }
           }
         } else {
           finalCustomerId = crypto.randomUUID();
-          await api.customers.create({
+          const newCust = {
             id: finalCustomerId,
-            name: 'New Customer',
-            phone: phone,
+            name: nameToSend || 'New Customer',
+            phone: phoneToSend,
             aadharNumber: customerAadhar,
             photoUrl: customerPhoto,
             address: '',
             balance: 0,
             createdAt: new Date().toISOString()
-          });
+          };
+          await api.customers.create(newCust);
+          setCustomers(prev => [...prev, newCust as Customer]);
         }
       }
 
@@ -557,8 +742,6 @@ export default function POS() {
         customerId: finalCustomerId,
         createdAt: new Date().toISOString()
       });
-      
-      const phoneToSend = cleanPhone(customerPhone);
 
       // Cache full receipt in localStorage for instant offline access
       try {
@@ -572,9 +755,9 @@ export default function POS() {
           paymentMethod,
           splitAmounts,
           customerId: finalCustomerId,
-          customerName: customerName || '',
+          customerName: nameToSend,
           customerPhone: phoneToSend,
-          shopName: shopData?.shopName || shopData?.name || 'MartGPT Kirana',
+          shopName: shopData?.shopName || shopData?.name || 'Kirana Store',
           shopPhone: shopData?.phone || '',
           shopAddress: shopData?.address || '',
           shopGstNumber: shopData?.gstNumber || '',
@@ -594,6 +777,7 @@ export default function POS() {
         paymentMethod: paymentMethod,
         splitAmounts: splitAmounts,
         items: [...cart],
+        customerName: nameToSend,
         customerPhone: phoneToSend,
         loyaltyPointsEarned: Math.floor(total / 100),
         createdAt: new Date().toISOString()
@@ -619,7 +803,7 @@ export default function POS() {
       // Auto-send WhatsApp bill after configured delay if plan allows and customer phone is provided (10 digits)
       const billDelay = ((shopData as any)?.settings?.billDelaySeconds ?? 5);
       if (canAccess('whatsapp_bills') && phoneToSend.length === 10) {
-        const billMsg = buildWhatsAppBillText(txId, total, phoneToSend, [...cart], discountAmount, paymentMethod);
+        const billMsg = buildWhatsAppBillText(txId, total, phoneToSend, [...cart], discountAmount, paymentMethod, nameToSend);
         setPendingWhatsApp({
           txId,
           phone: phoneToSend,
@@ -638,7 +822,10 @@ export default function POS() {
       // Clear cart on success
       setCart([]);
       setSearchTerm('');
+      setCustomerName('');
       setCustomerPhone('');
+      setSelectedCustomer(null);
+      setShowCustomerSuggestions(false);
       setCustomerAadhar('');
       setCustomerPhoto('');
       setDiscountValue('');
@@ -693,7 +880,8 @@ export default function POS() {
       targetPhone, 
       checkoutResult.items, 
       checkoutResult.discountAmount, 
-      'Paid'
+      'Paid',
+      checkoutResult.customerName || ''
     );
     dispatchWhatsAppBill(targetPhone, text, checkoutResult.id);
   };
@@ -749,6 +937,21 @@ export default function POS() {
             {floatingNotification}
           </div>
           <button onClick={() => setFloatingNotification('')} className="text-white/80 hover:text-white p-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Floating Stock Limit Warning Notification */}
+      {stockWarning && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] max-w-md w-[92%] sm:w-auto bg-rose-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-rose-400 animate-in slide-in-from-top-4 duration-200">
+          <AlertTriangle className="h-5 w-5 text-amber-300 shrink-0 animate-bounce" />
+          <p className="text-sm font-bold flex-1">{stockWarning}</p>
+          <button 
+            type="button" 
+            onClick={() => setStockWarning('')} 
+            className="p-1 rounded-lg hover:bg-white/20 text-white/90 active:scale-90"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -842,6 +1045,16 @@ export default function POS() {
                       <div className="text-[10px] text-muted-foreground uppercase font-bold">{checkoutResult.paymentMethod || 'Cash'}</div>
                     </div>
                   </div>
+
+                  {(checkoutResult.customerName || checkoutResult.customerPhone) && (
+                    <div className="text-[11px] bg-background/60 p-1.5 rounded-lg border border-border/40 flex justify-between items-center">
+                      <span className="text-muted-foreground">Customer:</span>
+                      <span className="font-semibold text-foreground">
+                        {checkoutResult.customerName ? `${checkoutResult.customerName} ` : ''}
+                        {checkoutResult.customerPhone ? `(+91 ${cleanPhone(checkoutResult.customerPhone)})` : ''}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Items Summary */}
                   <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
@@ -1167,23 +1380,36 @@ export default function POS() {
               </span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide flex-nowrap touch-pan-x">
-              {looseQuickItems.slice(0, 15).map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => addToCart(item)}
-                  className="shrink-0 flex items-center gap-1.5 bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/80 rounded-lg px-2.5 py-1.5 shadow-2xs transition-all active:scale-95 group text-left"
-                  title={`Click to add or enter code ${(item as any).shortCode || item.barcode || ''}`}
-                >
-                  {((item as any).shortCode) && (
-                    <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded font-mono">
-                      {(item as any).shortCode}
-                    </span>
-                  )}
-                  <span className="text-xs font-semibold text-foreground truncate max-w-[110px]">{item.name}</span>
-                  <span className="text-xs font-bold text-primary shrink-0">₹{item.sellingPrice}</span>
-                </button>
-              ))}
+              {looseQuickItems.slice(0, 15).map(item => {
+                const isOutOfStock = !Boolean((item as any).isLoose) && Number(item.stock ?? 0) <= 0;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (isOutOfStock) {
+                        triggerStockAlert(`⚠️ "${item.name}" चा स्टॉक संपला आहे! (उपलब्ध: 0)`);
+                        return;
+                      }
+                      addToCart(item);
+                    }}
+                    className={`shrink-0 flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 shadow-2xs transition-all active:scale-95 group text-left ${
+                      isOutOfStock 
+                        ? 'opacity-50 border-rose-300 bg-rose-50 dark:bg-rose-950/20 cursor-not-allowed' 
+                        : 'bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border-amber-200/80 dark:border-amber-800/80'
+                    }`}
+                    title={isOutOfStock ? 'स्टॉक संपला आहे' : `Click to add or enter code ${(item as any).shortCode || item.barcode || ''}`}
+                  >
+                    {((item as any).shortCode) && (
+                      <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded font-mono">
+                        {(item as any).shortCode}
+                      </span>
+                    )}
+                    <span className="text-xs font-semibold text-foreground truncate max-w-[110px]">{item.name}</span>
+                    <span className="text-xs font-bold text-primary shrink-0">₹{item.sellingPrice}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1197,12 +1423,25 @@ export default function POS() {
           ) : filteredProducts.map(product => {
             const isLoose = Boolean((product as any).isLoose);
             const shortCode = (product as any).shortCode;
+            const availableStock = Number(product.stock ?? 0);
+            const isOutOfStock = !isLoose && availableStock <= 0;
+            const isLowStock = !isLoose && !isOutOfStock && availableStock <= (product.minStock || 5);
             
             return (
               <div 
                 key={product.id} 
-                className="group relative border border-border/80 rounded-2xl p-3 sm:p-3.5 cursor-pointer hover:border-primary/60 hover:shadow-md transition-all duration-200 bg-card text-card-foreground flex flex-col justify-between active:scale-[0.98]"
-                onClick={() => addToCart(product)}
+                className={`group relative border rounded-2xl p-3 sm:p-3.5 transition-all duration-200 bg-card text-card-foreground flex flex-col justify-between ${
+                  isOutOfStock 
+                    ? 'opacity-65 border-rose-300/70 dark:border-rose-900/40 bg-rose-500/5 cursor-not-allowed' 
+                    : 'cursor-pointer hover:border-primary/60 hover:shadow-md active:scale-[0.98] border-border/80'
+                }`}
+                onClick={() => {
+                  if (isOutOfStock) {
+                    triggerStockAlert(`⚠️ "${product.name}" चा स्टॉक संपला आहे! (उपलब्ध: 0)`);
+                    return;
+                  }
+                  addToCart(product);
+                }}
               >
                 {/* Top Badges */}
                 <div className="flex items-center justify-between gap-1 mb-2">
@@ -1220,9 +1459,19 @@ export default function POS() {
                     </span>
                   )}
 
-                  <span className="text-[10px] font-medium text-muted-foreground ml-auto">
-                    {product.stock} {product.unit || 'pcs'}
-                  </span>
+                  {isOutOfStock ? (
+                    <span className="text-[10px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950/80 px-2 py-0.5 rounded-md border border-rose-300/50">
+                      माल संपला (0)
+                    </span>
+                  ) : isLowStock ? (
+                    <span className="text-[10px] font-bold text-amber-600 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded-md">
+                      फक्त {availableStock} {product.unit || 'pcs'}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-muted-foreground ml-auto">
+                      {product.stock} {product.unit || 'pcs'}
+                    </span>
+                  )}
                 </div>
 
                 {/* Image if available */}
@@ -1247,8 +1496,13 @@ export default function POS() {
                   </div>
                   <button
                     type="button"
-                    className="h-7 w-7 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground flex items-center justify-center transition-all shrink-0"
-                    title="Add to Bill"
+                    disabled={isOutOfStock}
+                    className={`h-7 w-7 rounded-lg flex items-center justify-center transition-all shrink-0 ${
+                      isOutOfStock 
+                        ? 'bg-rose-100 text-rose-400 dark:bg-rose-950/40 cursor-not-allowed' 
+                        : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground'
+                    }`}
+                    title={isOutOfStock ? 'स्टॉक संपला आहे' : 'Add to Bill'}
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -1436,57 +1690,185 @@ export default function POS() {
               </Button>
             </div>
           ) : (
-            cart.map(item => (
-              <div key={item.id} className="flex items-center justify-between border-b border-border/70 pb-3">
-                <div className="flex-1 pr-2">
-                  <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
-                  <p className="text-muted-foreground text-xs mt-1">₹{item.sellingPrice} x {item.qty}</p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <p className="font-bold text-sm text-foreground">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
-                  <div className="flex items-center gap-1 bg-muted rounded-xl p-1 border border-border/40">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg active:scale-90" onClick={() => updateQty(item.id, -1)}>
-                      <Minus className="h-3.5 w-3.5" />
-                    </Button>
-                    <span className="w-7 text-center text-sm font-bold">{item.qty}</span>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg active:scale-90 text-primary" onClick={() => updateQty(item.id, 1)}>
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-rose-500 hover:bg-rose-500/10 active:scale-90" onClick={() => removeItem(item.id)}>
-                      <Trash className="h-3.5 w-3.5" />
-                    </Button>
+            cart.map(item => {
+              const isLoose = Boolean((item as any).isLoose);
+              const maxStock = Number(item.stock ?? 999999);
+              const isMaxStockReached = !isLoose && item.qty >= maxStock;
+
+              return (
+                <div key={item.id} className="flex items-center justify-between border-b border-border/70 pb-3">
+                  <div className="flex-1 pr-2">
+                    <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
+                    <p className="text-muted-foreground text-xs mt-1">₹{item.sellingPrice} x {item.qty}</p>
+                    {isMaxStockReached && (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold block mt-0.5">
+                        ⚠️ शिल्लक साठा मर्यादा: {maxStock}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <p className="font-bold text-sm text-foreground">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
+                    <div className="flex items-center gap-1 bg-muted rounded-xl p-1 border border-border/40">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg active:scale-90" onClick={() => updateQty(item.id, -1)}>
+                        <Minus className="h-3.5 w-3.5" />
+                      </Button>
+                      <span className="w-7 text-center text-sm font-bold">{item.qty}</span>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        disabled={isMaxStockReached}
+                        className={`h-8 w-8 rounded-lg active:scale-90 ${
+                          isMaxStockReached 
+                            ? 'opacity-35 cursor-not-allowed text-muted-foreground' 
+                            : 'text-primary hover:bg-primary/10'
+                        }`} 
+                        onClick={() => updateQty(item.id, 1)}
+                        title={isMaxStockReached ? `फक्त ${maxStock} शिल्लक आहे` : 'Add 1 more'}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-rose-500 hover:bg-rose-500/10 active:scale-90" onClick={() => removeItem(item.id)}>
+                        <Trash className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
         <div className="p-4 border-t border-border bg-card md:bg-muted/10 md:rounded-b-xl space-y-3 shrink-0 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:shadow-none">
-          <div className="flex flex-col gap-1.5 pb-2 border-b border-zinc-200 dark:border-zinc-800">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Customer Mobile No. (For WhatsApp Bill)</label>
-              <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
-                {customerPhone.length}/10
-              </span>
+          {/* Customer Details Box: Name + Phone with Instant Auto-suggest */}
+          {selectedCustomer ? (
+            <div className="flex flex-col gap-1.5 pb-2.5 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                  <UserCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  ग्राहक (निवडलेला)
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearCustomer}
+                  className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 hover:underline flex items-center gap-0.5"
+                  title="दुसरा ग्राहक निवडा किंवा काढा"
+                >
+                  <X className="h-3 w-3" /> बदला
+                </button>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-sm text-emerald-950 dark:text-emerald-100 leading-tight">
+                    {selectedCustomer.name}
+                  </p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 font-mono">
+                    +91 {cleanPhone(selectedCustomer.phone)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  {Number(selectedCustomer.balance || 0) > 0 ? (
+                    <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/70 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800 block">
+                      उधार: ₹{Number(selectedCustomer.balance).toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded-md block">
+                      हिशोब क्लियर (₹0)
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400 select-none">
-                +91
-              </span>
-              <Input 
-                placeholder="10-digit mobile number" 
-                type="tel"
-                maxLength={10}
-                value={customerPhone}
-                onChange={(e) => {
-                  const val = cleanPhone(e.target.value);
-                  setCustomerPhone(val);
-                }}
-                className="h-12 md:h-10 pl-12 text-base md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-zinc-50 font-mono tracking-wider"
-              />
+          ) : (
+            <div ref={customerDropdownRef} className="relative flex flex-col gap-1.5 pb-2.5 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                  <User className="h-3.5 w-3.5 text-primary" />
+                  ग्राहक तपशील (नाव किंवा नंबर)
+                </label>
+                {customerPhone && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
+                    {customerPhone.length}/10
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                {/* Customer Name */}
+                <div className="relative">
+                  <Input 
+                    placeholder="ग्राहक नाव (उदा. सचिन)"
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                      setShowCustomerSuggestions(true);
+                    }}
+                    onFocus={() => setShowCustomerSuggestions(true)}
+                    className="h-10 text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                  />
+                </div>
+
+                {/* Customer Mobile */}
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 select-none">
+                    +91
+                  </span>
+                  <Input 
+                    placeholder="10-अंकी मोबाईल"
+                    type="tel"
+                    maxLength={10}
+                    value={customerPhone}
+                    onChange={(e) => {
+                      const val = cleanPhone(e.target.value);
+                      setCustomerPhone(val);
+                      setShowCustomerSuggestions(true);
+                    }}
+                    onFocus={() => setShowCustomerSuggestions(true)}
+                    className="h-10 pl-8.5 text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 font-mono tracking-wider"
+                  />
+                </div>
+              </div>
+
+              {/* Suggestions Dropdown */}
+              {showCustomerSuggestions && customerSuggestions.length > 0 && (
+                <div className="absolute bottom-full left-0 right-0 z-50 mb-1 bg-popover text-popover-foreground border border-border rounded-xl shadow-2xl overflow-hidden divide-y divide-border/60 max-h-56 overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
+                  <div className="px-3 py-1 bg-muted/60 text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex justify-between items-center">
+                    <span>उपलब्ध ग्राहक ({customerSuggestions.length})</span>
+                    <span className="text-[9px] lowercase">क्लिक करा ऑटो-फिलसाठी</span>
+                  </div>
+                  {customerSuggestions.map((cust) => (
+                    <button
+                      key={cust.id}
+                      type="button"
+                      onClick={() => handleSelectCustomer(cust)}
+                      className="w-full px-3 py-2 text-left hover:bg-muted/80 flex items-center justify-between transition-colors group cursor-pointer"
+                    >
+                      <div>
+                        <p className="font-bold text-xs text-foreground group-hover:text-primary flex items-center gap-1.5">
+                          <User className="h-3 w-3 text-muted-foreground" />
+                          {cust.name}
+                        </p>
+                        <p className="text-[11px] font-mono text-muted-foreground">
+                          +91 {cleanPhone(cust.phone)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        {Number(cust.balance || 0) > 0 ? (
+                          <span className="text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded">
+                            उधार: ₹{Number(cust.balance).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
+                            हिशोब क्लियर
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
           <div className="flex flex-col gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
             <label className="text-xs font-medium text-muted-foreground">Discount</label>
@@ -1598,33 +1980,114 @@ export default function POS() {
                 </div>
               </div>
               
-              {/* Customer Mobile for WhatsApp & Udhar */}
-              <div className="flex flex-col gap-1 bg-muted/40 p-3 rounded-2xl border border-border">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-foreground">
-                    Customer Mobile Number {splitAmounts.udhar > 0 ? <span className="text-red-500 font-extrabold">* (Required for Udhar)</span> : '(For WhatsApp Bill)'}
-                  </Label>
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'text-muted-foreground'}`}>
-                    {customerPhone.length}/10
-                  </span>
+              {/* Customer Mobile & Name for WhatsApp & Udhar */}
+              {selectedCustomer ? (
+                <div className="flex flex-col gap-1.5 bg-emerald-50/70 dark:bg-emerald-950/40 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                      <UserCheck className="h-4 w-4 text-emerald-600" />
+                      ग्राहक: {selectedCustomer.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearCustomer}
+                      className="text-[11px] font-semibold text-rose-500 hover:underline flex items-center gap-0.5"
+                    >
+                      <X className="h-3 w-3" /> बदला
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-emerald-700 dark:text-emerald-300">
+                      +91 {cleanPhone(selectedCustomer.phone)}
+                    </span>
+                    {Number(selectedCustomer.balance || 0) > 0 ? (
+                      <span className="font-bold text-rose-600">
+                        मागील उधार: ₹{Number(selectedCustomer.balance).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-emerald-600">हिशोब क्लिअर</span>
+                    )}
+                  </div>
                 </div>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground select-none">
-                    +91
-                  </span>
-                  <Input 
-                    type="tel" 
-                    placeholder="10-digit mobile number"
-                    maxLength={10}
-                    value={customerPhone} 
-                    onChange={(e) => {
-                      const val = cleanPhone(e.target.value);
-                      setCustomerPhone(val);
-                    }}
-                    className={`h-10 pl-10 font-mono text-sm bg-background ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
-                  />
+              ) : (
+                <div ref={modalCustomerDropdownRef} className="relative flex flex-col gap-2 bg-muted/40 p-3 rounded-2xl border border-border">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs font-bold text-foreground">
+                      Customer Details {splitAmounts.udhar > 0 ? <span className="text-red-500 font-extrabold">* (Required for Udhar)</span> : '(Name & WhatsApp)'}
+                    </Label>
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'text-muted-foreground'}`}>
+                      {customerPhone.length}/10
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input 
+                      type="text" 
+                      placeholder="ग्राहक नाव"
+                      value={customerName} 
+                      onChange={(e) => {
+                        setCustomerName(e.target.value);
+                        setShowCustomerSuggestions(true);
+                      }}
+                      onFocus={() => setShowCustomerSuggestions(true)}
+                      className="h-10 text-xs sm:text-sm bg-background"
+                    />
+
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground select-none">
+                        +91
+                      </span>
+                      <Input 
+                        type="tel" 
+                        placeholder="मोबाईल नंबर"
+                        maxLength={10}
+                        value={customerPhone} 
+                        onChange={(e) => {
+                          const val = cleanPhone(e.target.value);
+                          setCustomerPhone(val);
+                          setShowCustomerSuggestions(true);
+                        }}
+                        onFocus={() => setShowCustomerSuggestions(true)}
+                        className={`h-10 pl-8.5 font-mono text-xs sm:text-sm bg-background ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Modal suggestions dropdown */}
+                  {showCustomerSuggestions && customerSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground border border-border rounded-xl shadow-2xl overflow-hidden divide-y divide-border/60 max-h-48 overflow-y-auto animate-in fade-in duration-150">
+                      {customerSuggestions.map((cust) => (
+                        <button
+                          key={cust.id}
+                          type="button"
+                          onClick={() => handleSelectCustomer(cust)}
+                          className="w-full px-3 py-2 text-left hover:bg-muted/80 flex items-center justify-between transition-colors group cursor-pointer"
+                        >
+                          <div>
+                            <p className="font-bold text-xs text-foreground group-hover:text-primary">
+                              {cust.name}
+                            </p>
+                            <p className="text-[11px] font-mono text-muted-foreground">
+                              +91 {cleanPhone(cust.phone)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            {Number(cust.balance || 0) > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600">
+                                उधार: ₹{Number(cust.balance).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-emerald-600">
+                                क्लिअर
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {/* Auto remainder checkbox */}
               <div className="flex items-center justify-between p-2.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300/60 dark:border-amber-800/60 rounded-xl text-xs">

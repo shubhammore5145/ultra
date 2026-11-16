@@ -47,10 +47,16 @@ export interface Product {
   unit: string;
   purchasePrice: number;
   sellingPrice: number;
+  wholesalePrice?: number;
+  bulkMinQty?: number;
+  bulkPrice?: number;
   mrp: number;
   gst: number;
   stock: number;
   minStock: number;
+  maxStock?: number;
+  reorderQty?: number;
+  rackLocation?: string; // e.g. "Rack A-1", "Shelf 3"
   sku: string;
   barcode: string;
   shortCode?: string;
@@ -67,6 +73,8 @@ export interface CartItem extends Product {
   qty: number;
   variantId?: string;
   variantName?: string;
+  rateType?: 'retail' | 'wholesale';
+  originalPrice?: number;
 }
 
 export interface Transaction {
@@ -77,7 +85,10 @@ export interface Transaction {
   discountAmount?: number;
   totalAmount: number;
   paymentMethod: 'cash' | 'upi' | 'udhar' | 'card' | 'split';
+  splitAmounts?: { cash: number; upi: number; udhar: number };
   customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
   isDeleted?: number | boolean;
   deletedAt?: string;
   createdAt: string; // ISO string
@@ -131,6 +142,7 @@ export interface StaffMember {
   joinDate?: string;
   address?: string;
   status: 'active' | 'inactive';
+  permissions?: string[];
   createdAt?: string;
 }
 
@@ -161,4 +173,64 @@ export interface RecycleBinData {
   products: Product[];
   transactions: Transaction[];
   customers: Customer[];
+}
+
+// D-Mart Enterprise Extension Types
+export interface StockMovement {
+  id: string;
+  productId: string;
+  productName: string;
+  type: 'inward_purchase' | 'outward_sale' | 'return_inward' | 'damaged_loss' | 'expired_loss' | 'audit_adjustment';
+  qty: number;
+  previousStock: number;
+  newStock: number;
+  reason?: string;
+  referenceId?: string;
+  createdAt: string;
+}
+
+export interface DamagedItem {
+  id: string;
+  productId: string;
+  productName: string;
+  qty: number;
+  costPrice: number;
+  totalLoss: number;
+  reason: 'broken' | 'leaked' | 'expired' | 'rodent_pest' | 'packaging_torn' | 'other';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SalesReturn {
+  id: string;
+  originalBillId: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  items: {
+    productId: string;
+    productName: string;
+    qty: number;
+    sellingPrice: number;
+    refundAmount: number;
+    condition: 'resellable' | 'damaged';
+  }[];
+  totalRefund: number;
+  refundMethod: 'cash' | 'credit_note' | 'upi';
+  reason: string;
+  createdAt: string;
+}
+
+export interface CashCounterClosing {
+  id: string;
+  cashierName: string;
+  openingCash: number;
+  cashSales: number;
+  cashReturns: number;
+  cashExpenses: number;
+  expectedCash: number;
+  actualCountedCash: number;
+  discrepancy: number; // actual - expected
+  notes?: string;
+  closedAt: string;
 }

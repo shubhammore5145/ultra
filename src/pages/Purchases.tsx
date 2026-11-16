@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Printer, AlertTriangle, Loader2, Plus, 
   Building2, Receipt, Search, Trash, CheckCircle2, 
-  Phone, MapPin, PackagePlus, Eye, X
+  Phone, MapPin, PackagePlus, Eye, X, MessageSquare, Sparkles, ArrowRight
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -234,6 +234,60 @@ export default function Purchases() {
         alert(err.message || 'Failed to delete supplier.');
       }
     }
+  };
+
+  const createBillFromItem = (product: Product, qty: number) => {
+    const price = product.purchasePrice || 0;
+    setBillItems([{
+      productId: product.id,
+      name: product.name,
+      qty: qty,
+      purchasePrice: price,
+      total: qty * price
+    }]);
+    setBillInvoiceNumber(`PO-${Date.now().toString().slice(-6)}`);
+    setShowBillModal(true);
+  };
+
+  const restockAllLowStock = () => {
+    const items: PurchaseItem[] = lowStockProducts.map(p => {
+      const qty = p.reorderQty || Math.max(10, ((p.minStock || 5) * 2) - Math.floor(p.stock || 0));
+      const price = p.purchasePrice || 0;
+      return {
+        productId: p.id,
+        name: p.name,
+        qty,
+        purchasePrice: price,
+        total: qty * price
+      };
+    });
+    setBillItems(items);
+    setBillInvoiceNumber(`PO-${Date.now().toString().slice(-6)}`);
+    setShowBillModal(true);
+  };
+
+  const sendWhatsAppPO = (product: Product, qty: number) => {
+    const shopName = shopData?.shopName || 'Nayashi Kirana';
+    const text = `*📦 Purchase Order from ${shopName}*\n\n` +
+      `*Item:* ${product.name}\n` +
+      `*Quantity Needed:* ${qty} ${product.unit || 'pcs'}\n` +
+      `*Current Stock:* ${product.stock || 0}\n` +
+      `*Date:* ${new Date().toLocaleDateString()}\n\n` +
+      `Please confirm dispatch and delivery time. Thank you!`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const sendAllWhatsAppPO = () => {
+    const shopName = shopData?.shopName || 'Nayashi Kirana';
+    let text = `*📦 Bulk Purchase Order from ${shopName}*\n` +
+      `*Date:* ${new Date().toLocaleDateString()}\n\n` +
+      `*Items to Restock:*\n`;
+    lowStockProducts.forEach((p, idx) => {
+      const qty = p.reorderQty || Math.max(10, ((p.minStock || 5) * 2) - Math.floor(p.stock || 0));
+      text += `${idx + 1}. *${p.name}* — ${qty} ${p.unit || 'pcs'}\n`;
+    });
+    text += `\nPlease confirm availability and rate quote. Thank you!`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
@@ -469,53 +523,184 @@ export default function Purchases() {
             </div>
           )}
 
-          {/* TAB 3: LOW STOCK SHOPPING LIST */}
+          {/* TAB 3: D-MART AUTOMATIC REORDER & REPLENISHMENT PLANNER */}
           {activeTab === 'lowstock' && (
             <div className="space-y-4">
               {lowStockProducts.length === 0 ? (
-                <div className="bg-card border rounded-xl p-12 text-center text-muted-foreground">
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <h3 className="text-lg font-semibold">Your inventory is fully stocked!</h3>
-                  <p>No products are currently below their minimum stock levels.</p>
+                <div className="bg-card border rounded-2xl p-12 text-center text-muted-foreground shadow-xs">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                    <CheckCircle2 className="h-8 w-8" />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground">सर्व स्टॉक व्यवस्थित आहे! (Fully Stocked)</h3>
+                  <p className="text-sm mt-1 max-w-md mx-auto">
+                    कोणत्याही उत्पादनाचा स्टॉक किमान मर्यादेच्या (Min Stock Alert) खाली गेलेला नाही.
+                  </p>
                 </div>
               ) : (
-                <div className="bg-card text-card-foreground border rounded-xl shadow-sm overflow-hidden">
-                  <div className="hidden print:block p-6 border-b text-center">
-                    <h2 className="text-2xl font-bold">{shopData?.shopName || 'Kirana Store'} - Purchase Shopping List</h2>
-                    <p className="text-muted-foreground">Generated on: {new Date().toLocaleDateString()}</p>
+                <div className="space-y-4">
+                  {/* Top D-Mart Action & Metric Bar */}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
+                    <div className="bg-card border rounded-xl p-4 shadow-xs">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Restock Required</span>
+                      <p className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
+                        {lowStockProducts.length} Items
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Below safe replenishment threshold</p>
+                    </div>
+
+                    <div className="bg-card border rounded-xl p-4 shadow-xs">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Est. Restock Capital</span>
+                      <p className="text-2xl font-black text-foreground mt-1">
+                        ₹{lowStockProducts.reduce((sum, p) => {
+                          const qty = p.reorderQty || Math.max(10, ((p.minStock || 5) * 2) - Math.floor(p.stock || 0));
+                          return sum + (qty * (p.purchasePrice || 0));
+                        }, 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">At wholesale cost price</p>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-4 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-primary flex items-center gap-1">
+                          <Sparkles className="h-3.5 w-3.5" /> 1-Click Multi Restock
+                        </span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          सर्व {lowStockProducts.length} वस्तू थेट खरेदी बिलामध्ये (PO) जोडा
+                        </p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        onClick={restockAllLowStock} 
+                        className="mt-2 font-bold w-full bg-primary text-primary-foreground shadow-xs"
+                      >
+                        <PackagePlus className="h-3.5 w-3.5 mr-1.5" /> Restock All to Bill
+                      </Button>
+                    </div>
+
+                    <div className="bg-card border rounded-xl p-4 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <span className="text-xs font-semibold text-muted-foreground">Supplier WhatsApp PO</span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          सप्लायर/डीलरला एका क्लिकवर खरेदी यादी व्हॉट्सॲपवर पाठवा
+                        </p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={sendAllWhatsAppPO} 
+                        className="mt-2 font-semibold w-full text-emerald-600 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5 mr-1.5 text-emerald-600" /> WhatsApp All Items
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
-                        <tr>
-                          <th className="px-6 py-4">Product Name</th>
-                          <th className="px-6 py-4">Category</th>
-                          <th className="px-6 py-4 text-center">Current Stock</th>
-                          <th className="px-6 py-4 text-center">Min Stock</th>
-                          <th className="px-6 py-4">Qty to Buy</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {lowStockProducts.map((product) => (
-                          <tr key={product.id} className="hover:bg-muted/30 transition-colors">
-                            <td className="px-6 py-4 font-medium flex items-center gap-2">
-                              <AlertTriangle className="h-4 w-4 text-orange-500 print:hidden" /> {product.name}
-                            </td>
-                            <td className="px-6 py-4 text-muted-foreground">{product.category}</td>
-                            <td className="px-6 py-4 text-center">
-                              <span className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded font-bold text-xs">
-                                {product.stock} {product.unit}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center text-muted-foreground">{product.minStock} {product.unit}</td>
-                            <td className="px-6 py-4">
-                              <div className="border-b-2 border-dashed border-gray-400 w-16 h-6 inline-block print:border-black"></div>
-                            </td>
+                  {/* Replenishment Table */}
+                  <div className="bg-card text-card-foreground border rounded-xl shadow-xs overflow-hidden">
+                    <div className="hidden print:block p-6 border-b text-center">
+                      <h2 className="text-2xl font-bold">{shopData?.shopName || 'Nayashi Kirana'} - Purchase Reorder Sheet</h2>
+                      <p className="text-muted-foreground">Generated on: {new Date().toLocaleDateString()}</p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-muted/60 text-muted-foreground text-xs uppercase font-bold tracking-wider border-b">
+                          <tr>
+                            <th className="px-5 py-3.5">Product & Placement</th>
+                            <th className="px-4 py-3.5 text-center">Current Stock</th>
+                            <th className="px-4 py-3.5 text-center">Min Alert</th>
+                            <th className="px-4 py-3.5 text-center">Suggested Reorder</th>
+                            <th className="px-4 py-3.5 text-right">Unit Cost</th>
+                            <th className="px-4 py-3.5 text-right">Est. Total</th>
+                            <th className="px-5 py-3.5 text-right print:hidden">Replenish Action</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {lowStockProducts.map((product) => {
+                            const isOut = (product.stock || 0) <= 0;
+                            const suggestedQty = product.reorderQty || Math.max(10, ((product.minStock || 5) * 2) - Math.floor(product.stock || 0));
+                            const unitCost = product.purchasePrice || 0;
+                            const estTotal = suggestedQty * unitCost;
+
+                            return (
+                              <tr key={product.id} className="hover:bg-muted/30 transition-colors">
+                                <td className="px-5 py-3.5">
+                                  <div className="flex items-start gap-2.5">
+                                    <div className={`mt-0.5 p-1 rounded-md ${isOut ? 'bg-red-500/10 text-red-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                      <AlertTriangle className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-foreground leading-snug">{product.name}</p>
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-muted-foreground">
+                                        <span className="bg-muted px-1.5 py-0.5 rounded font-medium">{product.category || 'General'}</span>
+                                        {product.rackLocation && (
+                                          <span className="bg-blue-500/10 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded font-mono font-medium">
+                                            📍 {product.rackLocation}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td className="px-4 py-3.5 text-center">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full font-black text-xs ${
+                                    isOut 
+                                      ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400 border border-red-300 dark:border-red-800' 
+                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 border border-amber-300 dark:border-amber-800'
+                                  }`}>
+                                    {product.stock || 0} {product.unit || 'pcs'}
+                                  </span>
+                                </td>
+
+                                <td className="px-4 py-3.5 text-center text-xs font-semibold text-muted-foreground">
+                                  {product.minStock || 5} {product.unit || 'pcs'}
+                                </td>
+
+                                <td className="px-4 py-3.5 text-center">
+                                  <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg font-black text-sm border border-emerald-500/20">
+                                    {suggestedQty} {product.unit || 'pcs'}
+                                    {product.reorderQty ? (
+                                      <span className="text-[10px] font-semibold opacity-75">(D-Mart)</span>
+                                    ) : null}
+                                  </span>
+                                </td>
+
+                                <td className="px-4 py-3.5 text-right font-medium text-xs">
+                                  ₹{unitCost.toFixed(2)}
+                                </td>
+
+                                <td className="px-4 py-3.5 text-right font-bold text-sm text-foreground">
+                                  ₹{estTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </td>
+
+                                <td className="px-5 py-3.5 text-right print:hidden">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => sendWhatsAppPO(product, suggestedQty)}
+                                      className="h-8 px-2.5 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                      title="Send WhatsApp PO to supplier"
+                                    >
+                                      <MessageSquare className="h-3.5 w-3.5 mr-1" /> WhatsApp
+                                    </Button>
+
+                                    <Button
+                                      size="sm"
+                                      onClick={() => createBillFromItem(product, suggestedQty)}
+                                      className="h-8 px-3 text-xs font-bold bg-primary text-primary-foreground shadow-xs"
+                                    >
+                                      <Plus className="h-3.5 w-3.5 mr-1" /> Add to Bill
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}

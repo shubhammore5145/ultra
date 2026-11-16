@@ -39,7 +39,13 @@ export default function ProductForm() {
     shortCode: '',
     isLoose: false,
     expiryDate: '',
-    imageUrl: ''
+    imageUrl: '',
+    wholesalePrice: '',
+    bulkMinQty: '',
+    bulkPrice: '',
+    rackLocation: '',
+    reorderQty: '',
+    maxStock: ''
   });
 
   const barcodeRef = useRef<SVGSVGElement>(null);
@@ -67,7 +73,13 @@ export default function ProductForm() {
               shortCode: data.shortCode || '',
               isLoose: Boolean(data.isLoose) || (!data.barcode && !!data.shortCode),
               expiryDate: data.expiryDate || '',
-              imageUrl: data.imageUrl || ''
+              imageUrl: data.imageUrl || '',
+              wholesalePrice: data.wholesalePrice?.toString() || '',
+              bulkMinQty: data.bulkMinQty?.toString() || '',
+              bulkPrice: data.bulkPrice?.toString() || '',
+              rackLocation: data.rackLocation || '',
+              reorderQty: data.reorderQty?.toString() || '',
+              maxStock: data.maxStock?.toString() || ''
             });
           }
         } catch (err) {
@@ -224,7 +236,13 @@ export default function ProductForm() {
         shortCode: formData.shortCode?.trim() || null,
         isLoose: formData.isLoose ? 1 : 0,
         expiryDate: formData.expiryDate || null,
-        imageUrl: formData.imageUrl || null
+        imageUrl: formData.imageUrl || null,
+        wholesalePrice: formData.wholesalePrice ? parseFloat(formData.wholesalePrice) : undefined,
+        bulkMinQty: formData.bulkMinQty ? parseFloat(formData.bulkMinQty) : undefined,
+        bulkPrice: formData.bulkPrice ? parseFloat(formData.bulkPrice) : undefined,
+        rackLocation: formData.rackLocation.trim() || undefined,
+        reorderQty: formData.reorderQty ? parseFloat(formData.reorderQty) : undefined,
+        maxStock: formData.maxStock ? parseFloat(formData.maxStock) : undefined
       };
 
       if (isEditing && id) {
@@ -491,6 +509,108 @@ export default function ProductForm() {
               <div className="space-y-2">
                 <Label htmlFor="minStock">Min Stock Alert</Label>
                 <Input id="minStock" value={formData.minStock} onChange={handleChange} type="number" />
+              </div>
+            </div>
+          </div>
+
+          {/* D-Mart Dynamic Pricing & Warehouse Location */}
+          <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm md:col-span-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <span className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 font-black text-xs uppercase tracking-wider">D-Mart</span>
+                  Dynamic Pricing & Warehouse Rack Placement
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Set wholesale rates, bulk quantity discounts, rack/shelf positions, and automatic replenishment reorder levels.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="wholesalePrice" className="text-sm font-semibold">
+                  Wholesale Price (थोक किंमत ₹)
+                </Label>
+                <Input 
+                  id="wholesalePrice" 
+                  value={formData.wholesalePrice} 
+                  onChange={handleChange} 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="e.g. 95.00"
+                />
+                <p className="text-[11px] text-muted-foreground">Rate applied when wholesale mode is active in POS.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="bulkMinQty" className="text-sm font-semibold">
+                  Bulk Tier Min Qty (किमान नग)
+                </Label>
+                <Input 
+                  id="bulkMinQty" 
+                  value={formData.bulkMinQty} 
+                  onChange={handleChange} 
+                  type="number" 
+                  placeholder="e.g. 5 or 10"
+                />
+                <p className="text-[11px] text-muted-foreground">Min quantity to trigger automatic bulk discount.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="bulkPrice" className="text-sm font-semibold">
+                  Bulk Unit Price (बल्क प्रति नग दर ₹)
+                </Label>
+                <Input 
+                  id="bulkPrice" 
+                  value={formData.bulkPrice} 
+                  onChange={handleChange} 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="e.g. 90.00"
+                />
+                <p className="text-[11px] text-muted-foreground">Auto-applied in cart when item quantity reaches min qty.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="rackLocation" className="text-sm font-semibold">
+                  Warehouse Rack / Shelf (रॅक स्थान)
+                </Label>
+                <Input 
+                  id="rackLocation" 
+                  value={formData.rackLocation} 
+                  onChange={handleChange} 
+                  placeholder="e.g. Rack A-3, Shelf 2, Cold Storage"
+                />
+                <p className="text-[11px] text-muted-foreground">Shown during billing and physical stock audits.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reorderQty" className="text-sm font-semibold">
+                  Auto Reorder Qty (पुन्हा मागवण्याचे प्रमाण)
+                </Label>
+                <Input 
+                  id="reorderQty" 
+                  value={formData.reorderQty} 
+                  onChange={handleChange} 
+                  type="number" 
+                  placeholder="e.g. 50 or 100"
+                />
+                <p className="text-[11px] text-muted-foreground">Suggested replenishment order size when stock drops below min.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="maxStock" className="text-sm font-semibold">
+                  Max Stock Limit (कमाल मर्यादा)
+                </Label>
+                <Input 
+                  id="maxStock" 
+                  value={formData.maxStock} 
+                  onChange={handleChange} 
+                  type="number" 
+                  placeholder="e.g. 200"
+                />
+                <p className="text-[11px] text-muted-foreground">Prevents overstocking and dead capital accumulation.</p>
               </div>
             </div>
           </div>

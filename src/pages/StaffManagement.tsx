@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Calendar, Trash2, Edit, Printer, 
-  UserPlus, Banknote, Check, X, Loader2 
+  UserPlus, Banknote, Check, X, Loader2,
+  Shield, ShieldCheck, Key, Lock, CheckSquare, Sparkles
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,7 +13,7 @@ import type { StaffMember, StaffAttendance, StaffSalaryPayment } from '../types'
 
 export default function StaffManagement() {
   const { shopData } = useAuth();
-  const [activeTab, setActiveTab] = useState<'directory' | 'attendance' | 'salary'>('directory');
+  const [activeTab, setActiveTab] = useState<'directory' | 'attendance' | 'salary' | 'permissions'>('directory');
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [attendanceList, setAttendanceList] = useState<StaffAttendance[]>([]);
   const [paymentsList, setPaymentsList] = useState<StaffSalaryPayment[]>([]);
@@ -328,6 +329,54 @@ export default function StaffManagement() {
     return result;
   }, [staffList, attendanceList, paymentsList]);
 
+  const ALL_PERMISSIONS = [
+    { id: 'pos_billing', label: 'POS काउंटर बिलिंग', desc: 'बिल बनवणे व ग्राहक व्यवहार पूर्ण करणे' },
+    { id: 'apply_discounts', label: 'सूट / डिस्काउंट देणे', desc: 'वस्तूवर किंवा बिलावर डिस्काउंट देणे' },
+    { id: 'cancel_bills', label: 'बिल रद्द / डिलीट करणे', desc: 'चुकीचे किंवा रद्द केलेले बिल हटवणे' },
+    { id: 'inventory_edit', label: 'स्टॉक व किंमत बदलणे', desc: 'नवीन वस्तू जोडणे व स्टॉक कमी-जास्त करणे' },
+    { id: 'view_cost_profit', label: 'खरेदी दर व नफा गुप्तता', desc: 'खरेदी दर आणि नफा अहवाल पाहणे' },
+    { id: 'purchase_entry', label: 'खरेदी बिल नोंदवणे', desc: 'सप्लायरकडून आलेल्या मालाची नोंद करणे' },
+    { id: 'customer_udhar', label: 'उधारी खाते व जमा', desc: 'ग्राहकांचे उधारी खाते पाहणे व जमा नोंदवणे' },
+    { id: 'staff_manage', label: 'कर्मचारी व्यवस्थापन', desc: 'हजेरी, पगार आणि अधिकार मॅनेज करणे' },
+  ];
+
+  const ROLE_PRESETS: Record<string, string[]> = {
+    'Cashier': ['pos_billing'],
+    'Manager': ['pos_billing', 'apply_discounts', 'cancel_bills', 'inventory_edit', 'purchase_entry', 'customer_udhar'],
+    'Helper': ['inventory_edit'],
+    'Admin': ['pos_billing', 'apply_discounts', 'cancel_bills', 'inventory_edit', 'view_cost_profit', 'purchase_entry', 'customer_udhar', 'staff_manage']
+  };
+
+  const [savingPermissionsStaffId, setSavingPermissionsStaffId] = useState<string | null>(null);
+
+  const handleTogglePermission = async (staff: StaffMember, permId: string) => {
+    const current = staff.permissions || (staff.role === 'Admin' ? ROLE_PRESETS['Admin'] : ROLE_PRESETS['Cashier']);
+    const updated = current.includes(permId) ? current.filter(p => p !== permId) : [...current, permId];
+    
+    setStaffList(prev => prev.map(s => s.id === staff.id ? { ...s, permissions: updated } : s));
+    setSavingPermissionsStaffId(staff.id);
+    try {
+      await api.staffMembers.update(staff.id, { ...staff, permissions: updated });
+    } catch (err) {
+      console.error('Failed to update permissions:', err);
+    } finally {
+      setTimeout(() => setSavingPermissionsStaffId(null), 600);
+    }
+  };
+
+  const handleApplyPreset = async (staff: StaffMember, presetRole: string) => {
+    const perms = ROLE_PRESETS[presetRole] || [];
+    setStaffList(prev => prev.map(s => s.id === staff.id ? { ...s, permissions: perms } : s));
+    setSavingPermissionsStaffId(staff.id);
+    try {
+      await api.staffMembers.update(staff.id, { ...staff, permissions: perms });
+    } catch (err) {
+      console.error('Failed to apply preset:', err);
+    } finally {
+      setTimeout(() => setSavingPermissionsStaffId(null), 600);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Top Header */}
@@ -370,7 +419,8 @@ export default function StaffManagement() {
         {[
           { id: 'directory', label: '👥 Staff Directory', count: staffList.length },
           { id: 'attendance', label: '📅 Daily Attendance' },
-          { id: 'salary', label: '💵 Salary & Advances' }
+          { id: 'salary', label: '💵 Salary & Advances' },
+          { id: 'permissions', label: '🛡️ Role Permissions (D-Mart Access)' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -798,6 +848,148 @@ export default function StaffManagement() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TAB 4: D-MART ROLE-BASED ACCESS & PERMISSIONS */}
+      {activeTab === 'permissions' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Top Banner */}
+          <div className="bg-gradient-to-r from-blue-600/10 via-primary/10 to-transparent border border-blue-500/20 rounded-2xl p-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> D-Mart Enterprise Access Control & Staff Security
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+                  कर्मचाऱ्यांना त्यांच्या जबाबदारीनुसार (Cashier, Manager, Helper) अचूक अधिकार द्या. खरेदी दर (Cost Price), नफा आणि बिल कॅन्सल करण्यासारखे गोपनीय अधिकार सुरक्षित ठेवा.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs bg-card border px-3 py-1.5 rounded-xl font-bold text-emerald-600 shadow-xs">
+                <Lock className="h-4 w-4" /> Role Security Active
+              </div>
+            </div>
+          </div>
+
+          {/* Staff Permissions Cards */}
+          {staffList.length === 0 ? (
+            <div className="text-center py-12 border rounded-2xl bg-card text-muted-foreground">
+              <Users className="h-10 w-10 mx-auto opacity-30 mb-2" />
+              <p className="text-sm font-semibold">कोणतेही कर्मचारी जोडलेले नाहीत.</p>
+              <p className="text-xs mt-1">अधिकार देण्यासाठी आधी "+ Add New Staff" वरून कर्मचारी जोडा.</p>
+            </div>
+          ) : (
+            <div className="grid gap-6">
+              {staffList.map((staff) => {
+                const currentPerms = staff.permissions || (staff.role === 'Admin' ? ROLE_PRESETS['Admin'] : ROLE_PRESETS['Cashier']);
+                const isSaving = savingPermissionsStaffId === staff.id;
+
+                return (
+                  <div key={staff.id} className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
+                    {/* Staff Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-black text-base uppercase">
+                          {staff.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-foreground text-base">{staff.name}</h4>
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-muted text-muted-foreground">
+                              {staff.role}
+                            </span>
+                            {isSaving && (
+                              <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1 animate-pulse">
+                                <Check className="h-3.5 w-3.5" /> Saved
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            📞 {staff.phone || 'No phone'} • Status: <span className="font-semibold text-emerald-600 uppercase">{staff.status}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Role Preset Quick Buttons */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground mr-1 font-semibold">Apply Preset:</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApplyPreset(staff, 'Cashier')}
+                          className="h-7 text-xs px-2.5 font-bold hover:bg-muted"
+                        >
+                          🛒 Cashier
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApplyPreset(staff, 'Manager')}
+                          className="h-7 text-xs px-2.5 font-bold hover:bg-muted"
+                        >
+                          👑 Manager
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApplyPreset(staff, 'Helper')}
+                          className="h-7 text-xs px-2.5 font-bold hover:bg-muted"
+                        >
+                          📦 Helper
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApplyPreset(staff, 'Admin')}
+                          className="h-7 text-xs px-2.5 font-bold text-primary hover:bg-primary/10"
+                        >
+                          🛡️ Full Admin
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Permissions Grid */}
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                      {ALL_PERMISSIONS.map((perm) => {
+                        const hasAccess = currentPerms.includes(perm.id);
+
+                        return (
+                          <div
+                            key={perm.id}
+                            onClick={() => handleTogglePermission(staff, perm.id)}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-2.5 ${
+                              hasAccess
+                                ? 'bg-primary/5 border-primary/40 shadow-xs'
+                                : 'bg-muted/20 border-border hover:bg-muted/40 opacity-75'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={hasAccess}
+                              onChange={() => {}} // handled by parent onClick
+                              className="mt-1 h-4 w-4 rounded text-primary focus:ring-primary cursor-pointer"
+                            />
+                            <div className="space-y-0.5 select-none">
+                              <p className={`text-xs font-bold leading-tight ${hasAccess ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                {perm.label}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground leading-snug">
+                                {perm.desc}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
       </>

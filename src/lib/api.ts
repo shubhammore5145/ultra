@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { DamagedItem, StockMovement, SalesReturn, CashCounterClosing } from '../types';
 
 // Use relative path for API so it works perfectly with Vite proxy or production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -91,6 +92,90 @@ export function removeLocalRecycleItem(type: 'product' | 'transaction' | 'custom
   saveLocalRecycleBin(bin);
 }
 
+// Local Product Extended Metadata (Wholesale, Rack Location, Reorder Qty, Bulk Tiers)
+export function getLocalProductMeta(shopId?: string): Record<string, any> {
+  try {
+    const raw = localStorage.getItem(`dmart_product_meta_${shopId || getShopId() || 'default'}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalProductMeta(productId: string, meta: any, shopId?: string) {
+  try {
+    const current = getLocalProductMeta(shopId);
+    current[productId] = { ...(current[productId] || {}), ...meta };
+    localStorage.setItem(`dmart_product_meta_${shopId || getShopId() || 'default'}`, JSON.stringify(current));
+  } catch {}
+}
+
+export function getLocalDamagedGoods(shopId?: string): DamagedItem[] {
+  try {
+    const raw = localStorage.getItem(`dmart_damaged_${shopId || getShopId() || 'default'}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalDamagedGoods(items: DamagedItem[], shopId?: string) {
+  try {
+    localStorage.setItem(`dmart_damaged_${shopId || getShopId() || 'default'}`, JSON.stringify(items));
+  } catch {}
+}
+
+export function getLocalStockMovements(shopId?: string): StockMovement[] {
+  try {
+    const raw = localStorage.getItem(`dmart_movements_${shopId || getShopId() || 'default'}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function logStockMovement(movement: StockMovement, shopId?: string) {
+  try {
+    const list = getLocalStockMovements(shopId);
+    list.unshift(movement);
+    localStorage.setItem(`dmart_movements_${shopId || getShopId() || 'default'}`, JSON.stringify(list.slice(0, 500)));
+  } catch {}
+}
+
+export function getLocalSalesReturns(shopId?: string): SalesReturn[] {
+  try {
+    const raw = localStorage.getItem(`dmart_returns_${shopId || getShopId() || 'default'}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalSalesReturn(ret: SalesReturn, shopId?: string) {
+  try {
+    const list = getLocalSalesReturns(shopId);
+    list.unshift(ret);
+    localStorage.setItem(`dmart_returns_${shopId || getShopId() || 'default'}`, JSON.stringify(list));
+  } catch {}
+}
+
+export function getLocalCashCounterClosings(shopId?: string): CashCounterClosing[] {
+  try {
+    const raw = localStorage.getItem(`dmart_shift_close_${shopId || getShopId() || 'default'}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalCashCounterClosing(closing: CashCounterClosing, shopId?: string) {
+  try {
+    const list = getLocalCashCounterClosings(shopId);
+    list.unshift(closing);
+    localStorage.setItem(`dmart_shift_close_${shopId || getShopId() || 'default'}`, JSON.stringify(list));
+  } catch {}
+}
+
 // Direct Supabase Fallback when backend is unreachable or on serverless
 async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Promise<any> {
   const method = (options.method || 'GET').toUpperCase();
@@ -105,15 +190,44 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const localBin = getLocalRecycleBin();
       const deletedIds = new Set(localBin.products.map(p => p.id));
       const activeProducts = (data || []).filter((p: any) => !p.isDeleted && !deletedIds.has(p.id));
-      return activeProducts;
+      const meta = getLocalProductMeta(shopId);
+      return activeProducts.map((p: any) => ({
+        ...p,
+        ...(meta[p.id] || {})
+      }));
     }
     if (method === 'POST') {
       const body = JSON.parse(options.body as string);
+      if (body.wholesalePrice !== undefined || body.rackLocation !== undefined || body.reorderQty !== undefined || body.bulkMinQty !== undefined || body.bulkPrice !== undefined || body.maxStock !== undefined) {
+        saveLocalProductMeta(body.id, {
+          wholesalePrice: body.wholesalePrice,
+          bulkMinQty: body.bulkMinQty,
+          bulkPrice: body.bulkPrice,
+          rackLocation: body.rackLocation,
+          reorderQty: body.reorderQty,
+          maxStock: body.maxStock
+        }, shopId);
+      }
       const row = {
-        ...body,
+        id: body.id,
         shopId: body.shopId || shopId,
+        name: body.name,
+        category: body.category || '',
+        brand: body.brand || '',
+        unit: body.unit || 'pcs',
+        purchasePrice: Number(body.purchasePrice || 0),
+        sellingPrice: Number(body.sellingPrice || 0),
+        mrp: Number(body.mrp || 0),
+        gst: Number(body.gst || 0),
+        stock: Number(body.stock || 0),
+        minStock: Number(body.minStock || 0),
+        sku: body.sku || '',
+        barcode: body.barcode || '',
+        shortCode: body.shortCode || null,
         isLoose: Boolean(body.isLoose),
-        expiryDate: body.expiryDate || null
+        expiryDate: body.expiryDate || null,
+        imageUrl: body.imageUrl || null,
+        createdAt: body.createdAt || new Date().toISOString()
       };
       const { data, error } = await supabase.from('products').upsert(row);
       if (error) throw new Error(error.message);
@@ -122,7 +236,21 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     if (method === 'PUT') {
       const id = endpoint.split('/products/')[1];
       const body = JSON.parse(options.body as string);
-      const row = { ...body };
+      if (body.wholesalePrice !== undefined || body.rackLocation !== undefined || body.reorderQty !== undefined || body.bulkMinQty !== undefined || body.bulkPrice !== undefined || body.maxStock !== undefined) {
+        saveLocalProductMeta(id, {
+          wholesalePrice: body.wholesalePrice,
+          bulkMinQty: body.bulkMinQty,
+          bulkPrice: body.bulkPrice,
+          rackLocation: body.rackLocation,
+          reorderQty: body.reorderQty,
+          maxStock: body.maxStock
+        }, shopId);
+      }
+      const allowedCols = ['name', 'category', 'brand', 'unit', 'purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'sku', 'barcode', 'shortCode', 'isLoose', 'expiryDate', 'imageUrl', 'shopId'];
+      const row: any = {};
+      for (const k of allowedCols) {
+        if (k in body) row[k] = body[k];
+      }
       if ('isLoose' in row) row.isLoose = Boolean(row.isLoose);
       if ('expiryDate' in row) row.expiryDate = row.expiryDate || null;
       if (!row.shopId && shopId) row.shopId = shopId;
@@ -1216,6 +1344,41 @@ export const api = {
     sendBulkReminder: (customers: any[], shopName?: string, shopId?: string) => {
       const sid = shopId || getShopId();
       return fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName, shopId: sid }) });
+    }
+  },
+  damagedGoods: {
+    list: async () => getLocalDamagedGoods(),
+    create: async (item: DamagedItem) => {
+      const list = getLocalDamagedGoods();
+      list.unshift(item);
+      saveLocalDamagedGoods(list);
+      return item;
+    },
+    delete: async (id: string) => {
+      const list = getLocalDamagedGoods().filter(d => d.id !== id);
+      saveLocalDamagedGoods(list);
+      return { success: true };
+    }
+  },
+  stockMovements: {
+    list: async () => getLocalStockMovements(),
+    log: async (m: StockMovement) => {
+      logStockMovement(m);
+      return m;
+    }
+  },
+  salesReturns: {
+    list: async () => getLocalSalesReturns(),
+    create: async (ret: SalesReturn) => {
+      saveLocalSalesReturn(ret);
+      return ret;
+    }
+  },
+  cashCounter: {
+    list: async () => getLocalCashCounterClosings(),
+    closeShift: async (closing: CashCounterClosing) => {
+      saveLocalCashCounterClosing(closing);
+      return closing;
     }
   }
 };

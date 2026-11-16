@@ -6,7 +6,8 @@ import { Label } from '../components/ui/label';
 import { 
   Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, 
   Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, 
-  Barcode, Smartphone, Sparkles, Clock, Send, User, AlertTriangle, UserCheck 
+  Barcode, Smartphone, Sparkles, Clock, Send, User, AlertTriangle, UserCheck,
+  RotateCcw, BadgePercent, Calculator, Receipt, ShieldAlert
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
@@ -165,6 +166,36 @@ export default function POS() {
   const [customerAadhar, setCustomerAadhar] = useState('');
   const [customerPhoto, setCustomerPhoto] = useState('');
   const [autoRemainderToUdhar, setAutoRemainderToUdhar] = useState(true);
+
+  // D-Mart Enterprise Pricing Mode (Retail vs Wholesale)
+  const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
+
+  // D-Mart Sales Return & Exchange State
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnSearchTerm, setReturnSearchTerm] = useState('');
+  const [returnAllTransactions, setReturnAllTransactions] = useState<any[]>([]);
+  const [selectedReturnTx, setSelectedReturnTx] = useState<any | null>(null);
+  const [selectedReturnItem, setSelectedReturnItem] = useState<{ id: string; name: string; maxQty: number; price: number } | null>(null);
+  const [returnQty, setReturnQty] = useState('1');
+  const [returnReason, setReturnReason] = useState('Customer Exchange / Surplus');
+  const [returnCondition, setReturnCondition] = useState<'resellable' | 'damaged'>('resellable');
+  const [returnRefundMethod, setReturnRefundMethod] = useState<'cash' | 'udhar'>('cash');
+  const [returnLoading, setReturnLoading] = useState(false);
+
+  // D-Mart Cash Counter Shift Closing (Z-Report) State
+  const [showShiftCloseModal, setShowShiftCloseModal] = useState(false);
+  const [openingCash, setOpeningCash] = useState('0');
+  const [denominations, setDenominations] = useState({
+    d500: 0,
+    d200: 0,
+    d100: 0,
+    d50: 0,
+    d20: 0,
+    d10: 0,
+    coins: 0
+  });
+  const [shiftClosingSaving, setShiftClosingSaving] = useState(false);
+  const [shiftClosedSummary, setShiftClosedSummary] = useState<any | null>(null);
 
   const buildWhatsAppBillText = (
     txId: string, 
@@ -446,21 +477,31 @@ export default function POS() {
           triggerStockAlert(`⚠️ "${product.name}" चा शिल्लक स्टॉक फक्त ${availableStock} आहे! यापेक्षा जास्त बिलिंग करता येत नाही.`);
           return prev;
         }
+        const newQty = existing.qty + 1;
+        let effectivePrice = Number(existing.sellingPrice);
+        if (existing.bulkMinQty && existing.bulkPrice && newQty >= existing.bulkMinQty) {
+          effectivePrice = Number(existing.bulkPrice);
+        }
         return prev.map(item => 
-          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
+          item.id === product.id ? { ...item, qty: newQty, sellingPrice: effectivePrice } : item
         );
       }
 
+      const initialPrice = pricingMode === 'wholesale' && product.wholesalePrice && Number(product.wholesalePrice) > 0
+        ? Number(product.wholesalePrice)
+        : Number(product.sellingPrice) || 0;
+
       const itemToAdd: CartItem = {
         ...product,
-        sellingPrice: Number(product.sellingPrice) || 0,
+        sellingPrice: initialPrice,
         purchasePrice: Number(product.purchasePrice) || 0,
         mrp: Number(product.mrp || product.sellingPrice) || 0,
-        qty: 1
+        qty: 1,
+        rateType: pricingMode === 'wholesale' ? 'wholesale' : 'retail'
       };
       return [...prev, itemToAdd];
     });
-  }, [triggerStockAlert]);
+  }, [triggerStockAlert, pricingMode]);
 
   const handleBarcodeScan = useCallback((code: string): boolean => {
     // If the quick add modal is open, don't trigger another scan
@@ -656,10 +697,166 @@ export default function POS() {
           return item;
         }
 
-        return newQty > 0 ? { ...item, qty: newQty } : item;
+        if (newQty <= 0) return item;
+
+        // Auto apply bulk discount tier if qty reaches threshold
+        let effectivePrice = Number(item.sellingPrice);
+        if (item.bulkMinQty && item.bulkPrice && newQty >= item.bulkMinQty) {
+          effectivePrice = Number(item.bulkPrice);
+        } else if (item.bulkMinQty && newQty < item.bulkMinQty) {
+          const orig = products.find(p => p.id === item.id);
+          effectivePrice = pricingMode === 'wholesale' && orig?.wholesalePrice
+            ? Number(orig.wholesalePrice)
+            : Number(orig?.sellingPrice || item.sellingPrice);
+        }
+
+        return { ...item, qty: newQty, sellingPrice: effectivePrice };
       }
       return item;
     }));
+  };
+
+  const togglePricingMode = () => {
+    const nextMode = pricingMode === 'retail' ? 'wholesale' : 'retail';
+    setPricingMode(nextMode);
+    setCart(prev => prev.map(item => {
+      const orig = products.find(p => p.id === item.id);
+      let price = Number(orig?.sellingPrice || item.sellingPrice);
+      if (nextMode === 'wholesale' && orig?.wholesalePrice) {
+        price = Number(orig.wholesalePrice);
+      }
+      if (item.bulkMinQty && item.bulkPrice && item.qty >= item.bulkMinQty) {
+        price = Number(item.bulkPrice);
+      }
+      return {
+        ...item,
+        sellingPrice: price,
+        rateType: nextMode
+      };
+    }));
+  };
+
+  // Open Sales Return Modal
+  const openReturnModal = async () => {
+    setShowReturnModal(true);
+    setReturnLoading(true);
+    try {
+      const txs = await api.transactions.list();
+      setReturnAllTransactions(Array.isArray(txs) ? txs : []);
+    } catch (e) {
+      console.error('Failed to load transactions for return', e);
+    } finally {
+      setReturnLoading(false);
+    }
+  };
+
+  // Submit Sales Return
+  const handleProcessSalesReturn = async () => {
+    if (!selectedReturnTx || !selectedReturnItem) return;
+    const qtyToReturn = parseFloat(returnQty) || 0;
+    if (qtyToReturn <= 0 || qtyToReturn > selectedReturnItem.maxQty) {
+      alert(`कृपया 1 ते ${selectedReturnItem.maxQty} दरम्यान वैध नग टाका.`);
+      return;
+    }
+
+    setReturnLoading(true);
+    try {
+      const refundTotal = qtyToReturn * selectedReturnItem.price;
+      const targetProd = products.find(p => p.id === selectedReturnItem.id || p.name === selectedReturnItem.name);
+
+      if (targetProd) {
+        if (returnCondition === 'resellable') {
+          const newStock = (targetProd.stock || 0) + qtyToReturn;
+          await api.products.update(targetProd.id, { ...targetProd, stock: newStock });
+          await api.stockMovements.log({
+            productId: targetProd.id,
+            productName: targetProd.name,
+            changeQty: qtyToReturn,
+            newStock,
+            type: 'return',
+            reason: `Return from Invoice #${selectedReturnTx.id?.slice(0, 8)}`,
+            staffName: 'Cashier'
+          });
+        } else {
+          await api.damagedGoods.create({
+            productId: targetProd.id,
+            productName: targetProd.name,
+            qty: qtyToReturn,
+            costPrice: targetProd.purchasePrice || 0,
+            retailPrice: selectedReturnItem.price,
+            reason: `Customer return: ${returnReason}`,
+            reportedBy: 'Cashier'
+          });
+        }
+      }
+
+      await api.salesReturns.create({
+        invoiceNumber: selectedReturnTx.id?.slice(0, 8) || 'TX-RET',
+        customerName: selectedReturnTx.customerName || 'Walk-in Customer',
+        customerPhone: selectedReturnTx.customerPhone || '',
+        items: [{
+          productId: targetProd?.id || selectedReturnItem.id,
+          name: selectedReturnItem.name,
+          qty: qtyToReturn,
+          refundAmount: refundTotal,
+          condition: returnCondition
+        }],
+        totalRefund: refundTotal,
+        refundMethod: returnRefundMethod,
+        reason: returnReason
+      });
+
+      const updatedProds = await api.products.list();
+      setProducts(updatedProds);
+
+      alert(`✅ माल परत (Sales Return) यशस्वीरित्या नोंदवला गेला! परतावा रक्कम: ₹${refundTotal.toFixed(2)} (${returnRefundMethod === 'cash' ? 'रोख कॅश' : 'उधारी खात्यात जमा'})`);
+      setShowReturnModal(false);
+      setSelectedReturnTx(null);
+      setSelectedReturnItem(null);
+      setReturnQty('1');
+    } catch (err: any) {
+      alert('Return failed: ' + (err.message || 'Error'));
+    } finally {
+      setReturnLoading(false);
+    }
+  };
+
+  // Open Shift Close Modal
+  const openShiftCloseModal = () => {
+    setShowShiftCloseModal(true);
+    setShiftClosedSummary(null);
+  };
+
+  // Calculate Shift Close Numbers
+  const totalCountedCash = useMemo(() => {
+    return (
+      (denominations.d500 * 500) +
+      (denominations.d200 * 200) +
+      (denominations.d100 * 100) +
+      (denominations.d50 * 50) +
+      (denominations.d20 * 20) +
+      (denominations.d10 * 10) +
+      (Number(denominations.coins) || 0)
+    );
+  }, [denominations]);
+
+  const handleSaveShiftClose = async () => {
+    setShiftClosingSaving(true);
+    try {
+      const summary = {
+        closedAt: new Date().toISOString(),
+        cashierName: shopData?.name || 'Cashier',
+        openingCash: parseFloat(openingCash) || 0,
+        actualCash: totalCountedCash,
+        notes: 'End of Shift Z-Report'
+      };
+      await api.cashCounter.closeShift(summary);
+      setShiftClosedSummary(summary);
+    } catch (e: any) {
+      alert('Failed to save shift closing: ' + e.message);
+    } finally {
+      setShiftClosingSaving(false);
+    }
   };
 
   const removeItem = (id: string) => {
@@ -1349,6 +1546,46 @@ export default function POS() {
               onClick={() => setActiveTab('barcoded')}
             >
               Barcoded
+            </Button>
+
+            {/* D-Mart Rate Toggle */}
+            <Button
+              variant={pricingMode === 'wholesale' ? 'default' : 'outline'}
+              size="sm"
+              onClick={togglePricingMode}
+              className={`h-8 text-xs font-bold rounded-xl px-2.5 whitespace-nowrap transition-all ${
+                pricingMode === 'wholesale' 
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs' 
+                  : 'text-purple-600 border-purple-300 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+              }`}
+              title="Switch between Retail and Wholesale pricing"
+            >
+              <BadgePercent className="h-3.5 w-3.5 mr-1" />
+              {pricingMode === 'wholesale' ? '📦 Wholesale (थोक)' : '🛍️ Retail (किरकोळ)'}
+            </Button>
+
+            {/* D-Mart Sales Return */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openReturnModal}
+              className="h-8 text-xs font-semibold rounded-xl px-2.5 whitespace-nowrap hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Sales Return & Defective Exchange"
+            >
+              <RotateCcw className="h-3.5 w-3.5 mr-1 text-orange-500" />
+              Return / Exchange
+            </Button>
+
+            {/* D-Mart Shift Register */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openShiftCloseModal}
+              className="h-8 text-xs font-semibold rounded-xl px-2.5 whitespace-nowrap hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Cash Counter Shift Closing Register (Z-Report)"
+            >
+              <Calculator className="h-3.5 w-3.5 mr-1 text-emerald-600" />
+              Shift Register
             </Button>
           </div>
 
@@ -2633,6 +2870,310 @@ export default function POS() {
           </div>
         );
       })()}
+      {/* D-MART SALES RETURN & EXCHANGE MODAL */}
+      {showReturnModal && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-5 border-b flex justify-between items-center bg-muted/40">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-orange-500/10 text-orange-600">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Sales Return & Exchange (माल परत)</h3>
+                  <p className="text-xs text-muted-foreground">Return sold items, refund cash, or write off damaged goods.</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => { setShowReturnModal(false); setSelectedReturnTx(null); }} className="rounded-full">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+              {!selectedReturnTx ? (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search bill by Invoice # or Customer Mobile..."
+                      value={returnSearchTerm}
+                      onChange={(e) => setReturnSearchTerm(e.target.value)}
+                      className="pl-9 bg-white dark:bg-card"
+                    />
+                  </div>
+
+                  {returnLoading ? (
+                    <div className="py-12 flex justify-center text-primary">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="divide-y border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                      {returnAllTransactions
+                        .filter(tx => {
+                          const query = returnSearchTerm.toLowerCase();
+                          return (
+                            tx.id?.toLowerCase().includes(query) ||
+                            tx.customerName?.toLowerCase().includes(query) ||
+                            tx.customerPhone?.includes(query)
+                          );
+                        })
+                        .slice(0, 15)
+                        .map(tx => (
+                          <div
+                            key={tx.id}
+                            onClick={() => setSelectedReturnTx(tx)}
+                            className="p-3 hover:bg-muted/50 cursor-pointer flex items-center justify-between transition-colors text-xs"
+                          >
+                            <div>
+                              <p className="font-bold text-foreground">Invoice #{tx.id?.slice(0, 8).toUpperCase()}</p>
+                              <p className="text-muted-foreground">
+                                {new Date(tx.createdAt || tx.date).toLocaleDateString()} • {tx.customerName || 'Walk-in'} {tx.customerPhone ? `(${tx.customerPhone})` : ''}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-black text-sm text-foreground">₹{Number(tx.total || 0).toFixed(2)}</p>
+                              <span className="text-[10px] text-primary font-semibold">Select Bill →</span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-muted/30 border rounded-xl p-3 flex justify-between items-center text-xs">
+                    <div>
+                      <p className="font-bold text-foreground">Selected Bill: #{selectedReturnTx.id?.slice(0, 8).toUpperCase()}</p>
+                      <p className="text-muted-foreground">
+                        Customer: {selectedReturnTx.customerName || 'Walk-in'} • Total: ₹{Number(selectedReturnTx.total || 0).toFixed(2)}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedReturnTx(null)} className="h-7 text-xs">
+                      Change Bill
+                    </Button>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">Select Item to Return:</Label>
+                    <div className="grid gap-2">
+                      {((selectedReturnTx.items || []) as any[]).map((it: any, idx: number) => {
+                        const isSelected = selectedReturnItem?.name === it.name;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setSelectedReturnItem({
+                                id: it.productId || it.id,
+                                name: it.name,
+                                maxQty: it.qty || 1,
+                                price: it.sellingPrice || it.price || 0
+                              });
+                              setReturnQty('1');
+                            }}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between text-xs ${
+                              isSelected ? 'border-primary bg-primary/5 font-bold' : 'border-border hover:bg-muted/30'
+                            }`}
+                          >
+                            <div>
+                              <p className="font-bold text-foreground">{it.name}</p>
+                              <p className="text-muted-foreground">Sold Qty: {it.qty} • Rate: ₹{(it.sellingPrice || it.price || 0).toFixed(2)}</p>
+                            </div>
+                            <span className="font-black text-foreground">₹{((it.sellingPrice || it.price || 0) * (it.qty || 1)).toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {selectedReturnItem && (
+                    <div className="border-t pt-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold">Return Quantity (Max {selectedReturnItem.maxQty})</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max={selectedReturnItem.maxQty}
+                            value={returnQty}
+                            onChange={(e) => setReturnQty(e.target.value)}
+                            className="bg-white dark:bg-card font-bold"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold">Refund Amount</Label>
+                          <div className="h-10 px-3 bg-muted rounded-md flex items-center font-black text-emerald-600 text-sm">
+                            ₹{((parseFloat(returnQty) || 0) * selectedReturnItem.price).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold">Item Condition</Label>
+                          <select
+                            value={returnCondition}
+                            onChange={(e) => setReturnCondition(e.target.value as any)}
+                            className="w-full h-10 rounded-md border border-input bg-card px-3 text-xs"
+                          >
+                            <option value="resellable">🟢 Resellable (चांगल्या स्थितीत - स्टॉक वाढवा)</option>
+                            <option value="damaged">🔴 Damaged/Defective (खराब - स्क्रॅप/नुकसान नोंदवा)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold">Refund Payment Method</Label>
+                          <select
+                            value={returnRefundMethod}
+                            onChange={(e) => setReturnRefundMethod(e.target.value as any)}
+                            className="w-full h-10 rounded-md border border-input bg-card px-3 text-xs"
+                          >
+                            <option value="cash">💵 Cash Refund (रोख परतावा)</option>
+                            <option value="udhar">📒 Add to Customer Udhar Credit (उधारी जमा)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-bold">Return Reason</Label>
+                        <Input
+                          value={returnReason}
+                          onChange={(e) => setReturnReason(e.target.value)}
+                          placeholder="e.g. Defective seal, Customer change of mind, Expired"
+                          className="bg-white dark:bg-card text-xs"
+                        />
+                      </div>
+
+                      <Button
+                        onClick={handleProcessSalesReturn}
+                        disabled={returnLoading}
+                        className="w-full font-bold bg-primary text-primary-foreground shadow-md h-10 mt-2"
+                      >
+                        {returnLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                        Confirm Return & Process Refund
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* D-MART CASH COUNTER SHIFT CLOSE MODAL (Z-REPORT) */}
+      {showShiftCloseModal && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-5 border-b flex justify-between items-center bg-muted/40">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600">
+                  <Calculator className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Cash Counter Shift Closing (Z-Report)</h3>
+                  <p className="text-xs text-muted-foreground">Count physical drawer cash, verify against system sales, and close shift.</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowShiftCloseModal(false)} className="rounded-full">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1 text-xs">
+              {shiftClosedSummary ? (
+                <div className="text-center py-6 space-y-3">
+                  <div className="w-14 h-14 bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 rounded-full mx-auto flex items-center justify-center">
+                    <CheckCircle2 className="h-8 w-8" />
+                  </div>
+                  <h4 className="text-lg font-bold text-foreground">Shift Closed Successfully!</h4>
+                  <p className="text-muted-foreground text-xs">
+                    Shift Z-Report has been logged for cashier <strong>{shiftClosedSummary.cashierName}</strong>. Total physical cash collected: <strong>₹{shiftClosedSummary.actualCash.toFixed(2)}</strong>.
+                  </p>
+                  <Button onClick={() => setShowShiftCloseModal(false)} className="font-bold">
+                    Close Window
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-xl border">
+                    <div>
+                      <Label className="text-[11px] font-bold text-muted-foreground">Opening Float / Cash in Drawer (सकाळचा गल्ला)</Label>
+                      <Input
+                        type="number"
+                        value={openingCash}
+                        onChange={(e) => setOpeningCash(e.target.value)}
+                        placeholder="0"
+                        className="bg-white dark:bg-card font-bold text-sm mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[11px] font-bold text-muted-foreground">Total Counted Cash (मोजलेली रक्कम)</Label>
+                      <div className="h-10 px-3 bg-card border rounded-md flex items-center font-black text-emerald-600 text-base mt-1 shadow-2xs">
+                        ₹{totalCountedCash.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-bold text-muted-foreground mb-2 block">Currency Denomination Breakdown (नोट मोजणी):</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: '₹500 Notes', key: 'd500', value: 500 },
+                        { label: '₹200 Notes', key: 'd200', value: 200 },
+                        { label: '₹100 Notes', key: 'd100', value: 100 },
+                        { label: '₹50 Notes', key: 'd50', value: 50 },
+                        { label: '₹20 Notes', key: 'd20', value: 20 },
+                        { label: '₹10 Notes', key: 'd10', value: 10 },
+                      ].map((denom) => (
+                        <div key={denom.key} className="flex items-center gap-2 border p-2 rounded-lg bg-card">
+                          <span className="w-20 font-bold text-[11px]">{denom.label}:</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={(denominations as any)[denom.key] || ''}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10) || 0;
+                              setDenominations(prev => ({ ...prev, [denom.key]: val }));
+                            }}
+                            placeholder="0"
+                            className="h-8 text-xs font-bold bg-white dark:bg-card text-center"
+                          />
+                          <span className="w-16 text-right font-semibold text-[11px] text-muted-foreground">
+                            = ₹{(((denominations as any)[denom.key] || 0) * denom.value).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-2 border p-2 rounded-lg bg-card">
+                      <span className="w-32 font-bold text-[11px]">Coins & Loose Cash (चिल्लर):</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={denominations.coins || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setDenominations(prev => ({ ...prev, coins: val }));
+                        }}
+                        placeholder="₹0"
+                        className="h-8 text-xs font-bold bg-white dark:bg-card"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleSaveShiftClose}
+                    disabled={shiftClosingSaving}
+                    className="w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md h-10 mt-2"
+                  >
+                    {shiftClosingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Calculator className="h-4 w-4 mr-2" />}
+                    Save Shift Close & Print Z-Report
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

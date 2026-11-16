@@ -4,7 +4,7 @@ import {
   IndianRupee, CreditCard, Users, BarChart3, Sparkles,
   ArrowUpRight, ArrowDownRight, Flame, Calendar,
   Star, Gem, Share2, Check, MessageSquare, ShieldAlert, Zap,
-  Layers, Award, Box, Crown, HeartHandshake
+  Layers, Award, Box, Crown, Handshake, Target, Clock
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -16,7 +16,7 @@ import { Button } from '../components/ui/button';
 import type { Transaction, Product, Customer, Expense, UdharTransaction } from '../types';
 
 type TimeRange = 'today' | '7days' | '30days' | 'customMonth' | 'all';
-type AnalyticsTab = 'overview' | 'categories' | 'inventory' | 'timing' | 'customers' | 'udhar' | 'basket';
+type AnalyticsTab = 'overview' | 'categories' | 'inventory' | 'timing' | 'customers' | 'udhar' | 'basket' | 'forecasting';
 
 export default function Analytics() {
   const { shopData } = useAuth();
@@ -33,6 +33,8 @@ export default function Analytics() {
   const [customMonth, setCustomMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [copiedSummary, setCopiedSummary] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [festivalMultiplier, setFestivalMultiplier] = useState<number>(1.0);
+  const [forecastHorizonDays, setForecastHorizonDays] = useState<number>(14);
 
   const fetchData = async () => {
     setLoading(true);
@@ -553,6 +555,71 @@ export default function Analytics() {
       .slice(0, 6);
   }, [filteredSales]);
 
+  // 11. D-Mart Demand Forecasting & Festival Stock Planner
+  const demandForecasting = useMemo(() => {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+    const recentSales = sales.filter(s => {
+      const d = new Date(s.createdAt || s.date);
+      return !isNaN(d.getTime()) && d >= thirtyDaysAgo;
+    });
+
+    const itemSalesCount: Record<string, number> = {};
+    recentSales.forEach(s => {
+      (s.items || []).forEach(it => {
+        const pid = it.productId || it.id;
+        itemSalesCount[pid] = (itemSalesCount[pid] || 0) + (Number(it.qty) || 1);
+      });
+    });
+
+    const forecasts = products.map(p => {
+      const soldUnits = itemSalesCount[p.id] || 0;
+      const velocityPerDay = soldUnits / 30;
+      const currentStock = Number(p.stock) || 0;
+      const runwayDays = velocityPerDay > 0 ? (currentStock / velocityPerDay) : 999;
+      
+      const projectedDemand = Math.round(velocityPerDay * forecastHorizonDays * festivalMultiplier);
+      const suggestedPOQty = Math.max(0, projectedDemand - currentStock);
+      const estPOCost = suggestedPOQty * (Number(p.purchasePrice) || 0);
+
+      let urgency: 'critical' | 'warning' | 'healthy' | 'excess' = 'healthy';
+      if (runwayDays <= 3) urgency = 'critical';
+      else if (runwayDays <= 7) urgency = 'warning';
+      else if (runwayDays > 45 && currentStock > 20) urgency = 'excess';
+
+      return {
+        product: p,
+        soldUnits,
+        velocityPerDay,
+        currentStock,
+        runwayDays,
+        projectedDemand,
+        suggestedPOQty,
+        estPOCost,
+        urgency
+      };
+    });
+
+    forecasts.sort((a, b) => {
+      if (a.urgency === 'critical' && b.urgency !== 'critical') return -1;
+      if (b.urgency === 'critical' && a.urgency !== 'critical') return 1;
+      if (a.urgency === 'warning' && b.urgency !== 'warning') return -1;
+      if (b.urgency === 'warning' && a.urgency !== 'warning') return 1;
+      return a.runwayDays - b.runwayDays;
+    });
+
+    const criticalCount = forecasts.filter(f => f.urgency === 'critical').length;
+    const warningCount = forecasts.filter(f => f.urgency === 'warning').length;
+    const totalPOCost = forecasts.reduce((sum, f) => sum + f.estPOCost, 0);
+
+    return {
+      forecasts,
+      criticalCount,
+      warningCount,
+      totalPOCost
+    };
+  }, [sales, products, festivalMultiplier, forecastHorizonDays]);
+
   // 13. Generate WhatsApp Executive Summary Text
   const generateWhatsAppSummary = () => {
     const shopName = shopData?.name || 'Nayash Kirana';
@@ -679,6 +746,7 @@ export default function Analytics() {
           { id: 'overview', label: '📊 Financial Overview', marathi: 'गल्ला व नफा' },
           { id: 'categories', label: '📦 Category Intelligence', marathi: 'कॅटेगरी नफा' },
           { id: 'inventory', label: '⭐ ABC Stock & Stars', marathi: 'वस्तूंचे वर्गीकरण' },
+          { id: 'forecasting', label: '🔮 Demand Forecasting (D-Mart AI)', marathi: 'मागणी अंदाज' },
           { id: 'timing', label: '📅 Peak Hours & Days', marathi: 'गर्दीच्या वेळा व वारी' },
           { id: 'customers', label: '👥 VIP Customers & Retention', marathi: 'ग्राहक निष्ठा' },
           { id: 'udhar', label: '💳 Khata & Recovery', marathi: 'उधारी वसुली' },
@@ -1267,7 +1335,7 @@ export default function Analytics() {
 
             <div className="rounded-2xl border bg-card p-4 shadow-xs">
               <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-                <HeartHandshake className="h-4 w-4 text-emerald-500" /> Repeat Customer Rate
+                <Handshake className="h-4 w-4 text-emerald-500" /> Repeat Customer Rate
               </span>
               <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
                 {customerAnalytics.repeatRate.toFixed(1)}%
@@ -1551,6 +1619,194 @@ export default function Analytics() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: D-MART DEMAND FORECASTING & FESTIVAL SURGE PLANNER                    */}
+      {/* ========================================================================= */}
+      {activeTab === 'forecasting' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Scenario & Multiplier Controls */}
+          <div className="bg-gradient-to-r from-purple-500/10 via-primary/10 to-transparent border border-purple-500/20 rounded-2xl p-5 shadow-xs">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  D-Mart Demand Forecasting & Seasonal Surge Engine
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+                  मागील 30 दिवसांतील विक्री गती (Sales Velocity), चालू स्टॉक आणि येणाऱ्या सणांनुसार (Diwali, Month-start) आवश्यक मालाचा अचूक अंदाज बांधून तुटवडा टाळा.
+                </p>
+              </div>
+
+              {/* Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-card border rounded-xl p-1 text-xs">
+                  <span className="px-2 text-muted-foreground font-semibold text-[11px]">Horizon:</span>
+                  {[
+                    { days: 7, label: '7 Days' },
+                    { days: 14, label: '14 Days' },
+                    { days: 30, label: '30 Days' },
+                  ].map(h => (
+                    <button
+                      key={h.days}
+                      type="button"
+                      onClick={() => setForecastHorizonDays(h.days)}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        forecastHorizonDays === h.days
+                          ? 'bg-primary text-primary-foreground shadow-2xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1 bg-card border rounded-xl p-1 text-xs">
+                  <span className="px-2 text-muted-foreground font-semibold text-[11px]">Scenario:</span>
+                  {[
+                    { mult: 1.0, label: 'Normal (1.0x)' },
+                    { mult: 1.3, label: 'Month-Start (1.3x)' },
+                    { mult: 2.0, label: 'Festival (2.0x)' },
+                  ].map(s => (
+                    <button
+                      key={s.mult}
+                      type="button"
+                      onClick={() => setFestivalMultiplier(s.mult)}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        festivalMultiplier === s.mult
+                          ? 'bg-purple-600 text-white shadow-2xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Top Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-card border rounded-2xl p-4 shadow-xs">
+              <span className="text-xs font-bold text-rose-600 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4" /> Stockout Imminent (&lt; 3 Days Runway)
+              </span>
+              <p className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
+                {demandForecasting.criticalCount} Products
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Will run out of stock in less than 72 hours</p>
+            </div>
+
+            <div className="bg-card border rounded-2xl p-4 shadow-xs">
+              <span className="text-xs font-bold text-amber-600 flex items-center gap-1.5">
+                <Clock className="h-4 w-4" /> Reorder Suggested (3 - 7 Days Runway)
+              </span>
+              <p className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
+                {demandForecasting.warningCount} Products
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Order now to ensure safe replenishment</p>
+            </div>
+
+            <div className="bg-card border rounded-2xl p-4 shadow-xs">
+              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1.5">
+                <IndianRupee className="h-4 w-4" /> Forecasted Restock Capital Required
+              </span>
+              <p className="text-2xl font-black text-foreground mt-1">
+                ₹{demandForecasting.totalPOCost.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">For {forecastHorizonDays} days at {festivalMultiplier}x surge</p>
+            </div>
+          </div>
+
+          {/* Forecast Matrix Table */}
+          <div className="bg-card border rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-4 border-b flex justify-between items-center bg-muted/30">
+              <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary" /> Product-Wise Runway & Purchase Recommendations
+              </h4>
+              <span className="text-xs text-muted-foreground">
+                Showing {demandForecasting.forecasts.length} items
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/50 text-muted-foreground uppercase font-bold border-b text-[10px]">
+                  <tr>
+                    <th className="px-4 py-3">Product Name</th>
+                    <th className="px-3 py-3 text-center">Current Stock</th>
+                    <th className="px-3 py-3 text-center">Daily Sales Rate</th>
+                    <th className="px-3 py-3 text-center">Stock Runway</th>
+                    <th className="px-3 py-3 text-center">Projected Demand ({forecastHorizonDays}d)</th>
+                    <th className="px-3 py-3 text-center">Suggested PO Qty</th>
+                    <th className="px-4 py-3 text-right">Est. Cost (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {demandForecasting.forecasts.map(f => {
+                    return (
+                      <tr key={f.product.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 font-medium">
+                          <p className="font-bold text-foreground text-xs">{f.product.name}</p>
+                          <span className="text-[10px] text-muted-foreground">{f.product.category || 'General'}</span>
+                        </td>
+
+                        <td className="px-3 py-3 text-center">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full font-black text-xs ${
+                            f.currentStock <= 0 
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400' 
+                              : 'bg-muted text-foreground'
+                          }`}>
+                            {f.currentStock} {f.product.unit || 'pcs'}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-3 text-center font-bold text-foreground">
+                          {f.velocityPerDay.toFixed(1)} / day
+                        </td>
+
+                        <td className="px-3 py-3 text-center">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full font-black text-xs ${
+                            f.urgency === 'critical'
+                              ? 'bg-rose-500 text-white'
+                              : f.urgency === 'warning'
+                              ? 'bg-amber-500 text-white'
+                              : f.urgency === 'excess'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          }`}>
+                            {f.runwayDays > 100 ? '100+ days' : `${Math.round(f.runwayDays)} days left`}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-3 text-center font-semibold text-foreground">
+                          {f.projectedDemand} {f.product.unit || 'pcs'}
+                        </td>
+
+                        <td className="px-3 py-3 text-center">
+                          {f.suggestedPOQty > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-black text-xs bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20">
+                              +{f.suggestedPOQty} {f.product.unit || 'pcs'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-[11px]">Sufficient</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-right font-black text-xs text-foreground">
+                          {f.estPOCost > 0 ? `₹${f.estPOCost.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

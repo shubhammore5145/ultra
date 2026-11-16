@@ -1779,18 +1779,18 @@ export default function POS() {
               </div>
             </div>
           ) : (
-            <div ref={customerDropdownRef} className="relative flex flex-col gap-2 p-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 pb-2.5">
+            <div ref={customerDropdownRef} className="relative flex flex-col gap-2 p-3 rounded-2xl bg-white dark:bg-zinc-900 border-2 border-zinc-200 dark:border-zinc-700 shadow-xs">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5 text-primary" />
                   ग्राहक तपशील (नाव किंवा नंबर)
                 </span>
                 {customerPhone ? (
-                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 font-bold' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600'}`}>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600'}`}>
                     {customerPhone.length}/10
                   </span>
                 ) : (
-                  <span className="text-[10px] text-muted-foreground font-medium">ऐच्छिक (Optional)</span>
+                  <span className="text-[10px] text-zinc-500 font-medium">ऐच्छिक (Optional)</span>
                 )}
               </div>
 
@@ -1806,13 +1806,13 @@ export default function POS() {
                       setShowCustomerSuggestions(true);
                     }}
                     onFocus={() => setShowCustomerSuggestions(true)}
-                    className="h-9.5 text-xs bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 rounded-xl"
+                    className="h-10 text-xs sm:text-sm bg-white text-zinc-950 font-medium border-2 border-zinc-300 dark:border-zinc-400 focus:border-primary shadow-xs rounded-xl placeholder:text-zinc-400"
                   />
                 </div>
 
                 {/* Customer Mobile */}
                 <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground select-none">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 select-none">
                     +91
                   </span>
                   <Input 
@@ -1826,7 +1826,7 @@ export default function POS() {
                       setShowCustomerSuggestions(true);
                     }}
                     onFocus={() => setShowCustomerSuggestions(true)}
-                    className="h-9.5 pl-8 text-xs bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 rounded-xl font-mono tracking-wider"
+                    className="h-10 pl-8 text-xs sm:text-sm bg-white text-zinc-950 font-bold border-2 border-zinc-300 dark:border-zinc-400 focus:border-primary shadow-xs rounded-xl font-mono tracking-wider placeholder:text-zinc-400"
                   />
                 </div>
               </div>
@@ -2025,18 +2025,18 @@ export default function POS() {
                   <div className="grid grid-cols-2 gap-2">
                     <Input 
                       type="text" 
-                      placeholder="ग्राहक नाव"
+                      placeholder="ग्राहक नाव (उदा. सचिन)"
                       value={customerName} 
                       onChange={(e) => {
                         setCustomerName(e.target.value);
                         setShowCustomerSuggestions(true);
                       }}
                       onFocus={() => setShowCustomerSuggestions(true)}
-                      className="h-10 text-xs sm:text-sm bg-background"
+                      className="h-10 text-xs sm:text-sm bg-white text-zinc-950 font-medium border-2 border-zinc-300 dark:border-zinc-400 rounded-xl placeholder:text-zinc-400"
                     />
 
                     <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground select-none">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 select-none">
                         +91
                       </span>
                       <Input 
@@ -2050,7 +2050,7 @@ export default function POS() {
                           setShowCustomerSuggestions(true);
                         }}
                         onFocus={() => setShowCustomerSuggestions(true)}
-                        className={`h-10 pl-8.5 font-mono text-xs sm:text-sm bg-background ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
+                        className={`h-10 pl-8.5 font-mono text-xs sm:text-sm bg-white text-zinc-950 font-bold border-2 border-zinc-300 dark:border-zinc-400 rounded-xl placeholder:text-zinc-400 ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
                       />
                     </div>
                   </div>

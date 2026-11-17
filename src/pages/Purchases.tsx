@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Printer, AlertTriangle, Loader2, Plus, 
   Building2, Receipt, Search, Trash, CheckCircle2, 
-  Phone, MapPin, PackagePlus, Eye, X, MessageSquare, Sparkles, ArrowRight
+  Phone, MapPin, PackagePlus, Eye, X, MessageSquare, Sparkles, ArrowRight,
+  Camera, Upload
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import type { Product } from '../types';
+import { WholesalerBillScannerModal } from '../components/WholesalerBillScannerModal';
 
 interface Supplier {
   id: string;
@@ -82,6 +84,10 @@ export default function Purchases() {
 
   // View Bill Details Modal
   const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
+
+  // Wholesaler Bill Scanner & Auto Stock-In State
+  const [showInvoiceScanModal, setShowInvoiceScanModal] = useState(false);
+  const [scanSuccessSummary, setScanSuccessSummary] = useState<{ invoiceNo: string; itemsCount: number; totalAmount: number; newProductsCount: number } | null>(null);
 
   // Search Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -176,6 +182,20 @@ export default function Purchases() {
       if (paid <= 0) paymentStatus = 'unpaid';
       else if (paid < billTotalAmount) paymentStatus = 'partial';
 
+      // Update inventory stock for each product in billItems
+      for (const item of billItems) {
+        if (item.productId) {
+          const prod = products.find(p => p.id === item.productId);
+          if (prod) {
+            const newStock = Number(prod.stock || 0) + Number(item.qty || 1);
+            await api.products.update(prod.id, {
+              stock: newStock,
+              purchasePrice: item.purchasePrice || prod.purchasePrice
+            });
+          }
+        }
+      }
+
       await api.purchases.create({
         supplierId: billSupplierId || null,
         invoiceNumber: billInvoiceNumber,
@@ -187,7 +207,19 @@ export default function Purchases() {
         notes: billNotes
       });
 
-      alert('🎉 Purchase bill saved and inventory stock automatically increased!');
+      // Update supplier balance if unpaid
+      if (billSupplierId && paid < billTotalAmount) {
+        const supp = suppliers.find(s => s.id === billSupplierId);
+        if (supp) {
+          const remaining = billTotalAmount - paid;
+          await api.suppliers.update(supp.id, {
+            ...supp,
+            balance: Number(supp.balance || 0) + remaining
+          });
+        }
+      }
+
+      alert('🎉 खरेदी बिल यशस्वीरित्या सेव्ह झाले आणि इन्व्हेंटरी स्टॉक वाढवला!');
       setShowBillModal(false);
       setBillItems([]);
       setBillSupplierId('');
@@ -304,9 +336,17 @@ export default function Purchases() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'bills' && (
-            <Button onClick={() => setShowBillModal(true)} className="bg-primary text-primary-foreground font-bold shadow-md">
-              <Plus className="h-4 w-4 mr-2" /> New Purchase Bill
-            </Button>
+            <>
+              <Button 
+                onClick={() => setShowInvoiceScanModal(true)} 
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white font-black shadow-md"
+              >
+                <Camera className="h-4 w-4 mr-2" /> 📸 Scan Wholesaler Bill
+              </Button>
+              <Button onClick={() => setShowBillModal(true)} variant="outline" className="font-bold shadow-xs">
+                <Plus className="h-4 w-4 mr-2" /> Manual Bill Entry
+              </Button>
+            </>
           )}
           {activeTab === 'suppliers' && (
             <Button onClick={() => {
@@ -367,6 +407,64 @@ export default function Purchases() {
           {/* TAB 1: PURCHASE BILLS (STOCK-IN) */}
           {activeTab === 'bills' && (
             <div className="space-y-4">
+              {/* Celebratory Banner on Successful Scan */}
+              {scanSuccessSummary && (
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500 rounded-2xl flex items-center justify-between shadow-xs animate-in zoom-in-95">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-black text-sm text-emerald-900 dark:text-emerald-200">
+                        🎉 बिल #{scanSuccessSummary.invoiceNo} यशस्वीरित्या स्टॉक इन झाले!
+                      </p>
+                      <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                        {scanSuccessSummary.itemsCount} प्रॉडक्ट्सचा स्टॉक वाढवला ({scanSuccessSummary.newProductsCount} नवीन तयार झाले). एकूण खरेदी: <strong>₹{scanSuccessSummary.totalAmount}</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setScanSuccessSummary(null)}
+                    className="text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Wholesaler Bill Scanner Quick Action Card */}
+              <div className="p-4 bg-gradient-to-r from-emerald-600/10 via-teal-600/10 to-primary/10 border-2 border-emerald-500/30 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-center gap-3.5">
+                  <div className="p-3 bg-emerald-600 text-white rounded-2xl shadow-sm shrink-0">
+                    <Camera className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-black text-base text-foreground">
+                        होलसेलरचे बिल फोटो काढून थेट स्टॉक ॲड करा
+                      </h3>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                        AI Auto Stock-In
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
+                      होलसेलरच्या कागदी बिलाचा फोटो काढा किंवा अपलोड करा. सिस्टीम बिलातील सर्व आयटम्स, खरेदी भाव, MRP आणि स्टॉक आपोआप वाचून इन्व्हेंटरी अपडेट करेल.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                  <Button
+                    onClick={() => setShowInvoiceScanModal(true)}
+                    className="font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-md text-xs sm:text-sm h-10 flex-1 md:flex-initial"
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    बिल स्कॅन करा (Start Scan)
+                  </Button>
+                </div>
+              </div>
               <div className="flex items-center gap-2 bg-card border rounded-lg p-2 shadow-sm max-w-md">
                 <Search className="h-4 w-4 text-muted-foreground ml-2" />
                 <Input
@@ -1009,6 +1107,18 @@ export default function Purchases() {
           </div>
         </div>
       )}
+
+      {/* WHOLESALER BILL SCANNER MODAL */}
+      <WholesalerBillScannerModal
+        isOpen={showInvoiceScanModal}
+        onClose={() => setShowInvoiceScanModal(false)}
+        products={products}
+        suppliers={suppliers}
+        onSuccess={(summary) => {
+          setScanSuccessSummary(summary);
+          loadAllData();
+        }}
+      />
     </div>
   );
 }

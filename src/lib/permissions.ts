@@ -20,7 +20,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'pos',
     name: 'POS Billing',
-    marathiName: 'पीओएस बिलिंग',
+    marathiName: 'Checkout & Fast Billing',
     description: 'Create bills, scan product barcodes & take payments',
     category: 'Billing',
     icon: ShoppingCart,
@@ -29,7 +29,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'bill_store',
     name: 'Bill Store & Receipts',
-    marathiName: 'जुनी बिले व पावती प्रिंट',
+    marathiName: 'Invoices & Thermal Print',
     description: 'View past bills, reprint receipts and WhatsApp bills',
     category: 'Billing',
     icon: Receipt,
@@ -38,7 +38,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'customers',
     name: 'Customer Directory',
-    marathiName: 'ग्राहक खाते / यादी',
+    marathiName: 'Customer Accounts & Loyalty',
     description: 'Add and view customer contact and loyalty info',
     category: 'Billing',
     icon: Users,
@@ -49,7 +49,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'products',
     name: 'Products & Pricing',
-    marathiName: 'वस्तू व दर यादी',
+    marathiName: 'Item Master & Pricing',
     description: 'View products, edit selling prices and add stock',
     category: 'Inventory',
     icon: Package,
@@ -58,7 +58,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'barcode_print',
     name: 'Barcode Sticker Print',
-    marathiName: 'बारकोड स्टीकर प्रिंट',
+    marathiName: 'Barcode Label Printing',
     description: 'Generate and print custom barcode stickers',
     category: 'Inventory',
     icon: Barcode,
@@ -67,7 +67,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'inventory_ai',
     name: 'Smart Stock & AI Insights',
-    marathiName: 'स्मार्ट स्टॉक व इन्व्हेंटरी',
+    marathiName: 'Stock Audits & Alerts',
     description: 'View low-stock alerts, expiry tracking and restocking',
     category: 'Inventory',
     icon: ClipboardList,
@@ -76,7 +76,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'purchases',
     name: 'Suppliers & Purchases',
-    marathiName: 'सप्लायर्स व खरेदी नोंद',
+    marathiName: 'Wholesaler Purchases & Stock-In',
     description: 'Enter purchase bills from wholesale distributors',
     category: 'Inventory',
     icon: ArrowLeftRight,
@@ -87,7 +87,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'udhar',
     name: 'Udhar / Khata Book',
-    marathiName: 'उधारी / खातावही',
+    marathiName: 'Customer Credit Ledger',
     description: 'Track customer udhar, send WhatsApp reminders & record repayments',
     category: 'Khata & Finance',
     icon: CreditCard,
@@ -96,7 +96,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'expenses',
     name: 'Shop Expenses',
-    marathiName: 'दुकान खर्च नोंद',
+    marathiName: 'Daily Operating Expenses',
     description: 'Record daily shop operational expenses (chai, light bill, rent)',
     category: 'Khata & Finance',
     icon: Wallet,
@@ -105,7 +105,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'reports',
     name: 'Reports & Day-Close',
-    marathiName: 'विक्री अहवाल व नफा-तोटा',
+    marathiName: 'Sales & Profit Reports',
     description: 'View daily profit, gross sales, GST reports and Z-close',
     category: 'Khata & Finance',
     icon: FileText,
@@ -114,7 +114,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'analytics',
     name: 'Digital Sales Analytics',
-    marathiName: 'खरेदीदार व विक्री अ‍ॅनालिटिक्स',
+    marathiName: 'Traffic & Sales Velocity',
     description: 'Hourly customer footfall and product sales velocity trends',
     category: 'Khata & Finance',
     icon: TrendingUp,
@@ -125,7 +125,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'staff',
     name: 'Staff & Attendance',
-    marathiName: 'कर्मचारी हजेरी व पगार',
+    marathiName: 'Employee Shifts & Payroll',
     description: 'Track staff daily attendance, advances and monthly salary slips',
     category: 'Management',
     icon: UserCheck,
@@ -134,7 +134,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'recycle_bin',
     name: 'Recycle Bin',
-    marathiName: 'रिसायकल बिन (कचरा पेटी)',
+    marathiName: 'Recovery & Trash',
     description: 'Restore accidentally deleted bills, products or customers',
     category: 'Management',
     icon: Trash2,
@@ -143,7 +143,7 @@ export const APP_PERMISSIONS: PermissionDef[] = [
   {
     id: 'settings',
     name: 'Store & Hardware Settings',
-    marathiName: 'दुकान व हार्डवेअर सेटिंग्ज',
+    marathiName: 'Hardware & Shop Config',
     description: 'Configure thermal printers, WhatsApp automation and store details',
     category: 'Management',
     icon: Settings,
@@ -164,7 +164,7 @@ export const STAFF_ROLE_PRESETS: RolePreset[] = [
   {
     id: 'cashier',
     name: 'Cashier (Billing Only)',
-    marathiName: 'कॅशियर (फक्त बिलिंग)',
+    marathiName: 'Cashier (Billing Only)',
     description: 'Can only scan barcodes, make bills and add customers. Cannot see profit, expenses or reports.',
     color: 'emerald',
     permissions: ['pos', 'bill_store', 'customers'],
@@ -172,7 +172,7 @@ export const STAFF_ROLE_PRESETS: RolePreset[] = [
   {
     id: 'sales_clerk',
     name: 'Sales & Inventory Clerk',
-    marathiName: 'सेल्स व स्टॉक मदतनीस',
+    marathiName: 'Sales & Stock Assistant',
     description: 'Can bill items, view products and print barcode labels.',
     color: 'blue',
     permissions: ['pos', 'bill_store', 'products', 'barcode_print', 'customers'],
@@ -180,7 +180,7 @@ export const STAFF_ROLE_PRESETS: RolePreset[] = [
   {
     id: 'store_manager',
     name: 'Store Manager',
-    marathiName: 'स्टोअर मॅनेजर (सर्वसामान्य व्यवस्थापक)',
+    marathiName: 'Store General Manager',
     description: 'Full access to billing, products, udhar, purchases, expenses and daily reports.',
     color: 'indigo',
     permissions: [
@@ -191,7 +191,7 @@ export const STAFF_ROLE_PRESETS: RolePreset[] = [
   {
     id: 'all_access',
     name: 'All Access (Everything)',
-    marathiName: 'सर्व अधिकार (फुल अ‍ॅक्सेस)',
+    marathiName: 'Owner / Full Access',
     description: 'Access to all 14 store modules and features.',
     color: 'amber',
     permissions: APP_PERMISSIONS.map(p => p.id),

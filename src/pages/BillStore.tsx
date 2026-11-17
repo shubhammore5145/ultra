@@ -331,8 +331,8 @@ export default function BillStore() {
             ${Number(bill.changeReturn || 0) > 0 ? `<div class="row bold"><span>Change Return:</span><span>₹${Number(bill.changeReturn).toFixed(2)}</span></div>` : ''}
           ` : ''}
           <div class="dashed"></div>
-          <p class="center" style="margin:10px 0 2px;font-size:11px;font-weight:bold;">धन्यवाद! पुन्हा भेट द्या! 🙏</p>
-          <p class="center" style="margin:0;font-size:9px;color:#555;">Thank you for shopping with us!</p>
+          <p class="center" style="margin:10px 0 2px;font-size:11px;font-weight:bold;">Thank You For Shopping! Please Visit Again! 🙏</p>
+          <p class="center" style="margin:0;font-size:9px;color:#555;">Software by Nayashi Kirana POS</p>
           <script>
             window.onload = function() { window.print(); }
           </script>
@@ -373,7 +373,7 @@ export default function BillStore() {
     if (shopAddr) msg += shopAddr;
     if (shopPh) msg += shopPh;
     msg += `────────────────────\n`;
-    msg += `🧾 *RETAIL BILL / पावती*\n`;
+    msg += `🧾 *TAX / RETAIL INVOICE*\n`;
     msg += `*Inv No:* #${billShortId}\n`;
     msg += `*Date:* ${dateStr}, ${timeStr}\n`;
     if (cust.name) {
@@ -390,7 +390,7 @@ export default function BillStore() {
     msg += `💰 *TOTAL AMOUNT: ₹${Number(bill.totalAmount || 0).toFixed(2)}*\n`;
     msg += `────────────────────\n`;
     msg += `📄 *View Full E-Bill / PDF:*\n${receiptLink}\n\n`;
-    msg += `🙏 *खरेदीसाठी मनापासून धन्यवाद! पुन्हा भेट द्या!* 😊`;
+    msg += `🙏 *Thank you for shopping with us! Please visit again.* 😊`;
 
     window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -406,10 +406,10 @@ export default function BillStore() {
             </div>
             <div>
               <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground">
-                Bill Store & History (बिल संग्रह)
+                Bill Store & Invoice History
               </h1>
               <p className="text-xs text-muted-foreground">
-                प्रत्येक बिलाचा नफा, ग्राहक तपशील आणि पावती पाहणे, री-प्रिंट किंवा व्हॉट्सॲपवर पाठवा.
+                Track bill-by-bill profits, customer receipts, re-print thermal bills, or share via WhatsApp.
               </p>
             </div>
           </div>
@@ -443,21 +443,21 @@ export default function BillStore() {
         {/* Total Bills */}
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">एकूण बिले</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Total Bills</span>
             <div className="h-7 w-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <FileText className="h-3.5 w-3.5" />
             </div>
           </div>
           <div className="mt-2">
             <p className="text-2xl font-black text-foreground">{summary.count}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">सरासरी: ₹{summary.avg.toFixed(0)} / बिल</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Average: ₹{summary.avg.toFixed(0)} / bill</p>
           </div>
         </div>
 
         {/* Total Sales */}
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">एकूण विक्री</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Total Sales</span>
             <div className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
               <IndianRupee className="h-3.5 w-3.5" />
             </div>
@@ -466,7 +466,7 @@ export default function BillStore() {
             <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
               ₹{summary.revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">निवडलेला कालावधी</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Selected Range</p>
           </div>
         </div>
 
@@ -474,7 +474,7 @@ export default function BillStore() {
         <div className="col-span-2 sm:col-span-1 rounded-2xl border-2 border-emerald-500/50 bg-gradient-to-br from-emerald-50/80 via-card to-emerald-500/5 dark:from-emerald-950/40 dark:via-card dark:to-emerald-900/10 p-3.5 sm:p-4 shadow-xs flex flex-col justify-between relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wide flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-emerald-600 animate-pulse" /> निव्वळ नफा (Profit)
+              <Sparkles className="h-3 w-3 text-emerald-600 animate-pulse" /> Net Profit
             </span>
             <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
               <TrendingUp className="h-4 w-4" />
@@ -486,7 +486,7 @@ export default function BillStore() {
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 px-1.5 py-0.2 rounded-md">
-                {summary.margin}% नफा मार्जिन
+                {summary.margin}% Margin
               </span>
             </div>
           </div>
@@ -495,7 +495,7 @@ export default function BillStore() {
         {/* Cash & UPI Collected */}
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">जमा रक्कम</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Paid Received</span>
             <div className="h-7 w-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <Banknote className="h-3.5 w-3.5" />
             </div>
@@ -505,7 +505,7 @@ export default function BillStore() {
               ₹{(summary.cash + summary.upi).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </p>
             <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
-              कॅश: ₹{summary.cash.toFixed(0)} | UPI: ₹{summary.upi.toFixed(0)}
+              Cash: ₹{summary.cash.toFixed(0)} | UPI: ₹{summary.upi.toFixed(0)}
             </p>
           </div>
         </div>
@@ -513,7 +513,7 @@ export default function BillStore() {
         {/* Pending Udhar */}
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">बाकी उधारी</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Pending Udhar</span>
             <div className="h-7 w-7 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
               <CreditCard className="h-3.5 w-3.5" />
             </div>
@@ -522,7 +522,7 @@ export default function BillStore() {
             <p className="text-2xl font-black text-rose-600 dark:text-rose-400">
               ₹{summary.udhar.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{summary.udharCount} उधारी बिले</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{summary.udharCount} credit bills</p>
           </div>
         </div>
       </div>
@@ -536,7 +536,7 @@ export default function BillStore() {
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="बिल नंबर, ग्राहक नाव, फोन नंबर किंवा वस्तू सर्च करा..."
+              placeholder="Search by invoice #, customer name, mobile, or item..."
               className="pl-9 h-10 text-xs sm:text-sm font-medium rounded-xl bg-background"
             />
             {searchTerm && (
@@ -556,12 +556,12 @@ export default function BillStore() {
               onChange={(e) => setPaymentFilter(e.target.value)}
               className="rounded-xl border border-input bg-background px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-2xs"
             >
-              <option value="all">सर्व पेमेंट प्रकार (All)</option>
-              <option value="cash">💵 Cash (रोख)</option>
+              <option value="all">All Payment Methods</option>
+              <option value="cash">💵 Cash</option>
               <option value="upi">📱 UPI / QR</option>
-              <option value="udhar">📕 Udhar (उधार)</option>
+              <option value="udhar">📕 Udhar (Credit)</option>
               <option value="card">💳 Card</option>
-              <option value="split">⚡ Split (मिश्र)</option>
+              <option value="split">⚡ Split Payment</option>
             </select>
 
             {/* Sort Order */}
@@ -570,10 +570,10 @@ export default function BillStore() {
               onChange={(e) => setSortBy(e.target.value as any)}
               className="rounded-xl border border-input bg-background px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-2xs"
             >
-              <option value="newest">⏰ नवीन आधी (Newest)</option>
-              <option value="profit">💰 जास्त नफा (Highest Profit)</option>
-              <option value="amount">📈 मोठे बिल (Highest Amount)</option>
-              <option value="oldest">📅 जुने आधी (Oldest)</option>
+              <option value="newest">⏰ Newest First</option>
+              <option value="profit">💰 Highest Profit</option>
+              <option value="amount">📈 Highest Bill Amount</option>
+              <option value="oldest">📅 Oldest First</option>
             </select>
           </div>
         </div>
@@ -581,14 +581,14 @@ export default function BillStore() {
         {/* Date Filter Pills */}
         <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-border/60">
           <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1 mr-1">
-            <Calendar className="h-3.5 w-3.5 text-primary" /> कालावधी:
+            <Calendar className="h-3.5 w-3.5 text-primary" /> Period:
           </span>
           {[
-            { id: 'thisMonth', label: 'चालू महिना' },
-            { id: 'today', label: 'आज' },
-            { id: 'yesterday', label: 'काल' },
-            { id: '7days', label: 'गेले ७ दिवस' },
-            { id: 'all', label: 'सर्व बिले' },
+            { id: 'thisMonth', label: 'This Month' },
+            { id: 'today', label: 'Today' },
+            { id: 'yesterday', label: 'Yesterday' },
+            { id: '7days', label: 'Last 7 Days' },
+            { id: 'all', label: 'All Invoices' },
           ].map((pill) => (
             <button
               key={pill.id}
@@ -611,7 +611,7 @@ export default function BillStore() {
               : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted font-medium'
           }`}>
             <Calendar className="h-3 w-3 shrink-0" />
-            <span className="text-xs font-bold shrink-0">महिना:</span>
+            <span className="text-xs font-bold shrink-0">Month:</span>
             <input
               type="month"
               value={customMonth}
@@ -626,7 +626,7 @@ export default function BillStore() {
           </div>
           
           <span className="ml-auto text-xs text-muted-foreground font-bold">
-            एकूण {filteredBills.length} बिले सापडली
+            Found {filteredBills.length} invoices
           </span>
         </div>
       </div>
@@ -636,13 +636,13 @@ export default function BillStore() {
         {loading ? (
           <div className="p-12 text-center text-muted-foreground space-y-2">
             <RefreshCw className="h-7 w-7 animate-spin mx-auto text-primary" />
-            <p className="text-xs font-medium">बिले लोड होत आहेत...</p>
+            <p className="text-xs font-medium">Loading invoices...</p>
           </div>
         ) : filteredBills.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground space-y-2">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground/30" />
-            <p className="font-bold text-base text-foreground">कोणतेही बिल सापडले नाही</p>
-            <p className="text-xs">वर दिलेले सर्च किंवा तारीख फिल्टर बदलून पहा.</p>
+            <p className="font-bold text-base text-foreground">No invoices found</p>
+            <p className="text-xs">Try adjusting your search query or date range filters above.</p>
           </div>
         ) : (
           <>
@@ -652,13 +652,13 @@ export default function BillStore() {
                 <thead className="bg-muted/60 text-muted-foreground uppercase text-[10px] tracking-wider font-extrabold border-b border-border/80">
                   <tr>
                     <th className="px-4 py-3.5">Invoice #</th>
-                    <th className="px-4 py-3.5">दिनांक व वेळ</th>
-                    <th className="px-4 py-3.5">ग्राहक तपशील</th>
-                    <th className="px-4 py-3.5">पेमेंट मोड</th>
-                    <th className="px-4 py-3.5">वस्तू तपशील</th>
-                    <th className="px-4 py-3.5 text-right">बिल रक्कम (₹)</th>
-                    <th className="px-4 py-3.5 text-right">नफा (Profit) 💰</th>
-                    <th className="px-4 py-3.5 text-center">क्रिया (Actions)</th>
+                    <th className="px-4 py-3.5">Date & Time</th>
+                    <th className="px-4 py-3.5">Customer Details</th>
+                    <th className="px-4 py-3.5">Payment Mode</th>
+                    <th className="px-4 py-3.5">Items Purchased</th>
+                    <th className="px-4 py-3.5 text-right">Bill Total (₹)</th>
+                    <th className="px-4 py-3.5 text-right">Profit Margin 💰</th>
+                    <th className="px-4 py-3.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -693,7 +693,7 @@ export default function BillStore() {
                           {cust.isKnown ? (
                             <div>
                               <p className="font-bold text-foreground flex items-center gap-1.5">
-                                <User className="h-3.5 w-3.5 text-primary" /> {cust.name || 'ग्राहक'}
+                                <User className="h-3.5 w-3.5 text-primary" /> {cust.name || 'Customer'}
                               </p>
                               {cust.phone && (
                                 <p className="text-[10px] text-muted-foreground font-mono">
@@ -702,7 +702,7 @@ export default function BillStore() {
                               )}
                             </div>
                           ) : (
-                            <span className="text-muted-foreground italic text-[11px]">Walk-in (रोख ग्राहक)</span>
+                            <span className="text-muted-foreground italic text-[11px]">Walk-in (Cash Customer)</span>
                           )}
                         </td>
 
@@ -717,13 +717,13 @@ export default function BillStore() {
                               ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
                               : 'bg-muted text-muted-foreground'
                           }`}>
-                            {bill.paymentMethod === 'cash' ? '💵 रोख' : bill.paymentMethod === 'upi' ? '📱 UPI' : bill.paymentMethod === 'udhar' ? '📕 उधार' : bill.paymentMethod}
+                            {bill.paymentMethod === 'cash' ? '💵 Cash' : bill.paymentMethod === 'upi' ? '📱 UPI' : bill.paymentMethod === 'udhar' ? '📕 Udhar' : bill.paymentMethod}
                           </span>
                         </td>
 
                         {/* Items Summary */}
                         <td className="px-4 py-3.5 text-muted-foreground max-w-[210px] truncate" title={bill.items?.map(i => `${i.name} (${i.qty})`).join(', ')}>
-                          <span className="font-bold text-foreground">{itemCount} वस्तू:</span> {previewNames}
+                          <span className="font-bold text-foreground">{itemCount} items:</span> {previewNames}
                           {itemCount > 2 && '...'}
                         </td>
 
@@ -738,7 +738,7 @@ export default function BillStore() {
                             +₹{pInfo.profit.toFixed(2)}
                           </p>
                           <span className="inline-block text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-200/60 dark:border-emerald-800/60">
-                            {pInfo.margin}% नफा
+                            {pInfo.margin}% Profit
                           </span>
                         </td>
 
@@ -750,7 +750,7 @@ export default function BillStore() {
                               size="icon"
                               onClick={() => setSelectedBill(bill)}
                               className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg"
-                              title="सविस्तर पावती पहा (View Details)"
+                              title="View Invoice Details"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -760,7 +760,7 @@ export default function BillStore() {
                               size="icon"
                               onClick={() => printThermalReceipt(bill)}
                               className="h-8 w-8 text-foreground hover:bg-muted rounded-lg"
-                              title="थर्मल प्रिंट काढा (Print Receipt)"
+                              title="Print Thermal Receipt"
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
@@ -770,7 +770,7 @@ export default function BillStore() {
                               size="icon"
                               onClick={() => sendWhatsAppReceipt(bill)}
                               className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg"
-                              title="व्हॉट्सॲपवर पाठवा (WhatsApp Share)"
+                              title="Share on WhatsApp"
                             >
                               <MessageCircle className="h-4 w-4" />
                             </Button>
@@ -781,7 +781,7 @@ export default function BillStore() {
                               disabled={actionLoading === bill.id}
                               onClick={() => handleCancelBill(bill)}
                               className="h-8 w-8 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
-                              title="बिल रद्द करा (Move to Recycle Bin)"
+                              title="Cancel Bill / Move to Recycle Bin"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -838,21 +838,21 @@ export default function BillStore() {
                         </p>
                       ) : null}
                       <p className="text-xs text-muted-foreground line-clamp-1">
-                        <span className="font-semibold text-foreground">{itemCount} वस्तू:</span> {previewNames}
+                        <span className="font-semibold text-foreground">{itemCount} items:</span> {previewNames}
                       </p>
                     </div>
 
                     {/* Financial Summary & Actions */}
                     <div className="flex items-center justify-between pt-2 border-t border-dashed border-border/70">
                       <div>
-                        <p className="text-[10px] text-muted-foreground">बिल रक्कम:</p>
+                        <p className="text-[10px] text-muted-foreground">Bill Total:</p>
                         <p className="text-base font-black text-foreground leading-tight">
                           ₹{Number(bill.totalAmount || 0).toFixed(2)}
                         </p>
                       </div>
 
                       <div className="text-center">
-                        <p className="text-[10px] text-muted-foreground">बिलावरील नफा:</p>
+                        <p className="text-[10px] text-muted-foreground">Profit:</p>
                         <span className="inline-block font-extrabold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/70 px-2 py-0.5 rounded-md border border-emerald-300/50">
                           +₹{pInfo.profit.toFixed(0)} ({pInfo.margin}%)
                         </span>
@@ -864,7 +864,7 @@ export default function BillStore() {
                           size="icon"
                           onClick={() => setSelectedBill(bill)}
                           className="h-8 w-8 rounded-lg text-blue-600"
-                          title="पहा"
+                          title="View"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -873,7 +873,7 @@ export default function BillStore() {
                           size="icon"
                           onClick={() => printThermalReceipt(bill)}
                           className="h-8 w-8 rounded-lg text-foreground"
-                          title="प्रिंट"
+                          title="Print"
                         >
                           <Printer className="h-4 w-4" />
                         </Button>
@@ -913,7 +913,7 @@ export default function BillStore() {
                   </div>
                   <div>
                     <h3 className="text-base font-black text-foreground">
-                      Invoice Details (बिल तपशील)
+                      Invoice Details
                     </h3>
                     <p className="text-xs text-muted-foreground font-mono">
                       #{billShortId}
@@ -933,13 +933,13 @@ export default function BillStore() {
               {/* Bill Header Info Card */}
               <div className="grid grid-cols-2 gap-2.5 text-xs bg-muted/40 p-3.5 rounded-2xl border border-border/60">
                 <div>
-                  <p className="text-muted-foreground text-[11px]">दिनांक व वेळ:</p>
+                  <p className="text-muted-foreground text-[11px]">Date & Time:</p>
                   <p className="font-bold text-foreground">
                     {selectedBill.createdAt ? new Date(selectedBill.createdAt).toLocaleString('en-IN') : '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-[11px]">पेमेंट मोड:</p>
+                  <p className="text-muted-foreground text-[11px]">Payment Mode:</p>
                   <p className="font-black uppercase text-primary">
                     {selectedBill.paymentMethod}
                   </p>
@@ -947,14 +947,14 @@ export default function BillStore() {
                 {cust.isKnown && (
                   <div className="col-span-2 pt-2 border-t border-border/60 flex items-center justify-between">
                     <div>
-                      <p className="text-muted-foreground text-[10px]">ग्राहक नाव:</p>
+                      <p className="text-muted-foreground text-[10px]">Customer Name:</p>
                       <p className="font-bold text-foreground flex items-center gap-1">
                         <User className="h-3 w-3 text-primary" /> {cust.name || 'Customer'}
                       </p>
                     </div>
                     {cust.phone && (
                       <div className="text-right">
-                        <p className="text-muted-foreground text-[10px]">मोबाईल:</p>
+                        <p className="text-muted-foreground text-[10px]">Mobile:</p>
                         <p className="font-mono font-bold text-foreground">+91 {cust.phone}</p>
                       </div>
                     )}
@@ -965,7 +965,7 @@ export default function BillStore() {
               {/* Items Table */}
               <div>
                 <p className="text-xs font-bold text-muted-foreground mb-1.5 flex items-center gap-1">
-                  <Package className="h-3.5 w-3.5 text-primary" /> खरेदी केलेल्या वस्तू (Item Breakdown):
+                  <Package className="h-3.5 w-3.5 text-primary" /> Purchased Items (Item Breakdown):
                 </p>
                 <div className="border border-border/80 rounded-2xl overflow-hidden">
                   <table className="w-full text-left text-xs">
@@ -973,9 +973,9 @@ export default function BillStore() {
                       <tr>
                         <th className="px-3 py-2.5">Item</th>
                         <th className="px-2 py-2.5 text-center">Qty</th>
-                        <th className="px-2 py-2.5 text-right">खरेदी</th>
-                        <th className="px-3 py-2.5 text-right">विक्री दर</th>
-                        <th className="px-3 py-2.5 text-right">नफा</th>
+                        <th className="px-2 py-2.5 text-right">Cost Price</th>
+                        <th className="px-3 py-2.5 text-right">Selling Price</th>
+                        <th className="px-3 py-2.5 text-right">Profit</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
@@ -1020,10 +1020,10 @@ export default function BillStore() {
                   </div>
                   <div>
                     <p className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200">
-                      या बिलावरील एकूण निव्वळ नफा:
+                      Net Profit from this Bill:
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      खरेदी खर्च: ₹{pInfo.cost.toFixed(2)}
+                      Total Cost: ₹{pInfo.cost.toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -1045,7 +1045,7 @@ export default function BillStore() {
                 </div>
                 {Number(selectedBill.discountAmount) > 0 ? (
                   <div className="flex justify-between text-emerald-600 font-bold">
-                    <span>Discount (सूट):</span>
+                    <span>Discount:</span>
                     <span>-₹{Number(selectedBill.discountAmount).toFixed(2)}</span>
                   </div>
                 ) : null}
@@ -1056,18 +1056,18 @@ export default function BillStore() {
                   </div>
                 ) : null}
                 <div className="flex justify-between text-base font-black text-foreground pt-1.5 border-t">
-                  <span>Grand Total (एकूण देय):</span>
+                  <span>Grand Total:</span>
                   <span className="text-primary">₹{Number(selectedBill.totalAmount || 0).toFixed(2)}</span>
                 </div>
                 {Number(selectedBill.cashTendered || 0) > 0 && (
                   <div className="flex justify-between text-muted-foreground pt-1 border-t border-dashed">
-                    <span>दिलेली रोकड (Cash):</span>
+                    <span>Cash Tendered:</span>
                     <span className="font-semibold text-foreground">₹{Number(selectedBill.cashTendered).toFixed(2)}</span>
                   </div>
                 )}
                 {Number(selectedBill.changeReturn || 0) > 0 && (
                   <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
-                    <span>परत बाकी (Change):</span>
+                    <span>Change Return:</span>
                     <span>₹{Number(selectedBill.changeReturn).toFixed(2)}</span>
                   </div>
                 )}

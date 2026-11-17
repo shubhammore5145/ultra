@@ -49,7 +49,7 @@ interface WholesalerBillScannerModalProps {
 export const SAMPLE_WHOLESALER_INVOICE = {
   supplierName: 'BY TAG ENTERPRISES',
   supplierPhone: '8177943495',
-  supplierAddress: 'Plot No - 285 ,CIDCO waluj Mahanagar 1 Chhatrapati Sambhaji Nagar- 431136',
+  supplierAddress: 'Plot No - 285, CIDCO Waluj Mahanagar 1, Chhatrapati Sambhaji Nagar - 431136',
   supplierGst: '27BNMPA0018G1ZH',
   invoiceNumber: '26272773',
   date: '2026-08-07',
@@ -284,7 +284,6 @@ export function WholesalerBillScannerModal({
     }
 
     if (!detectedSupplier && lines.length > 0) {
-      // Top line often holds company name
       const candidate = lines.find(l => !/TAX INVOICE|INVOICE DETAILS|BILL TO/i.test(l) && l.length > 4);
       if (candidate) detectedSupplier = candidate;
     }
@@ -302,35 +301,27 @@ export function WholesalerBillScannerModal({
         break;
       }
 
-      // Check for row with price/qty numbers
-      // Extract numbers from the line
       const numbers = line.match(/\d+(?:\.\d+)?/g);
       if (numbers && numbers.length >= 2) {
-        // Line has at least 2 numbers (e.g. qty, price, total)
-        // Clean product name from the leading index or text
         const textParts = line
-          .replace(/^\d+[\s\.\)]+/, '') // Remove leading serial number
-          .replace(/\b\d+(?:\.\d+)?\b/g, '') // remove numbers
+          .replace(/^\d+[\s\.\)]+/, '')
+          .replace(/\b\d+(?:\.\d+)?\b/g, '')
           .replace(/[₹\(\)\*\-,%]/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
 
         if (textParts.length >= 3) {
           const numFloats = numbers.map(n => parseFloat(n));
-          // Identify probable Qty, Rate, Total
           let qty = 1;
           let rate = 0;
           let mrp = 0;
 
-          // If there's an integer <= 500, could be Qty
           const possibleQty = numFloats.find(n => Number.isInteger(n) && n > 0 && n <= 500);
           if (possibleQty) qty = possibleQty;
 
-          // Rate is usually between 5 and 50000
           const possibleRate = numFloats.find(n => n > 2 && n !== qty);
           if (possibleRate) rate = possibleRate;
 
-          // MRP might be larger than rate
           const possibleMrp = numFloats.find(n => n >= rate && n !== qty && n !== (qty * rate));
           if (possibleMrp) mrp = possibleMrp;
           else mrp = Math.round(rate * 1.2);
@@ -356,14 +347,12 @@ export function WholesalerBillScannerModal({
       }
     }
 
-    // Set fields
     if (detectedSupplier) setSupplierName(detectedSupplier);
     if (detectedPhone) setSupplierPhone(detectedPhone);
     if (detectedGst) setSupplierGst(detectedGst);
     if (detectedInvNo) setInvoiceNumber(detectedInvNo);
     if (detectedDate) setInvoiceDate(detectedDate);
 
-    // Try linking existing supplier
     if (detectedSupplier) {
       const existingSupp = suppliers.find(s => s.name.toLowerCase().includes(detectedSupplier.toLowerCase()) || (s.gstNumber && detectedGst && s.gstNumber === detectedGst));
       if (existingSupp) setSelectedSupplierId(existingSupp.id);
@@ -378,30 +367,29 @@ export function WholesalerBillScannerModal({
   const processImageOCR = async (fileOrUrl: File | string) => {
     setIsProcessing(true);
     setOcrProgress(10);
-    setOcrStatusText('बिल वाचत आहे (AI OCR reading invoice)...');
+    setOcrStatusText('Reading invoice (AI OCR analyzing document)...');
 
     try {
       const res = await Tesseract.recognize(fileOrUrl, 'eng', {
         logger: (m) => {
           if (m.status === 'recognizing text' && m.progress) {
             setOcrProgress(Math.round(m.progress * 100));
-            setOcrStatusText(`अक्षरे वाचत आहे... ${Math.round(m.progress * 100)}%`);
+            setOcrStatusText(`Reading text... ${Math.round(m.progress * 100)}%`);
           }
         }
       });
 
       const text = res?.data?.text || '';
       setRawOcrText(text);
-      setOcrStatusText('माहिती वेगळी करत आहे (Extracting items & prices)...');
+      setOcrStatusText('Extracting items, rates, and quantities...');
       parseInvoiceText(text);
 
-      // If parser didn't find items due to low OCR resolution, fallback to Sample items
       if (billItems.length === 0 && text.toLowerCase().includes('tag')) {
         loadDemoInvoice();
       }
     } catch (err: any) {
       console.error('OCR Error:', err);
-      alert('OCR failed to read the image clearly. Please check lighting or try loading the demo/manual items.');
+      alert('OCR failed to read the image clearly. Please check lighting or click "Load Sample Bill".');
     } finally {
       setIsProcessing(false);
       setOcrProgress(100);
@@ -432,7 +420,6 @@ export function WholesalerBillScannerModal({
     setInvoiceNumber(SAMPLE_WHOLESALER_INVOICE.invoiceNumber);
     setInvoiceDate(SAMPLE_WHOLESALER_INVOICE.date);
 
-    // Link supplier if exists
     const matchSupp = suppliers.find(s => s.name.toLowerCase().includes('tag') || s.gstNumber === SAMPLE_WHOLESALER_INVOICE.supplierGst);
     if (matchSupp) setSelectedSupplierId(matchSupp.id);
 
@@ -526,7 +513,6 @@ export function WholesalerBillScannerModal({
   const roundOff = Number((Math.round(grandTotal) - grandTotal).toFixed(2));
   const finalPayable = Math.round(grandTotal);
 
-  // Update default paid amount
   useEffect(() => {
     if (finalPayable > 0 && paidAmount === '') {
       setPaidAmount(finalPayable.toString());
@@ -536,7 +522,7 @@ export function WholesalerBillScannerModal({
   // Save Everything: Stock-In, Product Master, Supplier, Purchase Record
   const handleConfirmStockIn = async () => {
     if (billItems.length === 0) {
-      alert('कृपया बिलामध्ये किमान एक उत्पादन जोडा.');
+      alert('Please add at least one line item to the bill.');
       return;
     }
 
@@ -661,7 +647,7 @@ export function WholesalerBillScannerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-200">
       <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* MODAL HEADER */}
@@ -673,14 +659,14 @@ export function WholesalerBillScannerModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-black text-foreground">
-                  होलसेलर बिल स्कॅनर व ऑटो स्टॉक-इन (Wholesaler Bill Scanner & Stock-In)
+                  Wholesaler Bill Scanner & Auto Stock-In
                 </h2>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white tracking-wider">
                   AI OCR
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                बिलाचा फोटो काढून किंवा अपलोड करून वस्तू थेट इन्व्हेंटरीमध्ये ॲड करा, स्टॉक वाढवा आणि खरेदी नोंदवा.
+                Scan or upload wholesale tax invoices to auto-import line items, update stock, and record purchases.
               </p>
             </div>
           </div>
@@ -708,7 +694,7 @@ export function WholesalerBillScannerModal({
               disabled={isProcessing}
             >
               <Camera className="h-4 w-4 mr-1.5" />
-              कॅमेऱ्याने फोटो काढा (Capture Bill)
+              Capture Bill Photo
             </Button>
 
             {/* Gallery / File Upload */}
@@ -727,7 +713,7 @@ export function WholesalerBillScannerModal({
               disabled={isProcessing}
             >
               <Upload className="h-4 w-4 mr-1.5" />
-              फोटो / बिल निवडा (Upload File)
+              Upload Invoice File
             </Button>
 
             {/* 1-Click Real Sample Invoice Button (BY TAG ENTERPRISES) */}
@@ -736,10 +722,10 @@ export function WholesalerBillScannerModal({
               size="sm"
               onClick={loadDemoInvoice}
               className="font-bold border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50"
-              title="Tax Invoice नमुना लोड करा (BY TAG ENTERPRISES)"
+              title="Load sample wholesale tax invoice (BY TAG ENTERPRISES)"
             >
               <Sparkles className="h-4 w-4 mr-1.5 text-purple-600" />
-              लोड करा: TAG Enterprises Bill (९ वस्तू)
+              Load Sample: TAG Enterprises (9 Items)
             </Button>
           </div>
 
@@ -751,12 +737,12 @@ export function WholesalerBillScannerModal({
                 onClick={() => setShowRawText(!showRawText)}
                 className="text-xs text-muted-foreground"
               >
-                {showRawText ? 'Hide OCR Text' : 'View OCR Text'}
+                {showRawText ? 'Hide Raw Text' : 'View Raw OCR Text'}
               </Button>
             )}
             {imagePreview && (
               <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> बिल फोटो लोड झाला
+                <CheckCircle2 className="h-3.5 w-3.5" /> Image Loaded
               </span>
             )}
           </div>
@@ -768,7 +754,7 @@ export function WholesalerBillScannerModal({
             <Loader2 className="h-5 w-5 text-emerald-600 animate-spin shrink-0" />
             <div className="flex-1 space-y-1">
               <div className="flex justify-between text-xs font-bold text-emerald-900 dark:text-emerald-200">
-                <span>{ocrStatusText || 'बिलाची माहिती वाचत आहे...'}</span>
+                <span>{ocrStatusText || 'Reading invoice document...'}</span>
                 <span>{ocrProgress}%</span>
               </div>
               <div className="w-full bg-emerald-200/60 dark:bg-emerald-900 h-2 rounded-full overflow-hidden">
@@ -796,19 +782,19 @@ export function WholesalerBillScannerModal({
           <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-dashed">
               <span className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="h-4 w-4" /> १. होलसेलर व बिल तपशील (Wholesaler & Invoice Details)
+                <Building2 className="h-4 w-4" /> 1. Wholesaler & Invoice Details
               </span>
-              <span className="text-[11px] text-muted-foreground font-medium">सर्व माहिती एडिटेबल आहे</span>
+              <span className="text-[11px] text-muted-foreground font-medium">All fields are editable</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Supplier Selection or Auto Name */}
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">होलसेलरचे नाव (Supplier):</Label>
+                <Label className="text-xs font-bold text-foreground">Supplier / Wholesaler:</Label>
                 <div className="space-y-1">
                   <Input 
                     value={supplierName} 
-                    placeholder="उदा. BY TAG ENTERPRISES"
+                    placeholder="e.g. BY TAG ENTERPRISES"
                     onChange={(e) => setSupplierName(e.target.value)}
                     className="font-bold text-xs h-9 bg-background"
                   />
@@ -827,7 +813,7 @@ export function WholesalerBillScannerModal({
                       }}
                       className="w-full text-[11px] h-7 px-2 rounded border border-border bg-background text-muted-foreground"
                     >
-                      <option value="">-- सेव्ह केलेल्या डीलरमधून निवडा --</option>
+                      <option value="">-- Link Existing Supplier --</option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
                       ))}
@@ -838,10 +824,10 @@ export function WholesalerBillScannerModal({
 
               {/* Invoice Number */}
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">इनव्हॉईस / बिल नंबर:</Label>
+                <Label className="text-xs font-bold text-foreground">Invoice / Bill Number:</Label>
                 <Input 
                   value={invoiceNumber} 
-                  placeholder="उदा. 26272773"
+                  placeholder="e.g. 26272773"
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   className="font-mono font-bold text-xs h-9 bg-background"
                 />
@@ -849,7 +835,7 @@ export function WholesalerBillScannerModal({
 
               {/* Bill Date */}
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">बिलाची तारीख (Date):</Label>
+                <Label className="text-xs font-bold text-foreground">Bill Date:</Label>
                 <Input 
                   type="date"
                   value={invoiceDate} 
@@ -860,7 +846,7 @@ export function WholesalerBillScannerModal({
 
               {/* Supplier Contact / GST */}
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">GSTIN / फोन नंबर:</Label>
+                <Label className="text-xs font-bold text-foreground">GSTIN / Phone:</Label>
                 <Input 
                   value={supplierGst || supplierPhone} 
                   placeholder="27BNMPA0018G1ZH / 8177943495"
@@ -880,10 +866,10 @@ export function WholesalerBillScannerModal({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1.5">
                   <Layers className="h-4 w-4 text-emerald-600" />
-                  २. बिलातील उत्पादने व स्टॉक पडताळणी ({billItems.length} Items)
+                  2. Line Items & Inventory Matching ({billItems.length} Items)
                 </h3>
                 <span className="text-xs font-semibold text-muted-foreground">
-                  (तुम्ही प्रत्येक वस्तूचे नाव, खरेदी भाव, विक्री भाव व स्टॉक बदलू शकता)
+                  (Review and edit item name, cost, selling price, and quantities)
                 </span>
               </div>
               <Button
@@ -892,7 +878,7 @@ export function WholesalerBillScannerModal({
                 onClick={addNewItemRow}
                 className="text-xs font-bold h-8 border-dashed border-primary text-primary hover:bg-primary/5"
               >
-                <Plus className="h-3.5 w-3.5 mr-1" /> नवीन वस्तू जोडा
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Line Item
               </Button>
             </div>
 
@@ -903,14 +889,14 @@ export function WholesalerBillScannerModal({
                   <thead className="bg-muted/70 text-muted-foreground font-bold border-b text-[11px] uppercase tracking-wider">
                     <tr>
                       <th className="px-3 py-3 w-8">#</th>
-                      <th className="px-3 py-3 min-w-[200px]">वस्तूचे नाव (Item Name)</th>
-                      <th className="px-3 py-3 min-w-[180px]">इन्व्हेंटरी मॅच (Inventory Status)</th>
-                      <th className="px-2 py-3 w-16 text-center">नग (Qty)</th>
-                      <th className="px-2 py-3 w-24 text-right">खरेदी दर (CP)</th>
+                      <th className="px-3 py-3 min-w-[200px]">Item Description</th>
+                      <th className="px-3 py-3 min-w-[180px]">Inventory Match</th>
+                      <th className="px-2 py-3 w-16 text-center">Qty</th>
+                      <th className="px-2 py-3 w-24 text-right">Cost Price (CP)</th>
                       <th className="px-2 py-3 w-20 text-right">MRP</th>
-                      <th className="px-2 py-3 w-24 text-right">विक्री दर (SP)</th>
-                      <th className="px-2 py-3 w-28 text-center">नफा / मार्जिन</th>
-                      <th className="px-3 py-3 w-24 text-right">एकूण (Total)</th>
+                      <th className="px-2 py-3 w-24 text-right">Selling Price (SP)</th>
+                      <th className="px-2 py-3 w-28 text-center">Profit / Margin</th>
+                      <th className="px-3 py-3 w-24 text-right">Total Amount</th>
                       <th className="px-2 py-3 w-8 text-center"></th>
                     </tr>
                   </thead>
@@ -919,9 +905,9 @@ export function WholesalerBillScannerModal({
                       <tr>
                         <td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">
                           <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-30 text-emerald-600" />
-                          <p className="font-bold text-sm text-foreground">बिलातील कोणतीही वस्तू जोडलेली नाही</p>
+                          <p className="font-bold text-sm text-foreground">No line items loaded yet</p>
                           <p className="text-xs mt-1">
-                            वर दिलेल्या "कॅमेऱ्याने फोटो काढा" किंवा "लोड करा: TAG Enterprises Bill" बटनावर क्लिक करा.
+                            Use "Capture Bill Photo", "Upload Invoice File", or "Load Sample" to begin.
                           </p>
                         </td>
                       </tr>
@@ -944,7 +930,7 @@ export function WholesalerBillScannerModal({
                                 value={item.name}
                                 onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
                                 className="h-8 text-xs font-bold bg-background"
-                                placeholder="प्रॉडक्टचे नाव"
+                                placeholder="Product description"
                               />
                               {item.hsn && (
                                 <span className="text-[10px] font-mono text-muted-foreground mt-0.5 block">
@@ -964,7 +950,7 @@ export function WholesalerBillScannerModal({
                                     : 'border-amber-400 text-amber-800 dark:text-amber-300'
                                 }`}
                               >
-                                <option value="">🆕 नवीन प्रॉडक्ट तयार करा (New Product)</option>
+                                <option value="">🆕 Create New Product in Catalog</option>
                                 {products.map(p => (
                                   <option key={p.id} value={p.id}>
                                     ✓ {p.name} (Stock: {p.stock})
@@ -974,11 +960,11 @@ export function WholesalerBillScannerModal({
                               <div className="mt-0.5 text-[10px]">
                                 {matchedProduct ? (
                                   <span className="text-emerald-600 font-semibold">
-                                    स्टॉक: {matchedProduct.stock} ➔ <strong className="text-emerald-700">+{item.qty} ({Number(matchedProduct.stock || 0) + Number(item.qty)})</strong>
+                                    Stock: {matchedProduct.stock} ➔ <strong className="text-emerald-700">+{item.qty} ({Number(matchedProduct.stock || 0) + Number(item.qty)})</strong>
                                   </span>
                                 ) : (
                                   <span className="text-amber-600 font-semibold">
-                                    दुकानात नवीन प्रॉडक्ट ॲड होईल (स्टॉक: {item.qty})
+                                    Will create new catalog item (Stock: {item.qty})
                                   </span>
                                 )}
                               </div>
@@ -1048,7 +1034,7 @@ export function WholesalerBillScannerModal({
                                 </span>
                               ) : profit < 0 ? (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                                  -₹{Math.abs(profit).toFixed(1)} (तोटा)
+                                  -₹{Math.abs(profit).toFixed(1)} (Loss)
                                 </span>
                               ) : (
                                 <span className="text-[10px] text-muted-foreground">—</span>
@@ -1067,7 +1053,7 @@ export function WholesalerBillScannerModal({
                                 size="icon"
                                 onClick={() => removeItem(item.id)}
                                 className="h-7 w-7 text-muted-foreground hover:text-rose-600 rounded-lg"
-                                title="काढून टाका"
+                                title="Remove item"
                               >
                                 <Trash className="h-3.5 w-3.5" />
                               </Button>
@@ -1088,12 +1074,12 @@ export function WholesalerBillScannerModal({
               {/* Payment Details */}
               <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
                 <span className="text-xs font-bold text-foreground uppercase tracking-wider block">
-                  ३. पेमेंट तपशील (Payment to Wholesaler)
+                  3. Settlement & Payment
                 </span>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-bold">पेमेंट स्थिती:</Label>
+                    <Label className="text-xs font-bold">Payment Status:</Label>
                     <select
                       value={paymentStatus}
                       onChange={(e: any) => {
@@ -1104,14 +1090,14 @@ export function WholesalerBillScannerModal({
                       }}
                       className="w-full h-9 rounded-md border border-input bg-background px-2.5 text-xs font-semibold"
                     >
-                      <option value="paid">रोख पूर्ण भरले (Paid)</option>
-                      <option value="partial">काही रक्कम भरली (Partial)</option>
-                      <option value="unpaid">उधारीवर घेतले (Unpaid / Udhar)</option>
+                      <option value="paid">Paid in Full</option>
+                      <option value="partial">Partially Paid</option>
+                      <option value="unpaid">Unpaid (Credit / Udhar)</option>
                     </select>
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-xs font-bold">दिलेली रक्कम (Amount Paid):</Label>
+                    <Label className="text-xs font-bold">Amount Paid:</Label>
                     <div className="relative">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">₹</span>
                       <Input
@@ -1128,24 +1114,24 @@ export function WholesalerBillScannerModal({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-medium text-muted-foreground">पेमेंट पद्धत:</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Payment Method:</Label>
                     <select
                       value={paymentMode}
                       onChange={(e) => setPaymentMode(e.target.value)}
                       className="w-full h-9 rounded-md border border-input bg-background px-2.5 text-xs"
                     >
-                      <option value="cash">💵 Cash (रोख)</option>
-                      <option value="upi">📱 UPI / PhonePe / GPay</option>
+                      <option value="cash">💵 Cash</option>
+                      <option value="upi">📱 UPI / QR</option>
                       <option value="netbanking">🏦 Bank Transfer</option>
                       <option value="cheque">📝 Cheque</option>
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs font-medium text-muted-foreground">रिमार्क / टीप:</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Remarks / Notes:</Label>
                     <Input
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="उदा. BY TAG Enterprises Bill"
+                      placeholder="e.g. Paid via PhonePe / Cheque"
                       className="h-9 text-xs bg-background"
                     />
                   </div>
@@ -1153,7 +1139,7 @@ export function WholesalerBillScannerModal({
 
                 {parseFloat(paidAmount) < finalPayable && (
                   <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-semibold flex justify-between items-center">
-                    <span>होलसेलरला देय बाकी उधारी (Dealer Udhar):</span>
+                    <span>Pending Dealer Credit:</span>
                     <strong className="text-rose-600 dark:text-rose-400 font-black">
                       ₹{(finalPayable - (parseFloat(paidAmount) || 0)).toFixed(2)}
                     </strong>
@@ -1165,18 +1151,18 @@ export function WholesalerBillScannerModal({
               <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-primary/5 border-2 border-emerald-500/30 rounded-2xl p-4 flex flex-col justify-between">
                 <div>
                   <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wider block mb-2">
-                    खरेदी बिल गोषवारा (Bill Summary)
+                    Purchase Summary
                   </span>
                   
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between text-muted-foreground">
-                      <span>एकूण वस्तू / नग (Items / Qty):</span>
+                      <span>Total Items / Qty:</span>
                       <span className="font-bold text-foreground">
-                        {billItems.length} वस्तू ({billItems.reduce((acc, it) => acc + (it.qty || 1), 0)} नग)
+                        {billItems.length} items ({billItems.reduce((acc, it) => acc + (it.qty || 1), 0)} qty)
                       </span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Sub Total (एकूण खरेदी दर):</span>
+                      <span>Subtotal (Gross Cost):</span>
                       <span className="font-semibold text-foreground">₹{subtotal.toFixed(2)}</span>
                     </div>
                     {totalGst > 0 && (
@@ -1196,16 +1182,16 @@ export function WholesalerBillScannerModal({
 
                 <div className="pt-3 border-t border-border/80 mt-3 flex justify-between items-center">
                   <div>
-                    <span className="text-xs font-extrabold uppercase text-muted-foreground">एकूण देय रक्कम:</span>
+                    <span className="text-xs font-extrabold uppercase text-muted-foreground">Net Payable:</span>
                     <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
                       ₹{finalPayable.toFixed(2)}
                     </p>
                   </div>
 
                   <div className="text-right text-xs">
-                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-1 rounded-lg">
+                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2.5 py-1 rounded-lg">
                       <Check className="h-3.5 w-3.5" />
-                      {billItems.filter(i => i.isNewProduct).length} नवीन प्रॉडक्ट्स
+                      {billItems.filter(i => i.isNewProduct).length} New Products
                     </span>
                   </div>
                 </div>
@@ -1219,7 +1205,7 @@ export function WholesalerBillScannerModal({
           <div className="text-xs text-muted-foreground flex items-center gap-1.5">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
             <span>
-              सेव्ह करताच प्रत्येक वस्तूचा <strong>स्टॉक वाढेल</strong>, <strong>खरेदी भाव अपडेट होईल</strong> आणि बिल सेव्ह होईल.
+              Saving will automatically <strong>increase stock</strong>, <strong>update cost & selling rates</strong>, and record invoice.
             </span>
           </div>
 
@@ -1231,7 +1217,7 @@ export function WholesalerBillScannerModal({
               disabled={isSubmitting}
               className="w-1/3 sm:w-auto font-bold text-xs h-11"
             >
-              रद्द करा (Cancel)
+              Cancel
             </Button>
 
             <Button
@@ -1243,12 +1229,12 @@ export function WholesalerBillScannerModal({
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  स्टॉक अपडेट होत आहे...
+                  Updating Stock & Prices...
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4 mr-2" />
-                  स्टॉक इन करा व बिल सेव्ह करा (₹{finalPayable.toFixed(0)}) ↵
+                  Confirm Stock-In (₹{finalPayable.toFixed(0)}) ↵
                 </>
               )}
             </Button>

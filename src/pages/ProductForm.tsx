@@ -530,7 +530,7 @@ export default function ProductForm() {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="wholesalePrice" className="text-sm font-semibold">
-                  Wholesale Price (थोक किंमत ₹)
+                  Wholesale Price (₹)
                 </Label>
                 <Input 
                   id="wholesalePrice" 
@@ -545,7 +545,7 @@ export default function ProductForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="bulkMinQty" className="text-sm font-semibold">
-                  Bulk Tier Min Qty (किमान नग)
+                  Bulk Tier Min Qty
                 </Label>
                 <Input 
                   id="bulkMinQty" 
@@ -559,7 +559,7 @@ export default function ProductForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="bulkPrice" className="text-sm font-semibold">
-                  Bulk Unit Price (बल्क प्रति नग दर ₹)
+                  Bulk Unit Price (₹)
                 </Label>
                 <Input 
                   id="bulkPrice" 
@@ -574,7 +574,7 @@ export default function ProductForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="rackLocation" className="text-sm font-semibold">
-                  Warehouse Rack / Shelf (रॅक स्थान)
+                  Warehouse Rack / Shelf Location
                 </Label>
                 <Input 
                   id="rackLocation" 
@@ -587,7 +587,7 @@ export default function ProductForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="reorderQty" className="text-sm font-semibold">
-                  Auto Reorder Qty (पुन्हा मागवण्याचे प्रमाण)
+                  Auto Reorder Quantity
                 </Label>
                 <Input 
                   id="reorderQty" 
@@ -601,7 +601,7 @@ export default function ProductForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="maxStock" className="text-sm font-semibold">
-                  Max Stock Limit (कमाल मर्यादा)
+                  Maximum Stock Limit
                 </Label>
                 <Input 
                   id="maxStock" 

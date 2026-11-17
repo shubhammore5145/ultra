@@ -330,14 +330,14 @@ export default function StaffManagement() {
   }, [staffList, attendanceList, paymentsList]);
 
   const ALL_PERMISSIONS = [
-    { id: 'pos_billing', label: 'POS काउंटर बिलिंग', desc: 'बिल बनवणे व ग्राहक व्यवहार पूर्ण करणे' },
-    { id: 'apply_discounts', label: 'सूट / डिस्काउंट देणे', desc: 'वस्तूवर किंवा बिलावर डिस्काउंट देणे' },
-    { id: 'cancel_bills', label: 'बिल रद्द / डिलीट करणे', desc: 'चुकीचे किंवा रद्द केलेले बिल हटवणे' },
-    { id: 'inventory_edit', label: 'स्टॉक व किंमत बदलणे', desc: 'नवीन वस्तू जोडणे व स्टॉक कमी-जास्त करणे' },
-    { id: 'view_cost_profit', label: 'खरेदी दर व नफा गुप्तता', desc: 'खरेदी दर आणि नफा अहवाल पाहणे' },
-    { id: 'purchase_entry', label: 'खरेदी बिल नोंदवणे', desc: 'सप्लायरकडून आलेल्या मालाची नोंद करणे' },
-    { id: 'customer_udhar', label: 'उधारी खाते व जमा', desc: 'ग्राहकांचे उधारी खाते पाहणे व जमा नोंदवणे' },
-    { id: 'staff_manage', label: 'कर्मचारी व्यवस्थापन', desc: 'हजेरी, पगार आणि अधिकार मॅनेज करणे' },
+    { id: 'pos_billing', label: 'POS Counter Billing', desc: 'Create bills, scan items & collect payments' },
+    { id: 'apply_discounts', label: 'Apply Discounts', desc: 'Allow applying custom bill & item level discounts' },
+    { id: 'cancel_bills', label: 'Cancel / Delete Bills', desc: 'Allow cancelling bills and moving to recycle bin' },
+    { id: 'inventory_edit', label: 'Edit Inventory & Prices', desc: 'Add new products and modify inventory stock levels' },
+    { id: 'view_cost_profit', label: 'View Cost Price & Profit', desc: 'View confidential supplier costs and profit reports' },
+    { id: 'purchase_entry', label: 'Purchase Bill Stock-In', desc: 'Record wholesaler purchases and stock inward' },
+    { id: 'customer_udhar', label: 'Customer Udhar / Khata', desc: 'Manage customer credit ledger and record settlements' },
+    { id: 'staff_manage', label: 'Staff & Payroll Management', desc: 'Manage staff attendance, salaries, and security roles' },
   ];
 
   const ROLE_PRESETS: Record<string, string[]> = {
@@ -859,10 +859,10 @@ export default function StaffManagement() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <ShieldCheck className="h-5 w-5 text-primary" /> D-Mart Enterprise Access Control & Staff Security
+                  <ShieldCheck className="h-5 w-5 text-primary" /> Enterprise Access Control & Staff Security
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-                  कर्मचाऱ्यांना त्यांच्या जबाबदारीनुसार (Cashier, Manager, Helper) अचूक अधिकार द्या. खरेदी दर (Cost Price), नफा आणि बिल कॅन्सल करण्यासारखे गोपनीय अधिकार सुरक्षित ठेवा.
+                  Assign precise permissions based on staff roles (Cashier, Manager, Helper). Safeguard sensitive data such as Cost Price, Profit margins, and Bill cancellation.
                 </p>
               </div>
               <div className="flex items-center gap-2 text-xs bg-card border px-3 py-1.5 rounded-xl font-bold text-emerald-600 shadow-xs">
@@ -875,8 +875,8 @@ export default function StaffManagement() {
           {staffList.length === 0 ? (
             <div className="text-center py-12 border rounded-2xl bg-card text-muted-foreground">
               <Users className="h-10 w-10 mx-auto opacity-30 mb-2" />
-              <p className="text-sm font-semibold">कोणतेही कर्मचारी जोडलेले नाहीत.</p>
-              <p className="text-xs mt-1">अधिकार देण्यासाठी आधी "+ Add New Staff" वरून कर्मचारी जोडा.</p>
+              <p className="text-sm font-semibold">No staff members registered yet.</p>
+              <p className="text-xs mt-1">Add staff members using "+ Add New Staff" to configure access permissions.</p>
             </div>
           ) : (
             <div className="grid gap-6">

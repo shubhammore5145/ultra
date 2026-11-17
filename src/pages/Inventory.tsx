@@ -349,10 +349,10 @@ export default function Inventory() {
           </div>
           <div>
             <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground">
-              Advanced Inventory & Warehouse Hub (इन्व्हेंटरी व गोडाउन)
+              Advanced Inventory & Warehouse Hub
             </h1>
             <p className="text-xs text-muted-foreground">
-              D-Mart प्रमाणे स्टॉक ट्रॅकिंग, रॅक लोकेशन, खराब/मुदत संपणारा माल, फिजिकल ऑडिट व डेड स्टॉक विश्लेषण.
+              Supermarket-grade stock tracking, rack locations, damaged & expiry write-offs, physical stock reconciliation and dead stock analytics.
             </p>
           </div>
         </div>
@@ -365,7 +365,7 @@ export default function Inventory() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-md animate-pulse"
             >
               {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-              बदल सेव्ह करा ({Object.keys(stockEdits).length + Object.keys(rackEdits).length})
+              Save Changes ({Object.keys(stockEdits).length + Object.keys(rackEdits).length})
             </Button>
           ) : null}
 
@@ -375,7 +375,7 @@ export default function Inventory() {
             onClick={() => setShowDamageModal(true)}
             className="text-xs font-bold h-9 rounded-xl border-rose-300 text-rose-600 dark:border-rose-800 hover:bg-rose-50"
           >
-            <AlertTriangle className="h-4 w-4 mr-1.5" /> खराब माल नोंदवा (Damaged)
+            <AlertTriangle className="h-4 w-4 mr-1.5" /> Report Damaged Stock
           </Button>
         </div>
       </div>
@@ -384,63 +384,63 @@ export default function Inventory() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase">एकूण साठा व्हॅल्यू (Cost)</span>
-            <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">खरेदी मूल्य</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase">Total Stock Value (Cost)</span>
+            <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">At Cost</span>
           </div>
           <p className="text-2xl font-black text-foreground mt-2">
             ₹{metrics.totalCostValuation.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
           </p>
           <p className="text-[10px] text-muted-foreground mt-0.5">
-            {metrics.totalStockPieces.toLocaleString()} एकूण उपलब्ध नग (Pcs/Kg)
+            {metrics.totalStockPieces.toLocaleString()} Total Units In-Stock (Pcs/Kg)
           </p>
         </div>
 
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase">विक्री व्हॅल्यू (Retail)</span>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">विक्री मूल्य</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase">Retail Valuation</span>
+            <span className="text-xs font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">At Retail</span>
           </div>
           <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-2">
             ₹{metrics.totalRetailValuation.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
           </p>
           <p className="text-[10px] text-muted-foreground mt-0.5">
-            अपेक्षित नफा: ₹{metrics.potentialProfit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            Expected Profit: ₹{metrics.potentialProfit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
           </p>
         </div>
 
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase">कमी साठा / संपलेला</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase">Low / Out of Stock</span>
             <AlertTriangle className="h-4 w-4 text-amber-500" />
           </div>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-black text-amber-600">{metrics.lowStockCount}</span>
-            <span className="text-xs font-bold text-rose-600">({metrics.outOfStockCount} संपले)</span>
+            <span className="text-xs font-bold text-rose-600">({metrics.outOfStockCount} zero stock)</span>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5">पुन्हा मागवण्याची गरज</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Requires Reordering</p>
         </div>
 
         <div className="rounded-2xl border border-border/80 bg-card p-3.5 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase">अडकलेले भांडवल (Dead Stock)</span>
+            <span className="text-[11px] font-bold text-muted-foreground uppercase">Dead Stock Capital</span>
             <TrendingDown className="h-4 w-4 text-rose-500" />
           </div>
           <p className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-2">
             ₹{stockMovementAnalysis.totalDeadStockCapital.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">{stockMovementAnalysis.deadStock.length} वस्तूंची विक्री नाही</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{stockMovementAnalysis.deadStock.length} items without sales</p>
         </div>
       </div>
 
       {/* Tabs Navigation */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide border-b border-border/70 text-xs font-bold">
         {[
-          { id: 'stock', label: '📦 रिअल-टाइम साठा (Stock Hub)', count: filteredProducts.length },
-          { id: 'expiry', label: '⏳ मुदत संपणारा माल (Expiry)', count: expiryAnalysis.expired.length + expiryAnalysis.expiringSoon7.length },
-          { id: 'audit', label: '📋 फिजिकल ऑडिट (Reconciliation)', count: products.length },
-          { id: 'damaged', label: '⚠️ खराब व फुटलेला माल (Loss)', count: damagedItems.length },
-          { id: 'deadstock', label: '🛑 डेड व स्लो स्टॉक (Dead Stock)', count: stockMovementAnalysis.deadStock.length },
-          { id: 'movements', label: '🔄 आवक-जावक नोंद (History)', count: stockMovements.length }
+          { id: 'stock', label: '📦 Real-Time Stock Hub', count: filteredProducts.length },
+          { id: 'expiry', label: '⏳ Expiry Management', count: expiryAnalysis.expired.length + expiryAnalysis.expiringSoon7.length },
+          { id: 'audit', label: '📋 Physical Stock Reconciliation', count: products.length },
+          { id: 'damaged', label: '⚠️ Damaged & Write-Off', count: damagedItems.length },
+          { id: 'deadstock', label: '🛑 Dead & Slow Stock', count: stockMovementAnalysis.deadStock.length },
+          { id: 'movements', label: '🔄 Stock Audit Trail', count: stockMovements.length }
         ].map(tab => (
           <button
             key={tab.id}
@@ -469,7 +469,7 @@ export default function Inventory() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="वस्तू, बारकोड किंवा रॅक शोधा (उदा. Rack A-1)..."
+                placeholder="Search product name, barcode or rack (e.g. Rack A-1)..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="pl-9 h-10 text-xs sm:text-sm bg-background rounded-xl"
@@ -480,7 +480,7 @@ export default function Inventory() {
               onChange={e => setCategoryFilter(e.target.value)}
               className="h-10 px-3 rounded-xl border border-input bg-background text-xs font-semibold"
             >
-              <option value="all">सर्व कॅटेगरी (All Categories)</option>
+              <option value="all">All Categories</option>
               {categories.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -492,14 +492,14 @@ export default function Inventory() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-muted/70 text-muted-foreground uppercase text-[10px] font-black border-b">
                   <tr>
-                    <th className="px-3.5 py-3">वस्तूचे नाव (Product)</th>
-                    <th className="px-3 py-3">कॅटेगरी</th>
-                    <th className="px-3 py-3">रॅक/शेल्फ कप्पा 📍</th>
-                    <th className="px-3 py-3 text-right">खरेदी</th>
-                    <th className="px-3 py-3 text-right">विक्री</th>
-                    <th className="px-3 py-3 text-center">शिल्लक साठा</th>
-                    <th className="px-3 py-3 text-center">किमान मर्यादा</th>
-                    <th className="px-3 py-3 text-center">स्थिती (Status)</th>
+                    <th className="px-3.5 py-3">Product Name</th>
+                    <th className="px-3 py-3">Category</th>
+                    <th className="px-3 py-3">Rack / Shelf 📍</th>
+                    <th className="px-3 py-3 text-right">Cost Price</th>
+                    <th className="px-3 py-3 text-right">Selling Price</th>
+                    <th className="px-3 py-3 text-center">In-Stock</th>
+                    <th className="px-3 py-3 text-center">Min Threshold</th>
+                    <th className="px-3 py-3 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -546,15 +546,15 @@ export default function Inventory() {
                         <td className="px-3 py-3 text-center">
                           {isOut ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 dark:bg-rose-950">
-                              माल संपला (0)
+                              Out of Stock (0)
                             </span>
                           ) : isLow ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 dark:bg-amber-950">
-                              कमी साठा ({currentStock})
+                              Low Stock ({currentStock})
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950">
-                              उपलब्ध ({currentStock})
+                              In Stock ({currentStock})
                             </span>
                           )}
                         </td>
@@ -573,30 +573,30 @@ export default function Inventory() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-2xl border border-rose-300 bg-rose-50/70 dark:bg-rose-950/30 p-4">
-              <p className="text-xs font-bold text-rose-800 dark:text-rose-300">🔴 मुदत संपलेला माल (Expired)</p>
-              <p className="text-2xl font-black text-rose-600 mt-1">{expiryAnalysis.expired.length} वस्तू</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">लगेच शेल्फवरून काढा</p>
+              <p className="text-xs font-bold text-rose-800 dark:text-rose-300">🔴 Expired Stock</p>
+              <p className="text-2xl font-black text-rose-600 mt-1">{expiryAnalysis.expired.length} items</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Remove from shelves immediately</p>
             </div>
             <div className="rounded-2xl border border-amber-300 bg-amber-50/70 dark:bg-amber-950/30 p-4">
-              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">🟠 पुढील ७ दिवसात संपणारा</p>
-              <p className="text-2xl font-black text-amber-600 mt-1">{expiryAnalysis.expiringSoon7.length} वस्तू</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">क्लियरन्स डिस्काउंटवर विका</p>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">🟠 Expiring in 7 Days</p>
+              <p className="text-2xl font-black text-amber-600 mt-1">{expiryAnalysis.expiringSoon7.length} items</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Offer clearance discount</p>
             </div>
             <div className="rounded-2xl border border-yellow-300 bg-yellow-50/70 dark:bg-yellow-950/30 p-4">
-              <p className="text-xs font-bold text-yellow-800 dark:text-yellow-300">🟡 पुढील ३० दिवसात संपणारा</p>
-              <p className="text-2xl font-black text-yellow-600 mt-1">{expiryAnalysis.expiringSoon30.length} वस्तू</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">काउंटरवर पुढे ठेवा</p>
+              <p className="text-xs font-bold text-yellow-800 dark:text-yellow-300">🟡 Expiring in 30 Days</p>
+              <p className="text-2xl font-black text-yellow-600 mt-1">{expiryAnalysis.expiringSoon30.length} items</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Move to front display racks</p>
             </div>
           </div>
 
           <div className="rounded-2xl border border-border/80 bg-card overflow-hidden">
             <div className="p-3 bg-muted/40 font-bold text-xs border-b">
-              मुदत संपणाऱ्या सर्व वस्तूंची यादी (Expiry Tracker)
+              Expiring Products List (Expiry Tracker)
             </div>
             <div className="divide-y divide-border/60">
               {[...expiryAnalysis.expired, ...expiryAnalysis.expiringSoon7, ...expiryAnalysis.expiringSoon30].length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-xs">
-                  🎉 कोणतीही वस्तू मुदत संपण्याच्या मार्गावर नाही! सर्व माल सुरक्षित आहे.
+                  🎉 No items near expiration! All products are fresh and safe.
                 </div>
               ) : (
                 [...expiryAnalysis.expired, ...expiryAnalysis.expiringSoon7, ...expiryAnalysis.expiringSoon30].map(p => {
@@ -608,14 +608,14 @@ export default function Inventory() {
                       <div>
                         <p className="font-bold text-sm text-foreground">{p.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          शिल्लक साठा: <span className="font-bold text-foreground">{p.stock} {p.unit}</span> | रॅक: {p.rackLocation || '—'}
+                          In-Stock: <span className="font-bold text-foreground">{p.stock} {p.unit}</span> | Rack: {p.rackLocation || '—'}
                         </p>
                       </div>
                       <div className="text-right">
                         <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
                           isExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-950' : 'bg-amber-100 text-amber-800 dark:bg-amber-950'
                         }`}>
-                          {isExpired ? 'मुदत संपली' : `Expiry: ${p.expiryDate}`}
+                          {isExpired ? 'Expired' : `Expiry: ${p.expiryDate}`}
                         </span>
                       </div>
                     </div>
@@ -633,10 +633,10 @@ export default function Inventory() {
           <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
               <p className="font-bold text-sm text-blue-950 dark:text-blue-100">
-                फिजिकल स्टॉक ऑडिट (Stock Reconciliation)
+                Physical Stock Reconciliation (Audit)
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                दुकान किंवा गोदामातील प्रत्यक्ष मोजलेली संख्या टाका. फरक (Variance) तपासून १-क्लिकवर साठा ॲडजस्ट करा.
+                Enter physical inventory counts. Inspect variance and adjust store stock levels in 1-click.
               </p>
             </div>
             {Object.keys(auditCounts).length > 0 && (
@@ -646,7 +646,7 @@ export default function Inventory() {
                 className="bg-primary text-primary-foreground font-bold text-xs h-9 rounded-xl shadow-md"
               >
                 {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}
-                सर्व ताळमेळ सेव्ह करा ({Object.keys(auditCounts).length} वस्तू)
+                Save Reconciliation ({Object.keys(auditCounts).length} items)
               </Button>
             )}
           </div>
@@ -656,11 +656,11 @@ export default function Inventory() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-muted/70 uppercase text-[10px] font-black border-b">
                   <tr>
-                    <th className="px-3.5 py-3">वस्तूचे नाव</th>
-                    <th className="px-3 py-3 text-center">सिस्टम साठा (System)</th>
-                    <th className="px-3 py-3 text-center">प्रत्यक्ष मोजलेला साठा (Counted)</th>
-                    <th className="px-3 py-3 text-center">फरक (Variance)</th>
-                    <th className="px-3 py-3 text-right">तफावत मूल्य (Loss/Gain)</th>
+                    <th className="px-3.5 py-3">Product Name</th>
+                    <th className="px-3 py-3 text-center">System Stock</th>
+                    <th className="px-3 py-3 text-center">Physical Counted</th>
+                    <th className="px-3 py-3 text-center">Variance</th>
+                    <th className="px-3 py-3 text-right">Variance Value (Loss/Gain)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -673,7 +673,7 @@ export default function Inventory() {
                       <tr key={p.id} className="hover:bg-muted/20">
                         <td className="px-3.5 py-3 font-bold text-foreground">
                           {p.name}
-                          <span className="block text-[10px] text-muted-foreground font-normal">रॅक: {p.rackLocation || '—'}</span>
+                          <span className="block text-[10px] text-muted-foreground font-normal">Rack: {p.rackLocation || '—'}</span>
                         </td>
                         <td className="px-3 py-3 text-center font-mono font-bold text-foreground">{p.stock}</td>
                         <td className="px-3 py-3 text-center">
@@ -691,14 +691,14 @@ export default function Inventory() {
                         </td>
                         <td className="px-3 py-3 text-center">
                           {diff === 0 ? (
-                            <span className="text-muted-foreground font-bold">0 (जुळले)</span>
+                            <span className="text-muted-foreground font-bold">0 (Matched)</span>
                           ) : diff < 0 ? (
                             <span className="font-black text-rose-600 bg-rose-100 dark:bg-rose-950 px-2 py-0.5 rounded-md">
-                              {diff} (तुटवडा/चोरी)
+                              {diff} (Shortage)
                             </span>
                           ) : (
                             <span className="font-black text-emerald-600 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">
-                              +{diff} (जास्त)
+                              +{diff} (Overage)
                             </span>
                           )}
                         </td>
@@ -724,20 +724,20 @@ export default function Inventory() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-sm text-foreground">
-              खराब, फुटलेला व नुकसान झालेला माल (Damaged Write-Off Register)
+              Damaged Goods & Loss Write-Off Register
             </h3>
             <Button
               onClick={() => setShowDamageModal(true)}
               className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs h-9 rounded-xl"
             >
-              <Plus className="h-4 w-4 mr-1.5" /> नवीन नुकसान नोंदवा
+              <Plus className="h-4 w-4 mr-1.5" /> Report Damaged Stock
             </Button>
           </div>
 
           <div className="rounded-2xl border border-border/80 bg-card overflow-hidden">
             {damagedItems.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground text-xs">
-                कोणतेही नुकसान नोंदवलेले नाही.
+                No damaged stock recorded yet.
               </div>
             ) : (
               <div className="divide-y divide-border/60">
@@ -746,12 +746,12 @@ export default function Inventory() {
                     <div>
                       <p className="font-bold text-sm text-foreground">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        नुकसान प्रमाण: <span className="font-bold text-rose-600">{item.qty} नग</span> | कारण: <span className="capitalize font-semibold">{item.reason}</span>
+                        Damaged Qty: <span className="font-bold text-rose-600">{item.qty} units</span> | Reason: <span className="capitalize font-semibold">{item.reason}</span>
                       </p>
                       {item.notes && <p className="text-[11px] text-muted-foreground italic mt-0.5">{item.notes}</p>}
                     </div>
                     <div className="text-right">
-                      <p className="font-black text-rose-600 text-sm">नुकसान: ₹{item.totalLoss.toFixed(2)}</p>
+                      <p className="font-black text-rose-600 text-sm">Total Loss: ₹{item.totalLoss.toFixed(2)}</p>
                       <p className="text-[10px] text-muted-foreground">{new Date(item.createdAt).toLocaleDateString('en-IN')}</p>
                     </div>
                   </div>
@@ -768,21 +768,21 @@ export default function Inventory() {
           <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800">
             <p className="font-bold text-sm text-amber-950 dark:text-amber-100 flex items-center gap-1.5">
               <TrendingDown className="h-4 w-4 text-amber-600" />
-              डेड स्टॉक भांडवल अलर्ट (Dead Stock Capital Blocked)
+              Dead Stock Capital Alert
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              या वस्तूंची गेल्या ३० दिवसात विक्री झालेली नाही. यामध्ये एकूण ₹{stockMovementAnalysis.totalDeadStockCapital.toLocaleString()} भांडवल अडकले आहे. या वस्तूंवर खास ऑफर देऊन साठा रिकामा करा!
+              These products have had zero sales in the past 30 days, locking up ₹{stockMovementAnalysis.totalDeadStockCapital.toLocaleString()} in working capital. Run promotional offers to liquidate and free up cash!
             </p>
           </div>
 
           <div className="rounded-2xl border border-border/80 bg-card overflow-hidden">
             <div className="p-3 bg-muted/40 font-bold text-xs border-b">
-              पडून राहिलेला माल (Dead Stock List)
+              Slow-Moving / Dead Inventory List
             </div>
             <div className="divide-y divide-border/60">
               {stockMovementAnalysis.deadStock.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-xs">
-                  🎉 अभिनंदन! दुकानात कोणताही माल पडून राहिलेला नाही. सर्व वस्तू विकल्या जात आहेत!
+                  🎉 Excellent! No dead inventory in store. All products are actively moving!
                 </div>
               ) : (
                 stockMovementAnalysis.deadStock.map(({ product, blockedCapital }) => (
@@ -790,13 +790,13 @@ export default function Inventory() {
                     <div>
                       <p className="font-bold text-sm text-foreground">{product.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        पडून साठा: <span className="font-bold text-foreground">{product.stock} {product.unit}</span> | रॅक: {product.rackLocation || '—'}
+                        Holding Stock: <span className="font-bold text-foreground">{product.stock} {product.unit}</span> | Rack: {product.rackLocation || '—'}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-black text-rose-600 text-sm">अडकलेले मूल्य: ₹{blockedCapital.toFixed(0)}</p>
+                      <p className="font-black text-rose-600 text-sm">Blocked Capital: ₹{blockedCapital.toFixed(0)}</p>
                       <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                        0 विक्री
+                        0 Sales
                       </span>
                     </div>
                   </div>
@@ -811,12 +811,12 @@ export default function Inventory() {
       {activeTab === 'movements' && (
         <div className="rounded-2xl border border-border/80 bg-card overflow-hidden">
           <div className="p-3 bg-muted/40 font-bold text-xs border-b flex items-center gap-1.5">
-            <History className="h-4 w-4 text-primary" /> साठा आवक-जावक नोंद (Stock Movement Audit Trail)
+            <History className="h-4 w-4 text-primary" /> Stock Inward / Outward Audit Trail
           </div>
           <div className="divide-y divide-border/60">
             {stockMovements.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground text-xs">
-                कोणतीही साठा हालचाल नोंदवलेली नाही.
+                No stock movement history recorded yet.
               </div>
             ) : (
               stockMovements.map(m => (
@@ -824,7 +824,7 @@ export default function Inventory() {
                   <div>
                     <p className="font-bold text-sm text-foreground">{m.productName}</p>
                     <p className="text-muted-foreground">
-                      बदल: <span className="font-bold">{m.previousStock}</span> ➔ <span className="font-bold text-foreground">{m.newStock}</span> ({m.reason || m.type})
+                      Stock Change: <span className="font-bold">{m.previousStock}</span> ➔ <span className="font-bold text-foreground">{m.newStock}</span> ({m.reason || m.type})
                     </p>
                   </div>
                   <div className="text-right">
@@ -848,7 +848,7 @@ export default function Inventory() {
           <div className="w-full max-w-md bg-card border rounded-3xl shadow-2xl p-6 space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-black text-base text-foreground flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-rose-600" /> खराब/फुटलेला माल नोंदवा
+                <AlertTriangle className="h-5 w-5 text-rose-600" /> Report Damaged / Broken Goods
               </h3>
               <Button variant="ghost" size="icon" onClick={() => setShowDamageModal(false)} className="h-8 w-8 rounded-full">
                 <X className="h-4 w-4" />
@@ -857,7 +857,7 @@ export default function Inventory() {
 
             <form onSubmit={handleRecordDamaged} className="space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-foreground block mb-1">वस्तू निवडा (Select Product):</label>
+                <label className="text-xs font-bold text-foreground block mb-1">Select Product:</label>
                 <select
                   required
                   value={selectedDamageProduct?.id || ''}
@@ -867,10 +867,10 @@ export default function Inventory() {
                   }}
                   className="w-full h-10 px-3 rounded-xl border bg-background text-xs font-medium"
                 >
-                  <option value="">-- वस्तू निवडा --</option>
+                  <option value="">-- Select Product --</option>
                   {products.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (शिल्लक: {p.stock})
+                      {p.name} (In-Stock: {p.stock})
                     </option>
                   ))}
                 </select>
@@ -878,7 +878,7 @@ export default function Inventory() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-foreground block mb-1">खराब नगसंख्या (Qty):</label>
+                  <label className="text-xs font-bold text-foreground block mb-1">Damaged Quantity:</label>
                   <Input
                     type="number"
                     min="1"
@@ -889,26 +889,26 @@ export default function Inventory() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-foreground block mb-1">नुकसानाचे कारण (Reason):</label>
+                  <label className="text-xs font-bold text-foreground block mb-1">Reason for Damage:</label>
                   <select
                     value={damageReason}
                     onChange={e => setDamageReason(e.target.value as any)}
                     className="w-full h-10 px-2 rounded-xl border bg-background text-xs font-medium"
                   >
-                    <option value="broken">फुटलेला (Broken)</option>
-                    <option value="leaked">गळती (Leaked)</option>
-                    <option value="expired">मुदत संपली (Expired)</option>
-                    <option value="rodent_pest">उंदीर/कीड (Pest)</option>
-                    <option value="packaging_torn">पॅकिंग फाटली (Torn)</option>
-                    <option value="other">इतर (Other)</option>
+                    <option value="broken">Broken</option>
+                    <option value="leaked">Leaked / Spilled</option>
+                    <option value="expired">Expired / Spoiled</option>
+                    <option value="rodent_pest">Rodent / Pest Damage</option>
+                    <option value="packaging_torn">Packaging Torn</option>
+                    <option value="other">Other</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-foreground block mb-1">टीप (Optional Notes):</label>
+                <label className="text-xs font-bold text-foreground block mb-1">Optional Notes:</label>
                 <Input
-                  placeholder="उदा. वाहतुकीदरम्यान बॉटल फुटली"
+                  placeholder="e.g. Bottle broke during transit or shelf fall"
                   value={damageNotes}
                   onChange={e => setDamageNotes(e.target.value)}
                   className="h-10 text-xs bg-background rounded-xl"
@@ -917,10 +917,10 @@ export default function Inventory() {
 
               <div className="pt-2 flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setShowDamageModal(false)} className="rounded-xl text-xs">
-                  रद्द करा
+                  Cancel
                 </Button>
                 <Button type="submit" className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl">
-                  नुकसान नोंदवा (Deduct Stock)
+                  Confirm &amp; Deduct Stock
                 </Button>
               </div>
             </form>

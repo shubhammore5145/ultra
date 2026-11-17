@@ -1640,7 +1640,7 @@ export default function Settings() {
               {/* Quick Role Presets */}
               <div>
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2.5 block">
-                  ⚡ Quick Role Presets (एक-क्लिक प्रीसेट्स)
+                  ⚡ Quick Role Presets (1-Click Roles)
                 </Label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {STAFF_ROLE_PRESETS.map((preset) => (
@@ -1670,7 +1670,7 @@ export default function Settings() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Granular Module Access (वैयक्तिक परवानग्या)
+                    Granular Module Access (Permissions)
                   </Label>
                   <div className="flex gap-2">
                     <button

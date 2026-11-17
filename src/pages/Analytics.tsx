@@ -285,16 +285,16 @@ export default function Analytics() {
     return list.sort((a, b) => b.revenue - a.revenue);
   }, [filteredSales, products, financials.revenue]);
 
-  // 7. Day-of-Week Trends (सोमवार ते रविवार)
+  // 7. Day-of-Week Trends (Sunday to Saturday)
   const dayOfWeekData = useMemo(() => {
     const days = [
-      { dayIndex: 0, name: 'Sunday', short: 'Sun', marathi: 'रविवार', revenue: 0, orders: 0 },
-      { dayIndex: 1, name: 'Monday', short: 'Mon', marathi: 'सोमवार', revenue: 0, orders: 0 },
-      { dayIndex: 2, name: 'Tuesday', short: 'Tue', marathi: 'मंगळवार', revenue: 0, orders: 0 },
-      { dayIndex: 3, name: 'Wednesday', short: 'Wed', marathi: 'बुधवार', revenue: 0, orders: 0 },
-      { dayIndex: 4, name: 'Thursday', short: 'Thu', marathi: 'गुरुवार', revenue: 0, orders: 0 },
-      { dayIndex: 5, name: 'Friday', short: 'Fri', marathi: 'शुक्रवार', revenue: 0, orders: 0 },
-      { dayIndex: 6, name: 'Saturday', short: 'Sat', marathi: 'शनिवार', revenue: 0, orders: 0 },
+      { dayIndex: 0, name: 'Sunday', short: 'Sun', marathi: 'Sunday', revenue: 0, orders: 0 },
+      { dayIndex: 1, name: 'Monday', short: 'Mon', marathi: 'Monday', revenue: 0, orders: 0 },
+      { dayIndex: 2, name: 'Tuesday', short: 'Tue', marathi: 'Tuesday', revenue: 0, orders: 0 },
+      { dayIndex: 3, name: 'Wednesday', short: 'Wed', marathi: 'Wednesday', revenue: 0, orders: 0 },
+      { dayIndex: 4, name: 'Thursday', short: 'Thu', marathi: 'Thursday', revenue: 0, orders: 0 },
+      { dayIndex: 5, name: 'Friday', short: 'Fri', marathi: 'Friday', revenue: 0, orders: 0 },
+      { dayIndex: 6, name: 'Saturday', short: 'Sat', marathi: 'Saturday', revenue: 0, orders: 0 },
     ];
 
     filteredSales.forEach(s => {
@@ -743,14 +743,14 @@ export default function Analytics() {
       {/* Tabs Navigation */}
       <div className="flex items-center gap-1.5 border-b border-border overflow-x-auto pb-2 scrollbar-none">
         {[
-          { id: 'overview', label: '📊 Financial Overview', marathi: 'गल्ला व नफा' },
-          { id: 'categories', label: '📦 Category Intelligence', marathi: 'कॅटेगरी नफा' },
-          { id: 'inventory', label: '⭐ ABC Stock & Stars', marathi: 'वस्तूंचे वर्गीकरण' },
-          { id: 'forecasting', label: '🔮 Demand Forecasting (D-Mart AI)', marathi: 'मागणी अंदाज' },
-          { id: 'timing', label: '📅 Peak Hours & Days', marathi: 'गर्दीच्या वेळा व वारी' },
-          { id: 'customers', label: '👥 VIP Customers & Retention', marathi: 'ग्राहक निष्ठा' },
-          { id: 'udhar', label: '💳 Khata & Recovery', marathi: 'उधारी वसुली' },
-          { id: 'basket', label: '🛒 Basket AI Combos', marathi: 'एकत्र विकणाऱ्या वस्तू' },
+          { id: 'overview', label: '📊 Financial Overview', marathi: 'Cash & Profit' },
+          { id: 'categories', label: '📦 Category Intelligence', marathi: 'Category Margin' },
+          { id: 'inventory', label: '⭐ ABC Stock & Stars', marathi: 'ABC Classification' },
+          { id: 'forecasting', label: '🔮 Demand Forecasting (D-Mart AI)', marathi: 'Demand Prediction' },
+          { id: 'timing', label: '📅 Peak Hours & Days', marathi: 'Peak Hours' },
+          { id: 'customers', label: '👥 VIP Customers & Retention', marathi: 'Customer Loyalty' },
+          { id: 'udhar', label: '💳 Khata & Recovery', marathi: 'Udhar Recovery' },
+          { id: 'basket', label: '🛒 Basket AI Combos', marathi: 'Cross-Sell Combos' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -1233,7 +1233,7 @@ export default function Analytics() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b pb-3">
               <div>
                 <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-indigo-500" /> Day-of-Week Sales Trends (वारीय खप)
+                  <Calendar className="h-5 w-5 text-indigo-500" /> Day-of-Week Sales Trends
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   Which days bring maximum customer rush and turnover.
@@ -1241,7 +1241,7 @@ export default function Analytics() {
               </div>
               {dayOfWeekData.peakDay.orders > 0 && (
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border border-indigo-300">
-                  👑 Busiest Day: {dayOfWeekData.peakDay.name} ({dayOfWeekData.peakDay.marathi}) – ₹{dayOfWeekData.peakDay.revenue.toLocaleString('en-IN')}
+                  👑 Busiest Day: {dayOfWeekData.peakDay.name} – ₹{dayOfWeekData.peakDay.revenue.toLocaleString('en-IN')}
                 </span>
               )}
             </div>
@@ -1409,7 +1409,7 @@ export default function Analytics() {
                           {cust.phone ? (
                             <a
                               href={`https://wa.me/91${cust.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                                `नमस्ते ${cust.name}! 🙏\n${shopData?.name || 'आमच्या दुकानामध्ये'} आपले नेहमीचे स्वागत आहे. आपण आमचे VIP ग्राहक असल्याबद्दल धन्यवाद!`
+                                `Dear ${cust.name}! 🙏\nThank you for being our valued customer at ${shopData?.name || 'our store'}. We look forward to serving you again soon!`
                               )}`}
                               target="_blank"
                               rel="noreferrer"
@@ -1433,7 +1433,7 @@ export default function Analytics() {
           {customerAnalytics.inactiveCustomers.length > 0 && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-50/20 dark:bg-amber-950/10 p-5 shadow-xs space-y-3">
               <h3 className="text-sm font-bold text-amber-800 dark:text-amber-200 flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-amber-500" /> Bring Back Inactive Customers (पुन्हा बोलवा)
+                <ShieldAlert className="h-4 w-4 text-amber-500" /> Re-engage Inactive Customers
               </h3>
               <p className="text-xs text-muted-foreground">
                 These regulars haven't shopped at your store in over 30 days. Send them a warm discount message to invite them back!
@@ -1449,7 +1449,7 @@ export default function Analytics() {
                     {c.phone && (
                       <a
                         href={`https://wa.me/91${c.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                          `नमस्ते ${c.name}जी! 🙏\n${shopData?.name || 'नयशी किराणा'} मध्ये बऱ्याच दिवसांपासून आपली भेट झाली नाही. आपल्यासाठी खास ५% सूट कूपन उपलब्ध आहे. नक्की भेट द्या!`
+                          `Dear ${c.name}! 🙏\nWe haven't seen you at ${shopData?.name || 'our store'} recently. Enjoy an exclusive 5% discount on your next visit!`
                         )}`}
                         target="_blank"
                         rel="noreferrer"
@@ -1475,7 +1475,7 @@ export default function Analytics() {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
             <div className="rounded-2xl border bg-card p-4 shadow-xs">
               <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-                <CreditCard className="h-4 w-4 text-rose-500" /> Udhar Given (या काळात)
+                <CreditCard className="h-4 w-4 text-rose-500" /> Udhar Given (Selected Period)
               </span>
               <p className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
                 ₹{udharAnalytics.udharGiven.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
@@ -1550,7 +1550,7 @@ export default function Analytics() {
                     {cust.phone && (
                       <a
                         href={`https://wa.me/91${cust.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                          `नमस्ते ${cust.name}! 🙏\n${shopData?.name || 'आमच्या दुकानातील'} आपली उधारी बाकी ₹${cust.balance} आहे. कृपया लवकरात लवकर जमा करावी ही नम्र विनंती. धन्यवाद!`
+                          `Dear ${cust.name}! 🙏\nThis is a gentle reminder that your pending balance at ${shopData?.name || 'our store'} is ₹${cust.balance}. Please clear it at your earliest convenience. Thank you!`
                         )}`}
                         target="_blank"
                         rel="noreferrer"
@@ -1638,7 +1638,7 @@ export default function Analytics() {
                   D-Mart Demand Forecasting & Seasonal Surge Engine
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-                  मागील 30 दिवसांतील विक्री गती (Sales Velocity), चालू स्टॉक आणि येणाऱ्या सणांनुसार (Diwali, Month-start) आवश्यक मालाचा अचूक अंदाज बांधून तुटवडा टाळा.
+                  Prevent stockouts and shortages by accurately forecasting replenishment requirements based on past 30-day sales velocity, current inventory, and seasonal festival demand surges.
                 </p>
               </div>
 

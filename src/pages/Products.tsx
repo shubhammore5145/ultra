@@ -82,7 +82,7 @@ export default function Products() {
         return p;
       }));
 
-      setPriceSuccessMsg(`₹ किंमत यशस्वीरित्या सेव्ह झाली! (खरेदी: ₹${pp.toFixed(2)}, विक्री: ₹${sp.toFixed(2)})`);
+      setPriceSuccessMsg(`Prices updated successfully! (Cost: ₹${pp.toFixed(2)}, Selling: ₹${sp.toFixed(2)})`);
       setTimeout(() => {
         setPriceSuccessMsg(null);
         setPriceModalProduct(null);
@@ -485,11 +485,11 @@ export default function Products() {
             <div className="flex items-center gap-2">
               <Tag className="h-4 w-4 text-blue-600 shrink-0" />
               <span>
-                <strong>⚡ Bulk Edit Mode चालू आहे:</strong> तुम्ही खालील तक्त्यामध्ये प्रत्येक वस्तूचा <strong>खरेदी भाव (Purchase)</strong>, <strong>विक्री भाव (Selling)</strong> आणि <strong>स्टॉक</strong> थेट बदलू शकता.
+                <strong>⚡ Bulk Edit Active:</strong> You can edit <strong>Cost Price (CP)</strong>, <strong>Selling Price (SP)</strong>, and <strong>Stock</strong> directly in the table rows below.
               </span>
             </div>
             <span className="font-bold bg-blue-200/70 dark:bg-blue-900 px-2.5 py-0.5 rounded text-[11px]">
-              {Object.keys(editedProducts).length} प्रॉडक्ट्स बदलले
+              {Object.keys(editedProducts).length} Products Modified
             </span>
           </div>
         )}
@@ -501,9 +501,9 @@ export default function Products() {
               <tr>
                 <th className="px-5 py-3.5 font-semibold">Product Details</th>
                 <th className="px-4 py-3.5 font-semibold">Category</th>
-                <th className="px-4 py-3.5 font-semibold">खरेदी भाव (Purchase)</th>
-                <th className="px-4 py-3.5 font-semibold">विक्री भाव (Selling)</th>
-                <th className="px-4 py-3.5 font-semibold">मार्जिन / नफा</th>
+                <th className="px-4 py-3.5 font-semibold">Cost Price (CP)</th>
+                <th className="px-4 py-3.5 font-semibold">Selling Price (SP)</th>
+                <th className="px-4 py-3.5 font-semibold">Margin / Profit</th>
                 <th className="px-4 py-3.5 font-semibold">Stock</th>
                 <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
               </tr>
@@ -577,7 +577,7 @@ export default function Products() {
                       </span>
                     </td>
 
-                    {/* Purchase Price (खरेदी भाव) */}
+                    {/* Purchase Price (Cost) */}
                     <td className="px-4 py-3.5">
                       {bulkEditMode ? (
                         <div className="w-24">
@@ -598,7 +598,7 @@ export default function Products() {
                           type="button"
                           onClick={() => openPriceModal(product)}
                           className="group flex items-center gap-1.5 text-left hover:bg-muted/70 px-2 py-1 -mx-2 rounded-lg transition-colors cursor-pointer"
-                          title="खरेदी व विक्री किंमत बदलण्यासाठी क्लिक करा (Click to edit price)"
+                          title="Click to edit cost & selling prices"
                         >
                           <span className="font-bold text-muted-foreground text-xs sm:text-sm group-hover:text-primary">
                             ₹{Number(product.purchasePrice || 0).toFixed(2)}
@@ -608,7 +608,7 @@ export default function Products() {
                       )}
                     </td>
 
-                    {/* Selling Price (विक्री भाव) */}
+                    {/* Selling Price */}
                     <td className="px-4 py-3.5">
                       {bulkEditMode ? (
                         <div className="w-24">
@@ -629,7 +629,7 @@ export default function Products() {
                           type="button"
                           onClick={() => openPriceModal(product)}
                           className="group text-left hover:bg-muted/70 px-2 py-1 -mx-2 rounded-lg transition-colors cursor-pointer block"
-                          title="खरेदी व विक्री किंमत बदलण्यासाठी क्लिक करा (Click to edit price)"
+                          title="Click to edit cost & selling prices"
                         >
                           <div className="flex items-center gap-1.5">
                             <span className="font-black text-foreground text-sm group-hover:text-primary">
@@ -646,7 +646,7 @@ export default function Products() {
                       )}
                     </td>
 
-                    {/* Margin / Profit (नफा) */}
+                    {/* Margin / Profit */}
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       {(() => {
                         const sp = Number(product.sellingPrice || 0);
@@ -660,9 +660,9 @@ export default function Products() {
                               type="button" 
                               onClick={() => openPriceModal(product)} 
                               className="text-[11px] text-amber-600 dark:text-amber-400 font-bold hover:underline"
-                              title="खरेदी किंमत सेट करा"
+                              title="Set purchase cost price"
                             >
-                              + खरेदी सेट करा
+                              + Set Cost Price
                             </button>
                           );
                         }
@@ -677,13 +677,13 @@ export default function Products() {
                         if (profit < 0) {
                           return (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300">
-                              -₹{Math.abs(profit).toFixed(2)} (तोटा)
+                              -₹{Math.abs(profit).toFixed(2)} (Loss)
                             </span>
                           );
                         }
                         return (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-muted text-muted-foreground">
-                            ₹0 (नो नफा)
+                            ₹0.00 (Zero Margin)
                           </span>
                         );
                       })()}
@@ -719,17 +719,17 @@ export default function Products() {
                           size="sm" 
                           className="h-8 px-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
                           onClick={() => openPriceModal(product)}
-                          title="खरेदी व विक्री किंमत बदला (Quick Price Change)"
+                          title="Quick Price Change"
                         >
                           <IndianRupee className="h-3.5 w-3.5 mr-1" />
-                          किंमत बदला
+                          Edit Price
                         </Button>
                         <Button 
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8 text-muted-foreground hover:text-primary"
                           onClick={() => navigate(`/products/${product.id}`)}
-                          title="संपूर्ण तपशील एडिट करा"
+                          title="Edit full product details"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -738,6 +738,16 @@ export default function Products() {
                           size="icon" 
                           className="h-8 w-8 text-muted-foreground hover:text-destructive"
                           onClick={() => handleDelete(product.id)}
+                          title="Delete product"
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
                           title="Delete product"
                         >
                           <Trash className="h-4 w-4" />
@@ -801,7 +811,7 @@ export default function Products() {
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-foreground leading-tight">
-                    खरेदी व विक्री किंमत बदला
+                    Update Purchase & Selling Price
                   </h3>
                   <p className="text-xs text-muted-foreground truncate max-w-[260px]">
                     {priceModalProduct.name}
@@ -829,7 +839,7 @@ export default function Products() {
 
               {/* Product Info Pill */}
               <div className="p-2.5 bg-muted/50 rounded-xl flex items-center justify-between text-xs text-muted-foreground">
-                <span className="font-medium">वर्तमान स्टॉक:</span>
+                <span className="font-medium">Current In-Stock:</span>
                 <span className="font-bold text-foreground">
                   {priceModalProduct.stock || 0} {priceModalProduct.unit || 'units'}
                 </span>
@@ -839,9 +849,9 @@ export default function Products() {
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-bold text-foreground">
-                    खरेदी किंमत (Purchase Price / CP):
+                    Cost Price (Purchase Price / CP):
                   </Label>
-                  <span className="text-[11px] text-muted-foreground">सप्लायरकडून मिळालेला दर</span>
+                  <span className="text-[11px] text-muted-foreground">Supplier acquisition rate</span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-bold">₹</span>
@@ -861,9 +871,9 @@ export default function Products() {
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-bold text-foreground">
-                    विक्री किंमत (Selling Price / Retail Rate):
+                    Selling Price (Retail Billing Rate / SP):
                   </Label>
-                  <span className="text-[11px] text-emerald-600 font-bold">ग्राहकास देण्याचा दर</span>
+                  <span className="text-[11px] text-emerald-600 font-bold">Customer billing price</span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-emerald-600 font-bold">₹</span>
@@ -882,9 +892,9 @@ export default function Products() {
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-medium text-muted-foreground">
-                    MRP (छापील किंमत - ऐच्छिक):
+                    MRP (Maximum Retail Price - Optional):
                   </Label>
-                  <span className="text-[11px] text-muted-foreground">पॅकेटवरील कमाल दर</span>
+                  <span className="text-[11px] text-muted-foreground">Package printed rate</span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">₹</span>
@@ -918,18 +928,18 @@ export default function Products() {
                         : 'bg-muted/50 border-muted'
                     }`}>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-muted-foreground">प्रति नग अंदाजे नफा (Profit):</span>
+                        <span className="font-bold text-muted-foreground">Estimated Profit per Unit:</span>
                         <span className={`text-sm font-black ${profit > 0 ? 'text-emerald-600 dark:text-emerald-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
-                          {profit > 0 ? `+₹${profit.toFixed(2)}` : profit < 0 ? `-₹${Math.abs(profit).toFixed(2)} (तोटा)` : '₹0.00'}
+                          {profit > 0 ? `+₹${profit.toFixed(2)}` : profit < 0 ? `-₹${Math.abs(profit).toFixed(2)} (Loss)` : '₹0.00'}
                         </span>
                       </div>
                       <div className="flex justify-between items-center text-[11px] text-muted-foreground">
-                        <span>प्रॉफिट मार्जिन (Margin %):</span>
+                        <span>Profit Margin:</span>
                         <span className="font-bold text-foreground">{marginPercent.toFixed(1)}%</span>
                       </div>
                       {discount > 0 && (
                         <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1 border-t border-dashed">
-                          <span>ग्राहकाची सूट (Discount on MRP):</span>
+                          <span>Customer Discount on MRP:</span>
                           <span className="font-bold text-blue-600 dark:text-blue-400">₹{discount.toFixed(2)} OFF</span>
                         </div>
                       )}
@@ -948,7 +958,7 @@ export default function Products() {
                 className="w-1/3 h-10 font-bold text-xs"
                 onClick={() => { setPriceModalProduct(null); setPriceSuccessMsg(null); }}
               >
-                रद्द करा (Cancel)
+                Cancel
               </Button>
               <Button
                 type="button"
@@ -961,7 +971,8 @@ export default function Products() {
                 ) : (
                   <CheckCircle2 className="h-4 w-4 mr-1.5" />
                 )}
-                किंमत सेव्ह करा (Save Price)
+                Save Price Changes
+              </Button>
               </Button>
             </div>
           </div>

@@ -471,7 +471,7 @@ export default function POS() {
 
     // If packaged product and stock is 0 or less, block adding
     if (!isLoose && availableStock <= 0) {
-      triggerStockAlert(`⚠️ "${product.name}" चा स्टॉक संपला आहे! (उपलब्ध: 0)`);
+      triggerStockAlert(`⚠️ "${product.name}" is out of stock! (Available: 0)`);
       return;
     }
 
@@ -479,7 +479,7 @@ export default function POS() {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
         if (!isLoose && existing.qty >= availableStock) {
-          triggerStockAlert(`⚠️ "${product.name}" चा शिल्लक स्टॉक फक्त ${availableStock} आहे! यापेक्षा जास्त बिलिंग करता येत नाही.`);
+          triggerStockAlert(`⚠️ "${product.name}" has only ${availableStock} in stock! Cannot exceed available stock.`);
           return prev;
         }
         const newQty = existing.qty + 1;
@@ -548,7 +548,7 @@ export default function POS() {
       const currentQty = existingInCart ? existingInCart.qty : 0;
 
       if (!isLoose && (availableStock <= 0 || currentQty >= availableStock)) {
-        triggerStockAlert(`⚠️ "${product.name}" चा शिल्लक स्टॉक फक्त ${availableStock} आहे! यापेक्षा जास्त ॲड करता येणार नाही.`);
+        triggerStockAlert(`⚠️ "${product.name}" has only ${availableStock} in stock! Cannot add more.`);
         setShowPhysicalScannerReady(false);
         return false;
       }
@@ -698,7 +698,7 @@ export default function POS() {
         const newQty = item.qty + delta;
 
         if (delta > 0 && !isLoose && newQty > maxStock) {
-          triggerStockAlert(`⚠️ "${item.name}" चा शिल्लक स्टॉक फक्त ${maxStock} आहे! यापेक्षा जास्त ॲड करता येणार नाही.`);
+          triggerStockAlert(`⚠️ "${item.name}" has only ${maxStock} in stock! Cannot add more.`);
           return item;
         }
 
@@ -760,7 +760,7 @@ export default function POS() {
     if (!selectedReturnTx || !selectedReturnItem) return;
     const qtyToReturn = parseFloat(returnQty) || 0;
     if (qtyToReturn <= 0 || qtyToReturn > selectedReturnItem.maxQty) {
-      alert(`कृपया 1 ते ${selectedReturnItem.maxQty} दरम्यान वैध नग टाका.`);
+      alert(`Please enter a valid quantity between 1 and ${selectedReturnItem.maxQty}.`);
       return;
     }
 
@@ -814,7 +814,7 @@ export default function POS() {
       const updatedProds = await api.products.list();
       setProducts(updatedProds);
 
-      alert(`✅ माल परत (Sales Return) यशस्वीरित्या नोंदवला गेला! परतावा रक्कम: ₹${refundTotal.toFixed(2)} (${returnRefundMethod === 'cash' ? 'रोख कॅश' : 'उधारी खात्यात जमा'})`);
+      alert(`✅ Sales Return processed successfully! Refund amount: ₹${refundTotal.toFixed(2)} (${returnRefundMethod === 'cash' ? 'Cash Refund' : 'Credited to Customer Udhar'})`);
       setShowReturnModal(false);
       setSelectedReturnTx(null);
       setSelectedReturnItem(null);
@@ -1233,15 +1233,15 @@ export default function POS() {
                   <div className="mt-3.5 p-3.5 bg-white text-zinc-950 rounded-2xl shadow-lg border-2 border-emerald-400 flex items-center justify-between animate-in zoom-in-95">
                     <div className="text-left">
                       <span className="text-[11px] font-extrabold text-zinc-500 uppercase tracking-wider block">
-                        ग्राहकाला परत द्या (Change Due)
+                        Change Due to Customer
                       </span>
                       <span className="text-2xl font-black text-emerald-600">
                         ₹{Number(checkoutResult.changeReturn).toFixed(2)}
                       </span>
                     </div>
                     <div className="text-right text-xs space-y-0.5">
-                      <p className="text-zinc-600">दिलेली रोकड: <strong className="text-zinc-950 font-bold">₹{Number(checkoutResult.cashTendered || checkoutResult.total).toFixed(2)}</strong></p>
-                      <p className="text-zinc-600">बिल रक्कम: <strong className="text-zinc-950 font-bold">₹{checkoutResult.total.toFixed(2)}</strong></p>
+                      <p className="text-zinc-600">Cash Tendered: <strong className="text-zinc-950 font-bold">₹{Number(checkoutResult.cashTendered || checkoutResult.total).toFixed(2)}</strong></p>
+                      <p className="text-zinc-600">Bill Total: <strong className="text-zinc-950 font-bold">₹{checkoutResult.total.toFixed(2)}</strong></p>
                     </div>
                   </div>
                 )}
@@ -1358,13 +1358,13 @@ export default function POS() {
                     </div>
                     {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 && (
                       <div className="flex justify-between text-muted-foreground pt-1 border-t border-dashed">
-                        <span>दिलेली रोकड (Cash):</span>
+                        <span>Cash Tendered:</span>
                         <span className="font-semibold text-foreground">₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
                       </div>
                     )}
                     {Number(checkoutResult.changeReturn || 0) > 0 && (
                       <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
-                        <span>परत बाकी (Change):</span>
+                        <span>Change Return:</span>
                         <span className="text-emerald-600 dark:text-emerald-400">₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
                       </div>
                     )}
@@ -1633,7 +1633,7 @@ export default function POS() {
               title="Switch between Retail and Wholesale pricing"
             >
               <BadgePercent className="h-3.5 w-3.5 mr-1" />
-              {pricingMode === 'wholesale' ? '📦 Wholesale (थोक)' : '🛍️ Retail (किरकोळ)'}
+              {pricingMode === 'wholesale' ? '📦 Wholesale Pricing' : '🛍️ Retail Pricing'}
             </Button>
 
             {/* D-Mart Sales Return */}
@@ -1697,7 +1697,7 @@ export default function POS() {
                     type="button"
                     onClick={() => {
                       if (isOutOfStock) {
-                        triggerStockAlert(`⚠️ "${item.name}" चा स्टॉक संपला आहे! (उपलब्ध: 0)`);
+                        triggerStockAlert(`⚠️ "${item.name}" is out of stock! (Available: 0)`);
                         return;
                       }
                       addToCart(item);
@@ -1707,7 +1707,7 @@ export default function POS() {
                         ? 'opacity-50 border-rose-300 bg-rose-50 dark:bg-rose-950/20 cursor-not-allowed' 
                         : 'bg-background hover:bg-amber-100/70 dark:hover:bg-amber-900/40 border-amber-200/80 dark:border-amber-800/80'
                     }`}
-                    title={isOutOfStock ? 'स्टॉक संपला आहे' : `Click to add or enter code ${(item as any).shortCode || item.barcode || ''}`}
+                    title={isOutOfStock ? 'Out of stock' : `Click to add or enter code ${(item as any).shortCode || item.barcode || ''}`}
                   >
                     {((item as any).shortCode) && (
                       <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded font-mono">
@@ -1746,7 +1746,7 @@ export default function POS() {
                 }`}
                 onClick={() => {
                   if (isOutOfStock) {
-                    triggerStockAlert(`⚠️ "${product.name}" चा स्टॉक संपला आहे! (उपलब्ध: 0)`);
+                    triggerStockAlert(`⚠️ "${product.name}" is out of stock! (Available: 0)`);
                     return;
                   }
                   addToCart(product);
@@ -1770,11 +1770,11 @@ export default function POS() {
 
                   {isOutOfStock ? (
                     <span className="text-[10px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950/80 px-2 py-0.5 rounded-md border border-rose-300/50">
-                      माल संपला (0)
+                      Out of Stock (0)
                     </span>
                   ) : isLowStock ? (
                     <span className="text-[10px] font-bold text-amber-600 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded-md">
-                      फक्त {availableStock} {product.unit || 'pcs'}
+                      Only {availableStock} {product.unit || 'pcs'}
                     </span>
                   ) : (
                     <span className="text-[10px] font-medium text-muted-foreground ml-auto">
@@ -1811,7 +1811,7 @@ export default function POS() {
                         ? 'bg-rose-100 text-rose-400 dark:bg-rose-950/40 cursor-not-allowed' 
                         : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground'
                     }`}
-                    title={isOutOfStock ? 'स्टॉक संपला आहे' : 'Add to Bill'}
+                    title={isOutOfStock ? 'Out of stock' : 'Add to Bill'}
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -2011,7 +2011,7 @@ export default function POS() {
                     <p className="text-muted-foreground text-xs mt-1">₹{item.sellingPrice} x {item.qty}</p>
                     {isMaxStockReached && (
                       <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold block mt-0.5">
-                        ⚠️ शिल्लक साठा मर्यादा: {maxStock}
+                        ⚠️ Stock Limit: {maxStock}
                       </span>
                     )}
                   </div>
@@ -2032,7 +2032,7 @@ export default function POS() {
                             : 'text-primary hover:bg-primary/10'
                         }`} 
                         onClick={() => updateQty(item.id, 1)}
-                        title={isMaxStockReached ? `फक्त ${maxStock} शिल्लक आहे` : 'Add 1 more'}
+                        title={isMaxStockReached ? `Only ${maxStock} in stock` : 'Add 1 more'}
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </Button>
@@ -2054,15 +2054,15 @@ export default function POS() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
                   <UserCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  ग्राहक (निवडलेला)
+                  Selected Customer
                 </span>
                 <button
                   type="button"
                   onClick={handleClearCustomer}
                   className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 hover:underline flex items-center gap-0.5"
-                  title="दुसरा ग्राहक निवडा किंवा काढा"
+                  title="Change or remove customer"
                 >
-                  <X className="h-3 w-3" /> बदला
+                  <X className="h-3 w-3" /> Change
                 </button>
               </div>
               <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
@@ -2077,11 +2077,11 @@ export default function POS() {
                 <div className="text-right">
                   {Number(selectedCustomer.balance || 0) > 0 ? (
                     <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/70 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800 block">
-                      उधार: ₹{Number(selectedCustomer.balance).toFixed(2)}
+                      Udhar Due: ₹{Number(selectedCustomer.balance).toFixed(2)}
                     </span>
                   ) : (
                     <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded-md block">
-                      हिशोब क्लियर (₹0)
+                      Balance Clear (₹0)
                     </span>
                   )}
                 </div>
@@ -2092,14 +2092,14 @@ export default function POS() {
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5 text-primary" />
-                  ग्राहक तपशील (नाव किंवा नंबर)
+                  Customer Details (Name or Mobile)
                 </span>
                 {customerPhone ? (
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${customerPhone.length === 10 ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600'}`}>
                     {customerPhone.length}/10
                   </span>
                 ) : (
-                  <span className="text-[10px] text-zinc-500 font-medium">ऐच्छिक (Optional)</span>
+                  <span className="text-[10px] text-zinc-500 font-medium">Optional</span>
                 )}
               </div>
 
@@ -2107,7 +2107,7 @@ export default function POS() {
                 {/* Customer Name */}
                 <div className="relative">
                   <Input 
-                    placeholder="ग्राहक नाव (उदा. सचिन)"
+                    placeholder="Customer Name (e.g. Rahul)"
                     type="text"
                     value={customerName}
                     onChange={(e) => {
@@ -2125,7 +2125,7 @@ export default function POS() {
                     +91
                   </span>
                   <Input 
-                    placeholder="मोबाईल नंबर"
+                    placeholder="10-digit Mobile"
                     type="tel"
                     maxLength={10}
                     value={customerPhone}
@@ -2144,8 +2144,8 @@ export default function POS() {
               {showCustomerSuggestions && customerSuggestions.length > 0 && (
                 <div className="absolute bottom-full left-0 right-0 z-50 mb-1.5 bg-card text-card-foreground border-2 border-primary/40 rounded-2xl shadow-2xl overflow-hidden divide-y divide-border max-h-56 overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
                   <div className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-primary uppercase tracking-wider flex justify-between items-center">
-                    <span>जुने ग्राहक सापडले ({customerSuggestions.length})</span>
-                    <span className="text-[9px] lowercase font-semibold">क्लिक करून निवडा</span>
+                    <span>Registered Customers ({customerSuggestions.length})</span>
+                    <span className="text-[9px] lowercase font-semibold">Click to select</span>
                   </div>
                   {customerSuggestions.map((cust) => (
                     <button
@@ -2166,11 +2166,11 @@ export default function POS() {
                       <div className="text-right">
                         {Number(cust.balance || 0) > 0 ? (
                           <span className="text-[10px] font-black text-rose-700 bg-rose-100 dark:bg-rose-950 px-2 py-0.5 rounded-md border border-rose-300">
-                            उधार: ₹{Number(cust.balance).toFixed(0)}
+                            Udhar: ₹{Number(cust.balance).toFixed(0)}
                           </span>
                         ) : (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">
-                            क्लियर (₹0)
+                            Clear (₹0)
                           </span>
                         )}
                       </div>
@@ -2229,11 +2229,11 @@ export default function POS() {
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1">
-                  <Coins className="h-3.5 w-3.5 text-emerald-600" /> ग्राहकाने दिलेली रोकड (Cash):
+                  <Coins className="h-3.5 w-3.5 text-emerald-600" /> Cash Tendered:
                 </span>
                 {parseFloat(cartCashReceived) > 0 && parseFloat(cartCashReceived) >= total && (
                   <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 bg-emerald-200/80 dark:bg-emerald-900/80 px-2 py-0.5 rounded-md">
-                    परत: ₹{(parseFloat(cartCashReceived) - total).toFixed(2)}
+                    Change: ₹{(parseFloat(cartCashReceived) - total).toFixed(2)}
                   </span>
                 )}
               </div>
@@ -2242,7 +2242,7 @@ export default function POS() {
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500">₹</span>
                   <Input
                     type="number"
-                    placeholder={`उदा. ${quickCashSuggestions[0] || 3000}`}
+                    placeholder={`e.g. ${quickCashSuggestions[0] || 3000}`}
                     value={cartCashReceived}
                     onChange={(e) => setCartCashReceived(e.target.value)}
                     className="h-8 pl-6 text-xs font-black bg-white text-zinc-950 border-emerald-300 dark:border-emerald-700"
@@ -2347,7 +2347,7 @@ export default function POS() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 dark:text-emerald-200">
                       <Coins className="h-4 w-4 text-emerald-600" />
-                      <span>ग्राहकाने दिलेली रोकड (Cash Received)</span>
+                      <span>Cash Received / Tendered</span>
                     </div>
                     {(() => {
                       const tenderedNum = parseFloat(cashTendered) || splitAmounts.cash || 0;
@@ -2355,7 +2355,7 @@ export default function POS() {
                       const changeDue = Math.max(0, tenderedNum - cashNeeded);
                       return changeDue > 0 ? (
                         <span className="text-[11px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full animate-pulse shadow-xs">
-                          परत: ₹{changeDue.toFixed(2)}
+                          Change: ₹{changeDue.toFixed(2)}
                         </span>
                       ) : null;
                     })()}
@@ -2366,7 +2366,7 @@ export default function POS() {
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold text-zinc-500">₹</span>
                       <Input
                         type="number"
-                        placeholder={`उदा. ${quickCashSuggestions[0] || total}`}
+                        placeholder={`e.g. ${quickCashSuggestions[0] || total}`}
                         value={cashTendered || (splitAmounts.cash > total ? splitAmounts.cash.toString() : '')}
                         onChange={(e) => {
                           const valStr = e.target.value;
@@ -2435,15 +2435,15 @@ export default function POS() {
                         <div className="p-3 bg-white dark:bg-card border-2 border-emerald-500 rounded-xl flex items-center justify-between shadow-xs">
                           <div>
                             <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-wider block">
-                              ग्राहकाला परत करायची रक्कम (Change Return)
+                              Change Due to Customer
                             </span>
                             <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 leading-tight">
                               ₹{Math.max(0, changeDue).toFixed(2)}
                             </p>
                           </div>
                           <div className="text-right text-xs text-muted-foreground space-y-0.5">
-                            <p>दिलेले: <strong className="text-foreground">₹{tenderedNum.toFixed(2)}</strong></p>
-                            <p>बिल: <strong className="text-foreground">₹{cashNeeded.toFixed(2)}</strong></p>
+                            <p>Tendered: <strong className="text-foreground">₹{tenderedNum.toFixed(2)}</strong></p>
+                            <p>Bill: <strong className="text-foreground">₹{cashNeeded.toFixed(2)}</strong></p>
                           </div>
                         </div>
                       );
@@ -2451,7 +2451,7 @@ export default function POS() {
                     if (tenderedNum > 0 && changeDue < 0) {
                       return (
                         <div className="p-2.5 bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 flex justify-between items-center">
-                          <span>कमी पडणारी रक्कम (Short Amount):</span>
+                          <span>Short Amount Remaining:</span>
                           <span className="text-rose-600 dark:text-rose-400 font-black">₹{Math.abs(changeDue).toFixed(2)}</span>
                         </div>
                       );
@@ -2467,14 +2467,14 @@ export default function POS() {
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
                       <UserCheck className="h-4 w-4 text-emerald-600" />
-                      ग्राहक: {selectedCustomer.name}
+                      Customer: {selectedCustomer.name}
                     </span>
                     <button
                       type="button"
                       onClick={handleClearCustomer}
                       className="text-[11px] font-semibold text-rose-500 hover:underline flex items-center gap-0.5"
                     >
-                      <X className="h-3 w-3" /> बदला
+                      <X className="h-3 w-3" /> Change
                     </button>
                   </div>
                   <div className="flex justify-between items-center text-xs">
@@ -2483,10 +2483,10 @@ export default function POS() {
                     </span>
                     {Number(selectedCustomer.balance || 0) > 0 ? (
                       <span className="font-bold text-rose-600">
-                        मागील उधार: ₹{Number(selectedCustomer.balance).toFixed(2)}
+                        Previous Udhar: ₹{Number(selectedCustomer.balance).toFixed(2)}
                       </span>
                     ) : (
-                      <span className="font-medium text-emerald-600">हिशोब क्लिअर</span>
+                      <span className="font-medium text-emerald-600">All Cleared</span>
                     )}
                   </div>
                 </div>
@@ -2504,7 +2504,7 @@ export default function POS() {
                   <div className="grid grid-cols-2 gap-2">
                     <Input 
                       type="text" 
-                      placeholder="ग्राहक नाव (उदा. सचिन)"
+                      placeholder="Customer Name (e.g. Rahul)"
                       value={customerName} 
                       onChange={(e) => {
                         setCustomerName(e.target.value);
@@ -2520,7 +2520,7 @@ export default function POS() {
                       </span>
                       <Input 
                         type="tel" 
-                        placeholder="मोबाईल नंबर"
+                        placeholder="10-digit Mobile"
                         maxLength={10}
                         value={customerPhone} 
                         onChange={(e) => {
@@ -2555,11 +2555,11 @@ export default function POS() {
                           <div className="text-right">
                             {Number(cust.balance || 0) > 0 ? (
                               <span className="text-[10px] font-bold text-rose-600">
-                                उधार: ₹{Number(cust.balance).toFixed(2)}
+                                Udhar: ₹{Number(cust.balance).toFixed(2)}
                               </span>
                             ) : (
                               <span className="text-[10px] text-emerald-600">
-                                क्लिअर
+                                Clear
                               </span>
                             )}
                           </div>
@@ -2737,15 +2737,15 @@ export default function POS() {
                     <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500 rounded-2xl flex items-center justify-between shadow-xs">
                       <div>
                         <span className="text-[11px] font-extrabold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider block">
-                          ग्राहकाला परत करायची रक्कम (Change Return)
+                          Change Due to Customer
                         </span>
                         <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-tight">
                           ₹{excessAmount.toFixed(2)}
                         </p>
                       </div>
                       <div className="text-right text-xs text-muted-foreground font-semibold">
-                        <p>दिलेले: <strong className="text-foreground">₹{currentSum.toFixed(2)}</strong></p>
-                        <p>बिल: <strong className="text-foreground">₹{total.toFixed(2)}</strong></p>
+                        <p>Tendered: <strong className="text-foreground">₹{currentSum.toFixed(2)}</strong></p>
+                        <p>Bill: <strong className="text-foreground">₹{total.toFixed(2)}</strong></p>
                       </div>
                     </div>
                   );
@@ -3117,12 +3117,12 @@ export default function POS() {
             {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 ? (
               <div style={{ fontSize: '11px', padding: '3px 0', borderTop: '1px dashed #666', marginTop: '2px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Cash Tendered (दिलेली रोकड):</span>
+                  <span>Cash Tendered:</span>
                   <span>₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
                 </div>
                 {Number(checkoutResult.changeReturn || 0) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                    <span>Change Return (परत बाकी):</span>
+                    <span>Change Return:</span>
                     <span>₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
                   </div>
                 )}
@@ -3179,7 +3179,7 @@ export default function POS() {
                   <RotateCcw className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-foreground">Sales Return & Exchange (माल परत)</h3>
+                  <h3 className="font-bold text-base text-foreground">Sales Return & Exchange</h3>
                   <p className="text-xs text-muted-foreground">Return sold items, refund cash, or write off damaged goods.</p>
                 </div>
               </div>
@@ -3314,8 +3314,8 @@ export default function POS() {
                             onChange={(e) => setReturnCondition(e.target.value as any)}
                             className="w-full h-10 rounded-md border border-input bg-card px-3 text-xs"
                           >
-                            <option value="resellable">🟢 Resellable (चांगल्या स्थितीत - स्टॉक वाढवा)</option>
-                            <option value="damaged">🔴 Damaged/Defective (खराब - स्क्रॅप/नुकसान नोंदवा)</option>
+                            <option value="resellable">🟢 Resellable (Restock Item)</option>
+                            <option value="damaged">🔴 Damaged / Defective (Scrap & Write-off)</option>
                           </select>
                         </div>
                         <div className="space-y-1">
@@ -3325,8 +3325,8 @@ export default function POS() {
                             onChange={(e) => setReturnRefundMethod(e.target.value as any)}
                             className="w-full h-10 rounded-md border border-input bg-card px-3 text-xs"
                           >
-                            <option value="cash">💵 Cash Refund (रोख परतावा)</option>
-                            <option value="udhar">📒 Add to Customer Udhar Credit (उधारी जमा)</option>
+                            <option value="cash">💵 Cash Refund</option>
+                            <option value="udhar">📒 Add to Customer Credit (Udhar Balance)</option>
                           </select>
                         </div>
                       </div>
@@ -3395,7 +3395,7 @@ export default function POS() {
                 <>
                   <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-xl border">
                     <div>
-                      <Label className="text-[11px] font-bold text-muted-foreground">Opening Float / Cash in Drawer (सकाळचा गल्ला)</Label>
+                      <Label className="text-[11px] font-bold text-muted-foreground">Opening Float / Drawer Cash</Label>
                       <Input
                         type="number"
                         value={openingCash}
@@ -3405,7 +3405,7 @@ export default function POS() {
                       />
                     </div>
                     <div>
-                      <Label className="text-[11px] font-bold text-muted-foreground">Total Counted Cash (मोजलेली रक्कम)</Label>
+                      <Label className="text-[11px] font-bold text-muted-foreground">Total Counted Cash</Label>
                       <div className="h-10 px-3 bg-card border rounded-md flex items-center font-black text-emerald-600 text-base mt-1 shadow-2xs">
                         ₹{totalCountedCash.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </div>
@@ -3413,7 +3413,7 @@ export default function POS() {
                   </div>
 
                   <div>
-                    <Label className="text-xs font-bold text-muted-foreground mb-2 block">Currency Denomination Breakdown (नोट मोजणी):</Label>
+                    <Label className="text-xs font-bold text-muted-foreground mb-2 block">Currency Denomination Breakdown:</Label>
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         { label: '₹500 Notes', key: 'd500', value: 500 },
@@ -3444,7 +3444,20 @@ export default function POS() {
                     </div>
 
                     <div className="mt-2 flex items-center gap-2 border p-2 rounded-lg bg-card">
-                      <span className="w-32 font-bold text-[11px]">Coins & Loose Cash (चिल्लर):</span>
+                      <span className="w-32 font-bold text-[11px]">Coins & Loose Change:</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={denominations.coins || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setDenominations(prev => ({ ...prev, coins: val }));
+                        }}
+                        placeholder="₹0"
+                        className="h-8 text-xs font-bold bg-white dark:bg-card"
+                      />
+                    </div>
+                  </div>
                       <Input
                         type="number"
                         min="0"

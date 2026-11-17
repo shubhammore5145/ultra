@@ -219,7 +219,7 @@ export default function Purchases() {
         }
       }
 
-      alert('🎉 खरेदी बिल यशस्वीरित्या सेव्ह झाले आणि इन्व्हेंटरी स्टॉक वाढवला!');
+      alert('🎉 Purchase bill saved and inventory stock updated successfully!');
       setShowBillModal(false);
       setBillItems([]);
       setBillSupplierId('');
@@ -416,10 +416,10 @@ export default function Purchases() {
                     </div>
                     <div>
                       <p className="font-black text-sm text-emerald-900 dark:text-emerald-200">
-                        🎉 बिल #{scanSuccessSummary.invoiceNo} यशस्वीरित्या स्टॉक इन झाले!
+                        🎉 Invoice #{scanSuccessSummary.invoiceNo} successfully stocked in!
                       </p>
                       <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                        {scanSuccessSummary.itemsCount} प्रॉडक्ट्सचा स्टॉक वाढवला ({scanSuccessSummary.newProductsCount} नवीन तयार झाले). एकूण खरेदी: <strong>₹{scanSuccessSummary.totalAmount}</strong>
+                        Updated stock for {scanSuccessSummary.itemsCount} products ({scanSuccessSummary.newProductsCount} new products added to catalog). Total purchase: <strong>₹{scanSuccessSummary.totalAmount}</strong>
                       </p>
                     </div>
                   </div>
@@ -443,14 +443,14 @@ export default function Purchases() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-black text-base text-foreground">
-                        होलसेलरचे बिल फोटो काढून थेट स्टॉक ॲड करा
+                        Scan & Auto-Import Wholesaler Invoices
                       </h3>
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white">
                         AI Auto Stock-In
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
-                      होलसेलरच्या कागदी बिलाचा फोटो काढा किंवा अपलोड करा. सिस्टीम बिलातील सर्व आयटम्स, खरेदी भाव, MRP आणि स्टॉक आपोआप वाचून इन्व्हेंटरी अपडेट करेल.
+                      Take a photo or upload your wholesaler bill. The AI extracts items, cost rates, MRP, and quantities to instantly increase inventory stock.
                     </p>
                   </div>
                 </div>
@@ -461,7 +461,7 @@ export default function Purchases() {
                     className="font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-md text-xs sm:text-sm h-10 flex-1 md:flex-initial"
                   >
                     <Camera className="h-4 w-4 mr-2" />
-                    बिल स्कॅन करा (Start Scan)
+                    Scan Wholesaler Bill
                   </Button>
                 </div>
               </div>
@@ -629,9 +629,9 @@ export default function Purchases() {
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-600">
                     <CheckCircle2 className="h-8 w-8" />
                   </div>
-                  <h3 className="text-xl font-bold text-foreground">सर्व स्टॉक व्यवस्थित आहे! (Fully Stocked)</h3>
+                  <h3 className="text-xl font-bold text-foreground">Fully Stocked & Optimized!</h3>
                   <p className="text-sm mt-1 max-w-md mx-auto">
-                    कोणत्याही उत्पादनाचा स्टॉक किमान मर्यादेच्या (Min Stock Alert) खाली गेलेला नाही.
+                    All inventory items are currently above their safe minimum reorder levels.
                   </p>
                 </div>
               ) : (
@@ -663,7 +663,7 @@ export default function Purchases() {
                           <Sparkles className="h-3.5 w-3.5" /> 1-Click Multi Restock
                         </span>
                         <p className="text-xs text-muted-foreground mt-1">
-                          सर्व {lowStockProducts.length} वस्तू थेट खरेदी बिलामध्ये (PO) जोडा
+                          Add all {lowStockProducts.length} items to a new Purchase Order
                         </p>
                       </div>
                       <Button 
@@ -679,7 +679,7 @@ export default function Purchases() {
                       <div>
                         <span className="text-xs font-semibold text-muted-foreground">Supplier WhatsApp PO</span>
                         <p className="text-xs text-muted-foreground mt-1">
-                          सप्लायर/डीलरला एका क्लिकवर खरेदी यादी व्हॉट्सॲपवर पाठवा
+                          Send restock purchase order to supplier via WhatsApp
                         </p>
                       </div>
                       <Button 

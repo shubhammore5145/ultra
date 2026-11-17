@@ -3458,19 +3458,6 @@ export default function POS() {
                       />
                     </div>
                   </div>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={denominations.coins || ''}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setDenominations(prev => ({ ...prev, coins: val }));
-                        }}
-                        placeholder="₹0"
-                        className="h-8 text-xs font-bold bg-white dark:bg-card"
-                      />
-                    </div>
-                  </div>
 
                   <Button
                     onClick={handleSaveShiftClose}

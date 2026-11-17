@@ -748,16 +748,6 @@ export default function Products() {
                 ))
               )}
             </tbody>
-                          title="Delete product"
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
           </table>
         </div>
         
@@ -972,7 +962,6 @@ export default function Products() {
                   <CheckCircle2 className="h-4 w-4 mr-1.5" />
                 )}
                 Save Price Changes
-              </Button>
               </Button>
             </div>
           </div>

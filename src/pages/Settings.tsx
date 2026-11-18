@@ -248,13 +248,14 @@ export default function Settings() {
   };
 
   const handleConnectBluetooth = async () => {
-    if (!navigator.bluetooth) {
+    const nav = navigator as any;
+    if (!nav.bluetooth) {
       alert('Web Bluetooth API is supported in Google Chrome, Microsoft Edge, and Android Chrome. Please use Chrome browser.');
       return;
     }
     setBluetoothConnecting(true);
     try {
-      const device = await navigator.bluetooth.requestDevice({
+      const device = await nav.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [
           '000018f0-0000-1000-8000-00805f9b34fb',

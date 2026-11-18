@@ -893,7 +893,9 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
             const clean = { ...itemToRestore };
             delete clean.isDeleted;
             delete clean.deletedAt;
-            await supabase.from(table).upsert(clean).catch(() => {});
+            try {
+              await supabase.from(table).upsert(clean);
+            } catch {}
           }
         }
         return { success: true };
@@ -953,7 +955,9 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const { data: byEmail } = await supabase.from('users').select('*').ilike('email', cleanEmail).limit(1);
       if (byEmail && byEmail.length > 0) {
         user = byEmail[0];
-        await supabase.from('users').update({ uid }).eq('email', cleanEmail).catch(() => {});
+        try {
+          await supabase.from('users').update({ uid }).eq('email', cleanEmail);
+        } catch {}
         user.uid = uid;
       }
     }
@@ -977,7 +981,9 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       email: cleanEmail,
       plan: 'free'
     };
-    await supabase.from('shops').insert(shopObj).catch(() => {});
+    try {
+      await supabase.from('shops').insert(shopObj);
+    } catch {}
 
     const userObj = {
       uid,
@@ -986,7 +992,9 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       role: body.role || 'admin',
       shopId: newShopId
     };
-    await supabase.from('users').insert(userObj).catch(() => {});
+    try {
+      await supabase.from('users').insert(userObj);
+    } catch {}
 
     const clientToken = 'sb_' + btoa(JSON.stringify({ uid, shopId: newShopId, exp: Date.now() + 7 * 86400000 }));
     localStorage.setItem('auth_user', JSON.stringify(userObj));

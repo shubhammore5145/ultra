@@ -258,7 +258,46 @@ function getStatus(shopId = 'default') {
   };
 }
 
-async function sendMessage(phoneNumber, message, shopId = 'default', maxRetries = 3) {
+async function sendViaGreenApi(phoneNumber, message, greenConfig = {}) {
+  const idInstance = greenConfig.idInstance || process.env.GREEN_API_ID_INSTANCE;
+  const apiTokenInstance = greenConfig.apiTokenInstance || process.env.GREEN_API_TOKEN_INSTANCE;
+  const apiUrl = (greenConfig.apiUrl || process.env.GREEN_API_URL || 'https://api.green-api.com').replace(/\/+$/, '');
+
+  if (!idInstance || !apiTokenInstance) {
+    return null;
+  }
+
+  const clean = formatPhoneNumber(phoneNumber);
+  const chatId = `${clean}@c.us`;
+  const url = `${apiUrl}/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ chatId, message })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Green API HTTP ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  console.log(`[Green API] Message delivered to ${chatId} (ID: ${data.idMessage})`);
+  return { success: true, idMessage: data.idMessage };
+}
+
+async function sendMessage(phoneNumber, message, shopId = 'default', maxRetries = 3, greenConfig = null) {
+  // If Green API credentials provided, try sending via Green API first
+  if (greenConfig || process.env.GREEN_API_ID_INSTANCE) {
+    try {
+      const gaResult = await sendViaGreenApi(phoneNumber, message, greenConfig || {});
+      if (gaResult) return gaResult;
+    } catch (gaErr) {
+      console.warn(`[WhatsApp - Shop ${shopId}] Green API dispatch failed:`, gaErr.message);
+    }
+  }
+
   const session = getSessionState(shopId);
 
   // If shop does not have saved credentials or is not connected
@@ -340,6 +379,7 @@ module.exports = {
   initializeWhatsApp,
   getStatus,
   sendMessage,
+  sendViaGreenApi,
   logout,
   restoreAllSavedSessions
 };

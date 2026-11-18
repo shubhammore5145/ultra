@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { DamagedItem, StockMovement, SalesReturn, CashCounterClosing } from '../types';
+import { getGreenApiConfig, checkGreenApiStatus, sendGreenApiMessage, logoutGreenApi } from './greenApi';
 
 // Use relative path for API so it works perfectly with Vite proxy or production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -1043,7 +1044,19 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
   }
 
   if (endpoint.startsWith('/whatsapp')) {
-    throw new Error('The Node.js backend server must be running to operate the WhatsApp Bot. Please start the local server or cloud web service.');
+    const greenConf = getGreenApiConfig();
+    if (greenConf.enabled && greenConf.idInstance && greenConf.apiTokenInstance) {
+      if (endpoint.startsWith('/whatsapp/status')) {
+        const st = await checkGreenApiStatus(greenConf);
+        return {
+          status: st.isAuthorized ? 'CONNECTED' : (st.state === 'notAuthorized' ? 'NEEDS_QR' : 'DISCONNECTED'),
+          provider: 'green_api',
+          info: { phone: st.phone || '', pushname: st.pushname || 'Green API' },
+          error: st.isAuthorized ? null : st.message
+        };
+      }
+    }
+    throw new Error('The Node.js backend server must be running to operate the local WhatsApp Bot, or configure Green API in Settings.');
   }
 
   throw new Error(`Endpoint ${endpoint} not available in direct cloud mode.`);
@@ -1321,7 +1334,21 @@ export const api = {
     markAllAsRead: () => fetchAPI('/notifications/read-all', { method: 'POST' })
   },
   whatsapp: {
-    status: (shopId?: string) => {
+    status: async (shopId?: string) => {
+      const greenConf = getGreenApiConfig();
+      if (greenConf.enabled && greenConf.idInstance && greenConf.apiTokenInstance) {
+        try {
+          const st = await checkGreenApiStatus(greenConf);
+          return {
+            status: st.isAuthorized ? 'CONNECTED' : (st.state === 'notAuthorized' ? 'NEEDS_QR' : 'DISCONNECTED'),
+            provider: 'green_api',
+            info: { phone: st.phone || '', pushname: st.pushname || 'Green API' },
+            error: st.isAuthorized ? null : st.message
+          };
+        } catch (e: any) {
+          console.warn('Green API status check error:', e.message);
+        }
+      }
       const sid = shopId || getShopId();
       return fetchAPI('/whatsapp/status' + (sid ? `?shopId=${encodeURIComponent(sid)}` : ''), { method: 'GET' });
     },
@@ -1329,21 +1356,81 @@ export const api = {
       const sid = shopId || getShopId();
       return fetchAPI('/whatsapp/start', { method: 'POST', body: JSON.stringify({ shopId: sid }) });
     },
-    logout: (shopId?: string) => {
+    logout: async (shopId?: string) => {
+      const greenConf = getGreenApiConfig();
+      if (greenConf.enabled && greenConf.idInstance) {
+        try {
+          await logoutGreenApi(greenConf);
+        } catch (e: any) {
+          console.warn('Green API logout error:', e.message);
+        }
+      }
       const sid = shopId || getShopId();
-      return fetchAPI('/whatsapp/logout', { method: 'POST', body: JSON.stringify({ shopId: sid }) });
+      try {
+        return await fetchAPI('/whatsapp/logout', { method: 'POST', body: JSON.stringify({ shopId: sid }) });
+      } catch {
+        return { success: true };
+      }
     },
-    send: (phone: string, message: string, shopId?: string) => {
+    send: async (phone: string, message: string, shopId?: string) => {
+      const greenConf = getGreenApiConfig();
+      if (greenConf.enabled && greenConf.idInstance && greenConf.apiTokenInstance) {
+        const res = await sendGreenApiMessage(phone, message, greenConf);
+        if (res.success) {
+          return { success: true, message: 'Message sent via Green API', idMessage: res.idMessage };
+        }
+        throw new Error(res.error || 'Failed to send message via Green API');
+      }
       const sid = shopId || getShopId();
       return fetchAPI('/whatsapp/send', { method: 'POST', body: JSON.stringify({ phone, message, shopId: sid }) });
     },
-    sendBill: (phone: string, message: string, billNo?: string, shopId?: string) => {
+    sendBill: async (phone: string, message: string, billNo?: string, shopId?: string) => {
+      const greenConf = getGreenApiConfig();
+      if (greenConf.enabled && greenConf.idInstance && greenConf.apiTokenInstance) {
+        const res = await sendGreenApiMessage(phone, message, greenConf);
+        if (res.success) {
+          return { success: true, message: `WhatsApp bill #${billNo || ''} sent to +91 ${phone} via Green API`, idMessage: res.idMessage };
+        }
+        throw new Error(res.error || 'Failed to send bill via Green API');
+      }
       const sid = shopId || getShopId();
       return fetchAPI('/whatsapp/send-bill', { method: 'POST', body: JSON.stringify({ phone, message, billNo, shopId: sid }) });
     },
-    sendBulkReminder: (customers: any[], shopName?: string, shopId?: string) => {
+    sendBulkReminder: async (customers: any[], shopName?: string, shopId?: string) => {
+      const greenConf = getGreenApiConfig();
+      if (greenConf.enabled && greenConf.idInstance && greenConf.apiTokenInstance) {
+        const results = { total: customers.length, sent: 0, failed: 0, details: [] as any[] };
+        for (const c of customers) {
+          if (!c.phone) {
+            results.failed++;
+            continue;
+          }
+          const bal = Number(c.balance || c.udhar || 0);
+          const msg = `Namaste ${c.name} ji,\nThis is a gentle payment reminder from *${shopName || 'our store'}*.\nYour outstanding udhar balance is *₹${bal.toLocaleString('en-IN')}*.\nPlease clear the dues at your earliest convenience.\nThank you! 🙏`;
+          const res = await sendGreenApiMessage(c.phone, msg, greenConf);
+          if (res.success) {
+            results.sent++;
+            results.details.push({ name: c.name, phone: c.phone, status: 'sent' });
+          } else {
+            results.failed++;
+            results.details.push({ name: c.name, phone: c.phone, status: 'failed', error: res.error });
+          }
+          await new Promise(r => setTimeout(r, 600)); // anti-spam throttle
+        }
+        return results;
+      }
       const sid = shopId || getShopId();
       return fetchAPI('/whatsapp/bulk-reminder', { method: 'POST', body: JSON.stringify({ customers, shopName, shopId: sid }) });
+    },
+    sendNightlySummary: async (data: { shopId?: string; targetPhone?: string; summaryText?: string }) => {
+      const greenConf = getGreenApiConfig();
+      if (greenConf.enabled && greenConf.idInstance && greenConf.apiTokenInstance && data.targetPhone && data.summaryText) {
+        const res = await sendGreenApiMessage(data.targetPhone, data.summaryText, greenConf);
+        if (res.success) {
+          return { success: true, message: `Nightly summary sent to ${data.targetPhone} via Green API` };
+        }
+      }
+      return fetchAPI('/whatsapp/nightly-summary', { method: 'POST', body: JSON.stringify(data) });
     }
   },
   damagedGoods: {

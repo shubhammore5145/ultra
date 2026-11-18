@@ -6,14 +6,12 @@ import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy,
 import { APP_PERMISSIONS, STAFF_ROLE_PRESETS } from '../lib/permissions';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';
-import { usePlan } from '../contexts/PlanContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
 import { getGreenApiConfig, saveGreenApiConfig, checkGreenApiStatus, getGreenApiQrCode, logoutGreenApi, sendGreenApiMessage } from '../lib/greenApi';
 import type { GreenApiConfig, GreenApiStatus } from '../lib/greenApi';
 
 export default function Settings() {
   const { userData, shopData, logout } = useAuth();
-  const { plan, canAccess, openUpgradeModal, maxStaffAllowed } = usePlan();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);

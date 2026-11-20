@@ -16,6 +16,7 @@ import {
   updateProfile 
 } from '../lib/firebase';
 import { supabase } from '../lib/supabase';
+import { createSecureClientToken } from '../lib/tokenSecurity';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
@@ -149,7 +150,7 @@ export default function Login() {
                 };
 
                 delete u.password;
-                authToken = 'sb_' + btoa(JSON.stringify({ uid: u.uid, shopId: u.shopId, ts: Date.now() }));
+                authToken = await createSecureClientToken(u.uid, u.shopId, u.role || 'admin');
                 authUser = u;
                 authShop = shop;
               } else {

@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { DamagedItem, StockMovement, SalesReturn, CashCounterClosing } from '../types';
 import { getGreenApiConfig, checkGreenApiStatus, sendGreenApiMessage, logoutGreenApi } from './greenApi';
+import { createSecureClientToken, parseAndValidateToken } from './tokenSecurity';
 
 // Use relative path for API so it works perfectly with Vite proxy or production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -26,11 +27,9 @@ const getShopId = () => {
   } catch (e) {}
 
   const token = getToken();
-  if (token && token.startsWith('sb_')) {
-    try {
-      const payload = JSON.parse(atob(token.slice(3)));
-      if (payload?.shopId) return payload.shopId;
-    } catch (e) {}
+  if (token) {
+    const { valid, payload } = parseAndValidateToken(token);
+    if (valid && payload?.shopId) return payload.shopId;
   }
   return null;
 };
@@ -933,7 +932,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
     const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
     const shop = shops?.[0] || { shopId: user.shopId, name: 'MartGPT Store', plan: 'free' };
     delete user.password;
-    const clientToken = 'sb_' + btoa(JSON.stringify({ uid: user.uid, shopId: user.shopId, exp: Date.now() + 7 * 86400000 }));
+    const clientToken = await createSecureClientToken(user.uid, user.shopId, user.role || 'admin');
     localStorage.setItem('auth_user', JSON.stringify(user));
     localStorage.setItem('auth_shop', JSON.stringify(shop));
     return { token: clientToken, user, shop };
@@ -966,7 +965,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const { data: shops } = await supabase.from('shops').select('*').eq('shopId', user.shopId).limit(1);
       const shop = shops?.[0] || { shopId: user.shopId, name: 'MartGPT Store', plan: 'free' };
       delete user.password;
-      const clientToken = 'sb_' + btoa(JSON.stringify({ uid: user.uid, shopId: user.shopId, exp: Date.now() + 7 * 86400000 }));
+      const clientToken = await createSecureClientToken(user.uid, user.shopId, user.role || 'admin');
       localStorage.setItem('auth_user', JSON.stringify(user));
       localStorage.setItem('auth_shop', JSON.stringify(shop));
       return { token: clientToken, user, shop };
@@ -996,7 +995,7 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       await supabase.from('users').insert(userObj);
     } catch {}
 
-    const clientToken = 'sb_' + btoa(JSON.stringify({ uid, shopId: newShopId, exp: Date.now() + 7 * 86400000 }));
+    const clientToken = await createSecureClientToken(uid, newShopId, body.role || 'admin');
     localStorage.setItem('auth_user', JSON.stringify(userObj));
     localStorage.setItem('auth_shop', JSON.stringify(shopObj));
     return { token: clientToken, user: userObj, shop: shopObj };
@@ -1006,25 +1005,15 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
   if (endpoint.startsWith('/auth/me')) {
     const token = getToken();
     if (token) {
-      let uid: string | null = null;
-      let shopIdFromToken: string | null = null;
-      if (token.startsWith('sb_')) {
-        try {
-          const payload = JSON.parse(atob(token.slice(3)));
-          uid = payload.uid;
-          shopIdFromToken = payload.shopId;
-        } catch (e) {}
-      } else {
-        // Standard JWT token payload decoder
-        try {
-          const parts = token.split('.');
-          if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-            uid = payload.uid;
-            shopIdFromToken = payload.shopId;
-          }
-        } catch (e) {}
+      const { valid, payload } = parseAndValidateToken(token);
+      if (!valid || !payload) {
+        // Expired or invalid token
+        localStorage.removeItem('auth_token');
+        throw { status: 401, message: 'Session expired or invalid token.' };
       }
+
+      const uid = payload.uid;
+      const shopIdFromToken = payload.shopId;
       if (uid) {
         try {
           const { data: users } = await supabase.from('users').select('*').eq('uid', uid).limit(1);

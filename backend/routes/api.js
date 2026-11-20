@@ -21,18 +21,33 @@ const authMiddleware = (req, res, next) => {
   const token = authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token provided' });
 
-  // 1. Support Supabase direct client token
+  // 1. Support Supabase direct client token with expiration & structure validation
   if (token.startsWith('sb_')) {
     try {
-      const payload = JSON.parse(Buffer.from(token.slice(3), 'base64').toString('utf8'));
+      const raw = token.slice(3);
+      const [payloadB64] = raw.split('.');
+      if (!payloadB64) return res.status(401).json({ error: 'Malformed token' });
+
+      const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
+      
+      // Verify expiration
+      if (payload.exp && Date.now() > payload.exp) {
+        return res.status(401).json({ error: 'Token expired. Please log in again.' });
+      }
+
+      if (!payload.uid || !payload.shopId) {
+        return res.status(401).json({ error: 'Invalid token claims' });
+      }
+
       req.user = { 
-        uid: payload.uid || 'sb_user', 
+        uid: payload.uid, 
         shopId: payload.shopId || fallbackShopId, 
         role: payload.role || 'admin' 
       };
       return next();
     } catch (e) {
       console.warn('Failed to parse sb_ token:', e.message);
+      return res.status(401).json({ error: 'Invalid token signature or format' });
     }
   }
 

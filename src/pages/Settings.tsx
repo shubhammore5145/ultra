@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles, Printer, Barcode, Bluetooth, Usb, Volume2, VolumeX, CheckCircle2, Play, Sliders, Download, Upload, Database, HardDrive, RefreshCw, AlertCircle, FileCheck, Shield, X, QrCode, Cloud, Server } from 'lucide-react';
+import { Loader2, Store, Save, Phone, MapPin, Hash, ShieldCheck, UserPlus, Copy, CheckCircle, Smartphone, LogOut, Clock, MessageCircle, Send, Sparkles, Printer, Barcode, Bluetooth, Usb, Volume2, CheckCircle2, Play, Sliders, Download, Upload, Database, HardDrive, RefreshCw, AlertCircle, Shield, X, QrCode, Cloud, Server } from 'lucide-react';
 import { APP_PERMISSIONS, STAFF_ROLE_PRESETS } from '../lib/permissions';
 // Firebase removed
 import { useAuth } from '../contexts/AuthContext';

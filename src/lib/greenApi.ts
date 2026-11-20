@@ -122,6 +122,15 @@ export async function checkGreenApiStatus(overrideConfig?: GreenApiConfig): Prom
     };
   }
 
+  // Common user mistake check: entered email address instead of numeric instance ID
+  if (conf.idInstance.includes('@')) {
+    return {
+      state: 'error',
+      isAuthorized: false,
+      message: 'Invalid Instance ID! You entered an email address. Instance ID must be a numeric ID (e.g. 7103123456 or 1101000001) found inside your Green API console.'
+    };
+  }
+
   const base = (conf.apiUrl || DEFAULT_API_URL).replace(/\/+$/, '');
   const url = `${base}/waInstance${conf.idInstance}/getStateInstance/${conf.apiTokenInstance}`;
 
@@ -135,6 +144,13 @@ export async function checkGreenApiStatus(overrideConfig?: GreenApiConfig): Prom
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
+      if (response.status === 401) {
+        return {
+          state: 'error',
+          isAuthorized: false,
+          message: 'HTTP 401 Unauthorized: Invalid Instance ID or API Token. Please check your credentials on green-api.com.'
+        };
+      }
       return {
         state: 'error',
         isAuthorized: false,
@@ -197,10 +213,14 @@ export async function checkGreenApiStatus(overrideConfig?: GreenApiConfig): Prom
       message: `Instance state: ${stateInstance || 'unknown'}`
     };
   } catch (err: any) {
+    let msg = err.message || 'Failed to reach Green API service.';
+    if (msg.includes('Failed to fetch')) {
+      msg = 'Connection error (Failed to fetch). Make sure Instance ID is a numeric ID (e.g. 7103123456) and not an email address, and API Token is correct.';
+    }
     return {
       state: 'error',
       isAuthorized: false,
-      message: err.message || 'Failed to reach Green API service.'
+      message: msg
     };
   }
 }
@@ -213,6 +233,10 @@ export async function getGreenApiQrCode(overrideConfig?: GreenApiConfig): Promis
 
   if (!conf.idInstance || !conf.apiTokenInstance) {
     return { qr: null, message: 'Please enter Instance ID and API Token first.' };
+  }
+
+  if (conf.idInstance.includes('@')) {
+    return { qr: null, message: 'Invalid Instance ID! Please enter your numeric Green API idInstance, not your email address.' };
   }
 
   const base = (conf.apiUrl || DEFAULT_API_URL).replace(/\/+$/, '');
@@ -276,6 +300,10 @@ export async function sendGreenApiMessage(
 
   if (!conf.idInstance || !conf.apiTokenInstance) {
     return { success: false, error: 'Green API is not configured (missing Instance ID or Token).' };
+  }
+
+  if (conf.idInstance.includes('@')) {
+    return { success: false, error: 'Invalid Instance ID! Please enter your numeric Green API idInstance (e.g. 7103123456), NOT your email address.' };
   }
 
   const chatId = formatGreenApiChatId(phone);

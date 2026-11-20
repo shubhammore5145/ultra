@@ -368,6 +368,10 @@ export default function Settings() {
       alert('Please enter your Instance ID and API Token first.');
       return;
     }
+    if (greenConfig.idInstance.includes('@')) {
+      alert('Invalid Instance ID! Please enter your numeric Green API idInstance (e.g. 7103123456), NOT your login email address.');
+      return;
+    }
     setCheckingGreen(true);
     try {
       const st = await checkGreenApiStatus(greenConfig);
@@ -449,6 +453,10 @@ export default function Settings() {
   const handleSendTestMessage = async () => {
     if (!testPhone || testPhone.trim().length !== 10) {
       alert('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (waProvider === 'green_api' && greenConfig.idInstance.includes('@')) {
+      alert('Invalid Instance ID! Please enter your numeric Green API idInstance (e.g. 7103123456), NOT your email address.');
       return;
     }
     setTestSending(true);
@@ -1381,20 +1389,38 @@ export default function Settings() {
                       placeholder="e.g. 7103123456"
                       value={greenConfig.idInstance}
                       onChange={e => setGreenConfig(prev => ({ ...prev, idInstance: e.target.value.trim() }))}
-                      className="font-mono text-sm"
+                      className={`font-mono text-sm ${greenConfig.idInstance.includes('@') ? 'border-red-500 focus-visible:ring-red-500 bg-red-50/20' : ''}`}
                     />
-                    <p className="text-[11px] text-muted-foreground">Found on your green-api.com console</p>
+                    {greenConfig.idInstance.includes('@') ? (
+                      <p className="text-xs text-red-600 dark:text-red-400 font-bold flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        ⚠️ Email nako taku! Instance ID numeric number asto (उदा. 7103123456).
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Numeric ID (10 digits) found inside your Green API instance console
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">API Token (apiTokenInstance) *</Label>
                     <Input
                       type="password"
-                      placeholder="e.g. d75b52a3b1c2..."
+                      placeholder="e.g. d75b52a3b1c2e4f5..."
                       value={greenConfig.apiTokenInstance}
                       onChange={e => setGreenConfig(prev => ({ ...prev, apiTokenInstance: e.target.value.trim() }))}
                       className="font-mono text-sm"
                     />
-                    <p className="text-[11px] text-muted-foreground">Secret token from your Green API instance</p>
+                    {greenConfig.apiTokenInstance.length > 0 && greenConfig.apiTokenInstance.length < 20 ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        ⚠️ He password vattey. Green API cha token 50+ akshari code asto.
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Long alphanumeric token copied from your Green API instance
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5 md:col-span-2">
                     <Label className="text-xs font-semibold">API Host URL (Optional, defaults to https://api.green-api.com)</Label>
@@ -1483,6 +1509,21 @@ export default function Settings() {
                   <li>Click <strong>Save Green API Config</strong>, then click <strong>Show QR Code</strong> and scan it using your WhatsApp phone (WhatsApp &gt; Linked Devices).</li>
                   <li>Done! Your shop's bills and reminders will now be sent automatically 24/7 without needing your PC or Node server running.</li>
                 </ol>
+              </div>
+
+              {/* Clarification Alert Box */}
+              <div className="p-4 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200/80 dark:border-amber-900/60 text-xs space-y-2">
+                <p className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-amber-600" /> महत्त्वाचे: Instance ID म्हणजे काय?
+                </p>
+                <p className="text-amber-800 dark:text-amber-300">
+                  <strong>Instance ID</strong> हा तुमचा ई-मेल (Email) नाही! आणि <strong>API Token</strong> हा पासवर्ड नाही!
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-muted-foreground pl-1">
+                  <li><strong className="text-foreground">Instance ID (idInstance):</strong> हा 10 आकडी नंबर असतो (उदा. <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground">7103123456</code>).</li>
+                  <li><strong className="text-foreground">API Token (apiTokenInstance):</strong> हा 50+ अक्षरांचा मोठा टोकन कोड असतो (उदा. <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground">d75b52a3b1c2e4f5a6b7c8d9...</code>).</li>
+                  <li>हे दोन्ही शोधण्यासाठी: <a href="https://console.green-api.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">console.green-api.com</a> वर लॉगिन करा &gt; तुमच्या इन्स्टन्सवर क्लिक करा &gt; तिथे वरच दोन्ही कोड्स दिसतील!</li>
+                </ul>
               </div>
             </div>
           ) : (

@@ -22,38 +22,45 @@ import {
   push
 } from 'firebase/database';
 
-const apiKey = (import.meta.env.VITE_FIREBASE_API_KEY || "").trim();
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDQYsUZPOuBH_CwvOZXh-u0o1WA8x6oeuY",
+  authDomain: "shopastra-6c0c3.firebaseapp.com",
+  databaseURL: "https://shopastra-6c0c3-default-rtdb.firebaseio.com",
+  projectId: "shopastra-6c0c3",
+  storageBucket: "shopastra-6c0c3.firebasestorage.app",
+  messagingSenderId: "834065478775",
+  appId: "1:834065478775:web:2589fb86f95be9c9658272",
+  measurementId: "G-892MV90DME"
+};
+
+const apiKey = (import.meta.env.VITE_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey).trim();
 
 let app: any = null;
 let auth: any = null;
 let googleProvider: any = null;
 let rtdb: any = null;
 
-// Only initialize Firebase if a valid API key is present
-if (apiKey && apiKey.length > 5) {
-  try {
-    const firebaseConfig = {
-      apiKey: apiKey,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-      databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "",
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-      appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
-      measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
-    };
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-    auth = getAuth(app);
-    googleProvider = new GoogleAuthProvider();
-    rtdb = getDatabase(app);
-  } catch (err) {
-    console.warn('[Firebase] Safe warning: Firebase init skipped or failed:', err);
-  }
-} else {
-  console.info('[Firebase] Notice: VITE_FIREBASE_API_KEY not set. Using Supabase & Local Database.');
+try {
+  const firebaseConfig = {
+    apiKey: apiKey,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain,
+    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_CONFIG.databaseURL,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || DEFAULT_FIREBASE_CONFIG.measurementId
+  };
+  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+  auth = getAuth(app);
+  googleProvider = new GoogleAuthProvider();
+  googleProvider.setCustomParameters({ prompt: 'select_account' });
+  rtdb = getDatabase(app);
+} catch (err) {
+  console.warn('[Firebase] Warning during initialization:', err);
 }
 
-// Safe wrappers that gracefully fail without throwing top-level uncaught initialization exceptions
+// Safe wrappers that gracefully fail without throwing top-level uncaught exceptions
 export const signInWithEmailAndPassword = async (authInstance: any, email: string, pass: string) => {
   if (!authInstance) throw new Error('Firebase Auth not configured. Switching to database login.');
   return fbSignInWithEmailAndPassword(authInstance, email, pass);

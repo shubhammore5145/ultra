@@ -73,6 +73,12 @@ export default function Login() {
     if (code === 'auth/popup-closed-by-user') {
       return 'Google sign-in window was closed.';
     }
+    if (code === 'auth/unauthorized-domain') {
+      return 'This domain is not authorized in Firebase Console. Please add ultra-u3ej.onrender.com to Firebase Console > Authentication > Settings > Authorized domains, or log in with Email & Password below.';
+    }
+    if (code === 'auth/operation-not-allowed') {
+      return 'Google provider is not enabled in Firebase Authentication Console.';
+    }
     if (err?.message && (err.message.includes('Failed to fetch') || err.message.includes('not reachable') || err.message.includes('No response'))) {
       return 'Network or server connection issue. Please check your connection and try again.';
     }

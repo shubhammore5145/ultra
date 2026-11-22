@@ -14,6 +14,12 @@ const updateSW = registerSW({
   },
   onOfflineReady() {
     console.log('[PWA] MartGPT PWA is ready for offline use.');
+  },
+  onRegisteredSW(_swUrl, r) {
+    if (r) {
+      r.update().catch(() => {});
+      setInterval(() => r.update().catch(() => {}), 60 * 1000);
+    }
   }
 });
 

@@ -15,6 +15,32 @@
     <meta name="description" content="MartGPT - AI Supermarket & Kirana POS Billing System" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>MartGPT - Smart POS & Billing</title>
+    <script>
+      // Self-healing: if an old cached chunk fails to load, wipe cache and hard-reload
+      window.addEventListener('error', function(e) {
+        var msg = (e && e.message) ? String(e.message).toLowerCase() : '';
+        if (msg.indexOf('fetch') !== -1 || msg.indexOf('chunk') !== -1 || msg.indexOf('import') !== -1) {
+          if (!sessionStorage.getItem('pwa_recovered')) {
+            sessionStorage.setItem('pwa_recovered', '1');
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function(regs) {
+                for (var i = 0; i < regs.length; i++) regs[i].unregister();
+                if ('caches' in window) {
+                  caches.keys().then(function(keys) {
+                    for (var j = 0; j < keys.length; j++) caches.delete(keys[j]);
+                    window.location.reload(true);
+                  });
+                } else {
+                  window.location.reload(true);
+                }
+              });
+            } else {
+              window.location.reload(true);
+            }
+          }
+        }
+      });
+    </script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </head>
   <body>

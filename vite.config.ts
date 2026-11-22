@@ -70,22 +70,7 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    chunkSizeWarningLimit: 800,
-    rollupOptions: {
-      output: {
-        manualChunks(id: string) {
-          if (id.includes('node_modules')) {
-            if (id.includes('tesseract.js')) return 'vendor-ocr';
-            if (id.includes('recharts')) return 'vendor-charts';
-            if (id.includes('@zxing') || id.includes('html5-qrcode') || id.includes('jsbarcode')) return 'vendor-scanner';
-            if (id.includes('@supabase')) return 'vendor-supabase';
-            if (id.includes('firebase')) return 'vendor-firebase';
-            if (id.includes('lucide-react')) return 'vendor-icons';
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) return 'vendor-react';
-          }
-        }
-      }
-    }
+    chunkSizeWarningLimit: 1500
   },
   optimizeDeps: {
     include: ['firebase/app', 'firebase/auth', 'firebase/database']

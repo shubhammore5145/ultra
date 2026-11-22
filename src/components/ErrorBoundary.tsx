@@ -1,10 +1,11 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, ShoppingCart, Home } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface Props {
   children: ReactNode;
   fallbackTitle?: string;
+  inline?: boolean;
 }
 
 interface State {
@@ -38,6 +39,38 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.inline) {
+        return (
+          <div className="p-6 m-4 bg-card text-card-foreground border border-amber-500/30 rounded-2xl shadow-md text-center space-y-3 animate-in fade-in">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-foreground">
+                {this.props.fallbackTitle || 'Module Temporarily Unavailable'}
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                An isolated issue occurred in this section, but your store data and other tabs are completely safe.
+              </p>
+            </div>
+            {this.state.error && (
+              <div className="bg-muted/70 p-2 rounded-lg text-[11px] font-mono text-muted-foreground text-left max-h-20 overflow-y-auto max-w-lg mx-auto">
+                {this.state.error.message || 'Unknown runtime error'}
+              </div>
+            )}
+            <div className="flex justify-center gap-2 pt-1">
+              <Button 
+                size="sm" 
+                onClick={() => this.setState({ hasError: false, error: null })} 
+                className="text-xs font-bold"
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Reload Module
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
           <div className="bg-card text-card-foreground border rounded-2xl shadow-xl max-w-md w-full p-6 text-center space-y-4 animate-in fade-in duration-200">

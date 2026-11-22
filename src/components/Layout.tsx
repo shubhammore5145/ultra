@@ -4,6 +4,7 @@ import { Menu, LogOut, Bell, WifiOff, RefreshCw, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
+import { ErrorBoundary } from './ErrorBoundary';
 
 export default function Layout() {
   const { userData, shopData, logout } = useAuth();
@@ -255,7 +256,9 @@ export default function Layout() {
         {/* Main Content with Native Touch Scrolling on Mobile */}
         <main className={`flex-1 bg-background ${isPosPage ? 'md:overflow-hidden md:flex md:flex-col overflow-y-auto' : 'overflow-y-auto'} overscroll-y-contain`}>
           <div className={`${isPosPage ? 'p-2 sm:p-3 md:p-4 md:pb-4 max-w-[1600px] md:h-full md:flex md:flex-col min-h-0' : 'p-3 sm:p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1`}>
-            <Outlet />
+            <ErrorBoundary inline fallbackTitle="Screen Module Recovered">
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>

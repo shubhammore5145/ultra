@@ -60,7 +60,12 @@ export function getLocalRecycleBin(): RecycleBinItemStorage {
 
 export function saveLocalRecycleBin(data: RecycleBinItemStorage) {
   try {
-    localStorage.setItem(RECYCLE_BIN_STORAGE_KEY, JSON.stringify(data));
+    const capped: RecycleBinItemStorage = {
+      products: Array.isArray(data.products) ? data.products.slice(0, 200) : [],
+      transactions: Array.isArray(data.transactions) ? data.transactions.slice(0, 200) : [],
+      customers: Array.isArray(data.customers) ? data.customers.slice(0, 200) : []
+    };
+    localStorage.setItem(RECYCLE_BIN_STORAGE_KEY, JSON.stringify(capped));
   } catch (e) {
     console.warn('Failed to save recycle bin to localStorage:', e);
   }
@@ -121,7 +126,8 @@ export function getLocalDamagedGoods(shopId?: string): DamagedItem[] {
 
 export function saveLocalDamagedGoods(items: DamagedItem[], shopId?: string) {
   try {
-    localStorage.setItem(`dmart_damaged_${shopId || getShopId() || 'default'}`, JSON.stringify(items));
+    const list = Array.isArray(items) ? items.slice(0, 500) : [];
+    localStorage.setItem(`dmart_damaged_${shopId || getShopId() || 'default'}`, JSON.stringify(list));
   } catch {}
 }
 
@@ -155,7 +161,7 @@ export function saveLocalSalesReturn(ret: SalesReturn, shopId?: string) {
   try {
     const list = getLocalSalesReturns(shopId);
     list.unshift(ret);
-    localStorage.setItem(`dmart_returns_${shopId || getShopId() || 'default'}`, JSON.stringify(list));
+    localStorage.setItem(`dmart_returns_${shopId || getShopId() || 'default'}`, JSON.stringify(list.slice(0, 500)));
   } catch {}
 }
 
@@ -172,11 +178,17 @@ export function saveLocalCashCounterClosing(closing: CashCounterClosing, shopId?
   try {
     const list = getLocalCashCounterClosings(shopId);
     list.unshift(closing);
-    localStorage.setItem(`dmart_shift_close_${shopId || getShopId() || 'default'}`, JSON.stringify(list));
+    localStorage.setItem(`dmart_shift_close_${shopId || getShopId() || 'default'}`, JSON.stringify(list.slice(0, 365)));
   } catch {}
 }
 
 // Direct Supabase Fallback when backend is unreachable or on serverless
+let _productsCache: { data: any[]; timestamp: number; shopId: string | null } | null = null;
+
+export function invalidateProductsCache() {
+  _productsCache = null;
+}
+
 async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Promise<any> {
   const method = (options.method || 'GET').toUpperCase();
   const shopId = getShopId();
@@ -184,6 +196,12 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
   // 1. Products
   if (endpoint.startsWith('/products')) {
     if (method === 'GET') {
+      const now = Date.now();
+      // Fast memory microcache (15 seconds TTL) to slash Supabase database read load
+      if (_productsCache && (now - _productsCache.timestamp < 15000) && _productsCache.shopId === shopId) {
+        return _productsCache.data;
+      }
+
       const q = supabase.from('products').select('*').order('name', { ascending: true });
       const { data, error } = shopId ? await q.eq('shopId', shopId) : await q;
       if (error) throw new Error(error.message);
@@ -191,12 +209,20 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const deletedIds = new Set(localBin.products.map(p => p.id));
       const activeProducts = (data || []).filter((p: any) => !p.isDeleted && !deletedIds.has(p.id));
       const meta = getLocalProductMeta(shopId);
-      return activeProducts.map((p: any) => ({
+      const mapped = activeProducts.map((p: any) => ({
         ...p,
         ...(meta[p.id] || {})
       }));
+
+      _productsCache = {
+        data: mapped,
+        timestamp: now,
+        shopId
+      };
+      return mapped;
     }
     if (method === 'POST') {
+      invalidateProductsCache();
       const body = JSON.parse(options.body as string);
       if (body.wholesalePrice !== undefined || body.rackLocation !== undefined || body.reorderQty !== undefined || body.bulkMinQty !== undefined || body.bulkPrice !== undefined || body.maxStock !== undefined) {
         saveLocalProductMeta(body.id, {
@@ -256,9 +282,11 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       if (!row.shopId && shopId) row.shopId = shopId;
       const { data, error } = await supabase.from('products').update(row).eq('id', id);
       if (error) throw new Error(error.message);
+      invalidateProductsCache();
       return { success: true, data };
     }
     if (method === 'DELETE') {
+      invalidateProductsCache();
       const id = endpoint.split('/products/')[1];
       try {
         const { data: existing } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
@@ -378,19 +406,27 @@ async function fallbackSupabase(endpoint: string, options: RequestInit = {}): Pr
       const { data, error } = await supabase.from('transactions').insert(txRow);
       if (error) throw new Error(error.message);
 
-      // Reduce product stock in Supabase directly
-      if (Array.isArray(body.items)) {
-        for (const item of body.items) {
-          if (item.id && item.qty) {
-            try {
+      // Fast parallel stock reduction with atomic decrement (RPC shield + fallback)
+      if (Array.isArray(body.items) && body.items.length > 0) {
+        const stockPromises = body.items.map(async (item: any) => {
+          if (!item.id || !item.qty) return;
+          try {
+            // 1. Try atomic database RPC (1 roundtrip, race-condition free)
+            const { error: rpcErr } = await supabase.rpc('decrement_stock', {
+              p_product_id: item.id,
+              p_qty: Number(item.qty)
+            });
+            if (rpcErr) {
+              // 2. Direct fallback if RPC is not yet registered
               const { data: prod } = await supabase.from('products').select('stock').eq('id', item.id).single();
               if (prod) {
                 const newStock = Math.max(0, (Number(prod.stock) || 0) - Number(item.qty));
                 await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
               }
-            } catch (e) {}
-          }
-        }
+            }
+          } catch (e) {}
+        });
+        await Promise.allSettled(stockPromises);
       }
 
       // Update customer balance if udhar

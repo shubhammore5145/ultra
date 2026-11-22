@@ -316,31 +316,44 @@ export function WholesalerBillScannerModal({
           let rate = 0;
           let mrp = 0;
 
-          const possibleQty = numFloats.find(n => Number.isInteger(n) && n > 0 && n <= 500);
+          // Detect potential HSN code (4, 6 or 8 digit integer >= 1000 without decimals)
+          const possibleHsn = numFloats.find(n => Number.isInteger(n) && n >= 1000 && n <= 99999999);
+          const detectedHsn = possibleHsn ? String(possibleHsn) : '';
+
+          // Filter out HSN codes and huge numbers (> 50000) from price/qty candidates
+          const validNums = numFloats.filter(n => n > 0 && n !== possibleHsn && n <= 50000);
+
+          // Find plausible QTY (small integer, usually 1 to 200)
+          const possibleQty = validNums.find(n => Number.isInteger(n) && n > 0 && n <= 250);
           if (possibleQty) qty = possibleQty;
 
-          const possibleRate = numFloats.find(n => n > 2 && n !== qty);
+          // Find plausible wholesale rate (prefer numbers with decimals or reasonable range 1 - 2500)
+          const possibleRate = validNums.find(n => n > 0.5 && n !== qty && (n <= 2500 || n.toString().includes('.')));
           if (possibleRate) rate = possibleRate;
 
-          const possibleMrp = numFloats.find(n => n >= rate && n !== qty && n !== (qty * rate));
+          // Find plausible MRP
+          const possibleMrp = validNums.find(n => n >= rate && n !== qty && n !== (qty * rate));
           if (possibleMrp) mrp = possibleMrp;
-          else mrp = Math.round(rate * 1.2);
+          else mrp = Math.round((rate || 50) * 1.2);
 
           const matched = findMatchingProduct(textParts);
+          const finalRate = rate > 0 ? rate : (matched?.purchasePrice || 50);
+          const finalMrp = mrp > 0 ? mrp : (matched?.mrp || Math.round(finalRate * 1.2));
+          const finalSelling = matched?.sellingPrice || finalMrp || Number((finalRate * 1.15).toFixed(2));
 
           extracted.push({
             id: crypto.randomUUID(),
             name: textParts,
             matchedProductId: matched ? matched.id : '',
-            hsn: '',
+            hsn: detectedHsn,
             qty: qty,
             unit: matched?.unit || 'pcs',
-            purchasePrice: rate > 0 ? rate : (matched?.purchasePrice || 50),
-            mrp: mrp > 0 ? mrp : (matched?.mrp || (rate * 1.2)),
-            sellingPrice: matched?.sellingPrice || mrp || Number((rate * 1.15).toFixed(2)),
+            purchasePrice: finalRate,
+            mrp: finalMrp,
+            sellingPrice: finalSelling,
             gstPercent: 5,
             discount: 0,
-            total: Number((qty * rate).toFixed(2)),
+            total: Number((qty * finalRate).toFixed(2)),
             isNewProduct: !matched
           });
         }
@@ -647,37 +660,42 @@ export function WholesalerBillScannerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-200">
-      <div className="bg-card text-card-foreground border shadow-2xl rounded-2xl w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-slate-900 text-slate-100 border border-slate-700 shadow-2xl rounded-2xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* MODAL HEADER */}
-        <div className="p-4 sm:p-5 border-b flex justify-between items-center bg-gradient-to-r from-emerald-600/10 via-teal-600/10 to-primary/10">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-sm">
+        <div className="p-4 sm:p-5 border-b border-slate-800 flex justify-between items-center bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900">
+          <div className="flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-950">
               <Camera className="h-6 w-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black text-foreground">
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
                   Wholesaler Bill Scanner & Auto Stock-In
                 </h2>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white tracking-wider">
+                <span className="text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 tracking-wider">
                   AI OCR
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-xs text-slate-300 font-medium mt-0.5">
                 Scan or upload wholesale tax invoices to auto-import line items, update stock, and record purchases.
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onClose} 
+            className="rounded-full text-slate-400 hover:text-white hover:bg-slate-800 h-9 w-9"
+          >
             <X className="h-5 w-5" />
           </Button>
         </div>
 
         {/* TOP ACTION BAR: CAPTURE / UPLOAD / SAMPLE DEMO */}
-        <div className="p-3 sm:p-4 border-b bg-muted/40 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-950/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Camera Capture on Phone/Device */}
             <input 
               type="file" 
@@ -690,10 +708,10 @@ export function WholesalerBillScannerModal({
             <Button
               size="sm"
               onClick={() => cameraInputRef.current?.click()}
-              className="font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+              className="font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950 h-9 px-4 text-xs"
               disabled={isProcessing}
             >
-              <Camera className="h-4 w-4 mr-1.5" />
+              <Camera className="h-4 w-4 mr-2" />
               Capture Bill Photo
             </Button>
 
@@ -709,10 +727,10 @@ export function WholesalerBillScannerModal({
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="font-bold border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
+              className="font-bold bg-slate-800 hover:bg-slate-700 text-white border-slate-600 h-9 px-4 text-xs"
               disabled={isProcessing}
             >
-              <Upload className="h-4 w-4 mr-1.5" />
+              <Upload className="h-4 w-4 mr-2 text-slate-300" />
               Upload Invoice File
             </Button>
 
@@ -721,28 +739,28 @@ export function WholesalerBillScannerModal({
               variant="outline"
               size="sm"
               onClick={loadDemoInvoice}
-              className="font-bold border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50"
+              className="font-bold bg-purple-950/40 hover:bg-purple-900/50 text-purple-200 border-purple-500/40 h-9 px-4 text-xs"
               title="Load sample wholesale tax invoice (BY TAG ENTERPRISES)"
             >
-              <Sparkles className="h-4 w-4 mr-1.5 text-purple-600" />
+              <Sparkles className="h-4 w-4 mr-2 text-purple-400" />
               Load Sample: TAG Enterprises (9 Items)
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {rawOcrText && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowRawText(!showRawText)}
-                className="text-xs text-muted-foreground"
+                className="text-xs text-slate-300 hover:text-white hover:bg-slate-800 h-8"
               >
                 {showRawText ? 'Hide Raw Text' : 'View Raw OCR Text'}
               </Button>
             )}
             {imagePreview && (
-              <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Image Loaded
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Image Loaded
               </span>
             )}
           </div>
@@ -750,16 +768,16 @@ export function WholesalerBillScannerModal({
 
         {/* OCR PROCESSING PROGRESS BAR */}
         {isProcessing && (
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border-b border-emerald-200 dark:border-emerald-800 flex items-center gap-3 animate-pulse">
-            <Loader2 className="h-5 w-5 text-emerald-600 animate-spin shrink-0" />
-            <div className="flex-1 space-y-1">
-              <div className="flex justify-between text-xs font-bold text-emerald-900 dark:text-emerald-200">
+          <div className="p-3 bg-emerald-950/70 border-b border-emerald-800 flex items-center gap-3 animate-pulse">
+            <Loader2 className="h-5 w-5 text-emerald-400 animate-spin shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="flex justify-between text-xs font-bold text-emerald-200">
                 <span>{ocrStatusText || 'Reading invoice document...'}</span>
                 <span>{ocrProgress}%</span>
               </div>
-              <div className="w-full bg-emerald-200/60 dark:bg-emerald-900 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-emerald-800">
                 <div 
-                  className="bg-emerald-600 h-full transition-all duration-200 rounded-full" 
+                  className="bg-emerald-500 h-full transition-all duration-200 rounded-full" 
                   style={{ width: `${ocrProgress}%` }}
                 />
               </div>
@@ -769,8 +787,8 @@ export function WholesalerBillScannerModal({
 
         {/* RAW OCR TEXT DRAWER (OPTIONAL) */}
         {showRawText && rawOcrText && (
-          <div className="p-3 bg-muted border-b text-xs max-h-32 overflow-y-auto font-mono whitespace-pre-wrap">
-            <div className="font-bold text-muted-foreground mb-1">Scanned Raw OCR Text:</div>
+          <div className="p-3 bg-slate-950 border-b border-slate-800 text-xs max-h-36 overflow-y-auto font-mono whitespace-pre-wrap text-slate-300">
+            <div className="font-bold text-emerald-400 mb-1">Scanned Raw OCR Text:</div>
             {rawOcrText}
           </div>
         )}
@@ -779,24 +797,26 @@ export function WholesalerBillScannerModal({
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-5">
           
           {/* STEP 1: WHOLESALER & INVOICE DETAILS CARD (EDITABLE) */}
-          <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-dashed">
-              <span className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="h-4 w-4" /> 1. Wholesaler & Invoice Details
+          <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-4 sm:p-4.5 space-y-3.5 shadow-md">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-700/80">
+              <span className="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-emerald-400" /> 1. Wholesaler & Invoice Details
               </span>
-              <span className="text-[11px] text-muted-foreground font-medium">All fields are editable</span>
+              <span className="text-xs text-slate-300 font-semibold bg-slate-900/90 px-3 py-1 rounded-full border border-slate-700">
+                All fields are editable
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               {/* Supplier Selection or Auto Name */}
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">Supplier / Wholesaler:</Label>
-                <div className="space-y-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-200">Supplier / Wholesaler:</Label>
+                <div className="space-y-1.5">
                   <Input 
                     value={supplierName} 
                     placeholder="e.g. BY TAG ENTERPRISES"
                     onChange={(e) => setSupplierName(e.target.value)}
-                    className="font-bold text-xs h-9 bg-background"
+                    className="font-bold text-xs h-9 bg-slate-950 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-lg"
                   />
                   {suppliers.length > 0 && (
                     <select
@@ -811,7 +831,7 @@ export function WholesalerBillScannerModal({
                           if (s.address) setSupplierAddress(s.address);
                         }
                       }}
-                      className="w-full text-[11px] h-7 px-2 rounded border border-border bg-background text-muted-foreground"
+                      className="w-full text-xs h-8 px-2.5 rounded-lg border border-slate-600 bg-slate-950 text-slate-200 focus:border-emerald-400 font-medium"
                     >
                       <option value="">-- Link Existing Supplier --</option>
                       {suppliers.map(s => (
@@ -823,30 +843,30 @@ export function WholesalerBillScannerModal({
               </div>
 
               {/* Invoice Number */}
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">Invoice / Bill Number:</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-200">Invoice / Bill Number:</Label>
                 <Input 
                   value={invoiceNumber} 
                   placeholder="e.g. 26272773"
                   onChange={(e) => setInvoiceNumber(e.target.value)}
-                  className="font-mono font-bold text-xs h-9 bg-background"
+                  className="font-mono font-bold text-xs h-9 bg-slate-950 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-lg"
                 />
               </div>
 
               {/* Bill Date */}
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">Bill Date:</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-200">Bill Date:</Label>
                 <Input 
                   type="date"
                   value={invoiceDate} 
                   onChange={(e) => setInvoiceDate(e.target.value)}
-                  className="text-xs h-9 bg-background"
+                  className="text-xs h-9 bg-slate-950 border-slate-600 text-white focus:border-emerald-400 rounded-lg font-medium"
                 />
               </div>
 
               {/* Supplier Contact / GST */}
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-foreground">GSTIN / Phone:</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-200">GSTIN / Phone:</Label>
                 <Input 
                   value={supplierGst || supplierPhone} 
                   placeholder="27BNMPA0018G1ZH / 8177943495"
@@ -854,21 +874,21 @@ export function WholesalerBillScannerModal({
                     if (e.target.value.length === 15) setSupplierGst(e.target.value);
                     else setSupplierPhone(e.target.value);
                   }}
-                  className="text-xs h-9 font-mono bg-background"
+                  className="text-xs h-9 font-mono bg-slate-950 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-lg"
                 />
               </div>
             </div>
           </div>
 
           {/* STEP 2: EDITABLE ITEMS & PRODUCT MATCHING TABLE */}
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="h-4 w-4 text-emerald-600" />
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-emerald-400" />
                   2. Line Items & Inventory Matching ({billItems.length} Items)
                 </h3>
-                <span className="text-xs font-semibold text-muted-foreground">
+                <span className="text-xs font-medium text-slate-300">
                   (Review and edit item name, cost, selling price, and quantities)
                 </span>
               </div>
@@ -876,38 +896,38 @@ export function WholesalerBillScannerModal({
                 size="sm"
                 variant="outline"
                 onClick={addNewItemRow}
-                className="text-xs font-bold h-8 border-dashed border-primary text-primary hover:bg-primary/5"
+                className="text-xs font-bold h-8.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-500/50 rounded-lg"
               >
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add Line Item
+                <Plus className="h-4 w-4 mr-1.5 text-emerald-400" /> Add Line Item
               </Button>
             </div>
 
-            {/* Table */}
-            <div className="border rounded-2xl overflow-hidden shadow-xs bg-card">
+            {/* Table Container */}
+            <div className="border-2 border-slate-700/80 rounded-xl overflow-hidden shadow-xl bg-slate-950">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/70 text-muted-foreground font-bold border-b text-[11px] uppercase tracking-wider">
+                  <thead className="bg-slate-800 text-slate-100 font-black text-[11px] uppercase tracking-wider border-b-2 border-slate-700">
                     <tr>
-                      <th className="px-3 py-3 w-8">#</th>
-                      <th className="px-3 py-3 min-w-[200px]">Item Description</th>
-                      <th className="px-3 py-3 min-w-[180px]">Inventory Match</th>
-                      <th className="px-2 py-3 w-16 text-center">Qty</th>
-                      <th className="px-2 py-3 w-24 text-right">Cost Price (CP)</th>
-                      <th className="px-2 py-3 w-20 text-right">MRP</th>
-                      <th className="px-2 py-3 w-24 text-right">Selling Price (SP)</th>
-                      <th className="px-2 py-3 w-28 text-center">Profit / Margin</th>
-                      <th className="px-3 py-3 w-24 text-right">Total Amount</th>
-                      <th className="px-2 py-3 w-8 text-center"></th>
+                      <th className="px-3 py-3.5 w-10 text-center">#</th>
+                      <th className="px-3.5 py-3.5 min-w-[220px]">Item Description</th>
+                      <th className="px-3.5 py-3.5 min-w-[200px]">Inventory Match</th>
+                      <th className="px-2.5 py-3.5 w-20 text-center">Qty</th>
+                      <th className="px-2.5 py-3.5 w-28 text-right">Cost Price (CP)</th>
+                      <th className="px-2.5 py-3.5 w-24 text-right">MRP</th>
+                      <th className="px-2.5 py-3.5 w-28 text-right">Selling Price (SP)</th>
+                      <th className="px-2.5 py-3.5 w-32 text-center">Profit / Margin</th>
+                      <th className="px-3 py-3.5 w-28 text-right">Total Amount</th>
+                      <th className="px-2 py-3.5 w-10 text-center"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody className="divide-y divide-slate-800">
                     {billItems.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">
-                          <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-30 text-emerald-600" />
-                          <p className="font-bold text-sm text-foreground">No line items loaded yet</p>
-                          <p className="text-xs mt-1">
-                            Use "Capture Bill Photo", "Upload Invoice File", or "Load Sample" to begin.
+                        <td colSpan={10} className="px-4 py-14 text-center text-slate-400">
+                          <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-40 text-emerald-400" />
+                          <p className="font-bold text-sm text-white">No line items loaded yet</p>
+                          <p className="text-xs mt-1 text-slate-400">
+                            Use "Capture Bill Photo", "Upload Invoice File", or "Load Sample" above to begin.
                           </p>
                         </td>
                       </tr>
@@ -918,36 +938,36 @@ export function WholesalerBillScannerModal({
                         const matchedProduct = products.find(p => p.id === item.matchedProductId);
 
                         return (
-                          <tr key={item.id} className="hover:bg-muted/40 transition-colors">
+                          <tr key={item.id} className="hover:bg-slate-900/90 transition-colors">
                             {/* # */}
-                            <td className="px-3 py-2.5 font-bold text-muted-foreground">
+                            <td className="px-3 py-3 font-bold text-center text-slate-400">
                               {idx + 1}
                             </td>
 
                             {/* Item Name */}
-                            <td className="px-3 py-2.5">
+                            <td className="px-3.5 py-3">
                               <Input
                                 value={item.name}
                                 onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
-                                className="h-8 text-xs font-bold bg-background"
+                                className="h-9 text-xs font-bold bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-lg"
                                 placeholder="Product description"
                               />
                               {item.hsn && (
-                                <span className="text-[10px] font-mono text-muted-foreground mt-0.5 block">
+                                <span className="text-[11px] font-mono text-slate-400 mt-1 block">
                                   HSN: {item.hsn}
                                 </span>
                               )}
                             </td>
 
                             {/* Inventory Match Dropdown */}
-                            <td className="px-3 py-2.5">
+                            <td className="px-3.5 py-3">
                               <select
                                 value={item.matchedProductId}
                                 onChange={(e) => updateItemField(item.id, 'matchedProductId', e.target.value)}
-                                className={`w-full h-8 text-xs font-semibold rounded-lg border px-2 bg-background ${
+                                className={`w-full h-9 text-xs font-bold rounded-lg border px-2.5 bg-slate-900 focus:border-emerald-400 ${
                                   matchedProduct 
-                                    ? 'border-emerald-400 text-emerald-800 dark:text-emerald-300' 
-                                    : 'border-amber-400 text-amber-800 dark:text-amber-300'
+                                    ? 'border-emerald-500/60 bg-emerald-950/40 text-emerald-300' 
+                                    : 'border-amber-500/60 bg-amber-950/30 text-amber-300'
                                 }`}
                               >
                                 <option value="">🆕 Create New Product in Catalog</option>
@@ -957,13 +977,13 @@ export function WholesalerBillScannerModal({
                                   </option>
                                 ))}
                               </select>
-                              <div className="mt-0.5 text-[10px]">
+                              <div className="mt-1 text-[11px]">
                                 {matchedProduct ? (
-                                  <span className="text-emerald-600 font-semibold">
-                                    Stock: {matchedProduct.stock} ➔ <strong className="text-emerald-700">+{item.qty} ({Number(matchedProduct.stock || 0) + Number(item.qty)})</strong>
+                                  <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                    Stock: {matchedProduct.stock} ➔ <strong className="text-emerald-300">+{item.qty} ({Number(matchedProduct.stock || 0) + Number(item.qty)})</strong>
                                   </span>
                                 ) : (
-                                  <span className="text-amber-600 font-semibold">
+                                  <span className="text-amber-400 font-bold">
                                     Will create new catalog item (Stock: {item.qty})
                                   </span>
                                 )}
@@ -971,91 +991,91 @@ export function WholesalerBillScannerModal({
                             </td>
 
                             {/* Qty */}
-                            <td className="px-2 py-2.5 text-center">
+                            <td className="px-2.5 py-3 text-center">
                               <Input
                                 type="number"
                                 min="1"
                                 value={item.qty}
                                 onChange={(e) => updateItemField(item.id, 'qty', parseFloat(e.target.value) || 1)}
-                                className="h-8 text-xs font-black text-center bg-background text-primary"
+                                className="h-9 text-xs font-black text-center bg-slate-900 border-slate-700 text-white font-mono rounded-lg focus:border-emerald-400"
                               />
-                              <span className="text-[10px] text-muted-foreground uppercase">{item.unit || 'pcs'}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 block">{item.unit || 'pcs'}</span>
                             </td>
 
                             {/* Purchase Price (CP) */}
-                            <td className="px-2 py-2.5 text-right">
+                            <td className="px-2.5 py-3 text-right">
                               <div className="relative">
-                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[11px]">₹</span>
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
                                 <Input
                                   type="number"
                                   step="0.01"
                                   value={item.purchasePrice}
                                   onChange={(e) => updateItemField(item.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
-                                  className="h-8 pl-4 text-xs font-bold text-right bg-background"
+                                  className="h-9 pl-5 pr-2 text-xs font-bold text-right bg-slate-900 border-slate-700 text-white font-mono rounded-lg focus:border-emerald-400"
                                 />
                               </div>
                             </td>
 
                             {/* MRP */}
-                            <td className="px-2 py-2.5 text-right">
+                            <td className="px-2.5 py-3 text-right">
                               <div className="relative">
-                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground font-medium text-[10px]">₹</span>
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
                                 <Input
                                   type="number"
                                   step="0.01"
                                   value={item.mrp || ''}
                                   onChange={(e) => updateItemField(item.id, 'mrp', parseFloat(e.target.value) || 0)}
-                                  className="h-8 pl-4 text-xs font-medium text-right bg-background text-muted-foreground"
+                                  className="h-9 pl-5 pr-2 text-xs font-bold text-right bg-slate-900 border-slate-700 text-slate-300 font-mono rounded-lg focus:border-emerald-400"
                                   placeholder="0"
                                 />
                               </div>
                             </td>
 
                             {/* Selling Price (Retail SP) */}
-                            <td className="px-2 py-2.5 text-right">
+                            <td className="px-2.5 py-3 text-right">
                               <div className="relative">
-                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-emerald-600 font-bold text-[11px]">₹</span>
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-xs">₹</span>
                                 <Input
                                   type="number"
                                   step="0.01"
                                   value={item.sellingPrice}
                                   onChange={(e) => updateItemField(item.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
-                                  className="h-8 pl-4 text-xs font-black text-right bg-background text-emerald-600 dark:text-emerald-400 border-emerald-400"
+                                  className="h-9 pl-5 pr-2 text-xs font-black text-right bg-slate-900 border-2 border-emerald-500 text-emerald-300 font-mono rounded-lg focus:ring-1 focus:ring-emerald-400"
                                 />
                               </div>
                             </td>
 
                             {/* Live Margin / Profit */}
-                            <td className="px-2 py-2.5 text-center whitespace-nowrap">
+                            <td className="px-2.5 py-3 text-center whitespace-nowrap">
                               {profit > 0 ? (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                  <TrendingUp className="h-3 w-3 text-emerald-600" />
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  <TrendingUp className="h-3 w-3 text-emerald-400" />
                                   +₹{profit.toFixed(1)} ({marginPercent.toFixed(0)}%)
                                 </span>
                               ) : profit < 0 ? (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/40">
                                   -₹{Math.abs(profit).toFixed(1)} (Loss)
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-muted-foreground">—</span>
+                                <span className="text-xs text-slate-500 font-semibold">—</span>
                               )}
                             </td>
 
                             {/* Line Total */}
-                            <td className="px-3 py-2.5 text-right font-black text-foreground">
+                            <td className="px-3 py-3 text-right font-black text-white text-xs font-mono">
                               ₹{(item.qty * item.purchasePrice).toFixed(2)}
                             </td>
 
                             {/* Delete Button */}
-                            <td className="px-2 py-2.5 text-center">
+                            <td className="px-2 py-3 text-center">
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeItem(item.id)}
-                                className="h-7 w-7 text-muted-foreground hover:text-rose-600 rounded-lg"
+                                className="h-8 w-8 text-slate-400 hover:text-rose-400 hover:bg-rose-500/20 rounded-lg"
                                 title="Remove item"
                               >
-                                <Trash className="h-3.5 w-3.5" />
+                                <Trash className="h-4 w-4" />
                               </Button>
                             </td>
                           </tr>
@@ -1070,16 +1090,16 @@ export function WholesalerBillScannerModal({
 
           {/* STEP 3: FINANCIAL TOTALS & PAYMENT DETAILS */}
           {billItems.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-              {/* Payment Details */}
-              <div className="bg-muted/30 border rounded-2xl p-4 space-y-3">
-                <span className="text-xs font-bold text-foreground uppercase tracking-wider block">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
+              {/* Payment Details Card */}
+              <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-4 sm:p-5 space-y-3.5 shadow-md">
+                <span className="text-xs font-black text-white uppercase tracking-wider block border-b border-slate-700 pb-2">
                   3. Settlement & Payment
                 </span>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold">Payment Status:</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-200">Payment Status:</Label>
                     <select
                       value={paymentStatus}
                       onChange={(e: any) => {
@@ -1088,7 +1108,7 @@ export function WholesalerBillScannerModal({
                         if (st === 'paid') setPaidAmount(finalPayable.toString());
                         if (st === 'unpaid') setPaidAmount('0');
                       }}
-                      className="w-full h-9 rounded-md border border-input bg-background px-2.5 text-xs font-semibold"
+                      className="w-full h-9 rounded-lg border border-slate-600 bg-slate-950 px-2.5 text-xs font-bold text-white focus:border-emerald-400"
                     >
                       <option value="paid">Paid in Full</option>
                       <option value="partial">Partially Paid</option>
@@ -1096,29 +1116,29 @@ export function WholesalerBillScannerModal({
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold">Amount Paid:</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-200">Amount Paid:</Label>
                     <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">₹</span>
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
                       <Input
                         type="number"
                         step="0.01"
                         value={paidAmount}
                         onChange={(e) => setPaidAmount(e.target.value)}
-                        className="pl-6 h-9 text-xs font-bold bg-background"
+                        className="pl-6 h-9 text-xs font-bold bg-slate-950 border-slate-600 text-emerald-300 font-mono rounded-lg focus:border-emerald-400"
                         placeholder="0.00"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium text-muted-foreground">Payment Method:</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-200">Payment Method:</Label>
                     <select
                       value={paymentMode}
                       onChange={(e) => setPaymentMode(e.target.value)}
-                      className="w-full h-9 rounded-md border border-input bg-background px-2.5 text-xs"
+                      className="w-full h-9 rounded-lg border border-slate-600 bg-slate-950 px-2.5 text-xs font-semibold text-white focus:border-emerald-400"
                     >
                       <option value="cash">💵 Cash</option>
                       <option value="upi">📱 UPI / QR</option>
@@ -1126,71 +1146,73 @@ export function WholesalerBillScannerModal({
                       <option value="cheque">📝 Cheque</option>
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium text-muted-foreground">Remarks / Notes:</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-200">Remarks / Notes:</Label>
                     <Input
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder="e.g. Paid via PhonePe / Cheque"
-                      className="h-9 text-xs bg-background"
+                      className="h-9 text-xs bg-slate-950 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-lg"
                     />
                   </div>
                 </div>
 
                 {parseFloat(paidAmount) < finalPayable && (
-                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-semibold flex justify-between items-center">
+                  <div className="p-3 bg-amber-950/60 border border-amber-500/50 rounded-xl text-xs text-amber-200 font-bold flex justify-between items-center shadow-xs">
                     <span>Pending Dealer Credit:</span>
-                    <strong className="text-rose-600 dark:text-rose-400 font-black">
+                    <strong className="text-rose-400 font-black text-sm">
                       ₹{(finalPayable - (parseFloat(paidAmount) || 0)).toFixed(2)}
                     </strong>
                   </div>
                 )}
               </div>
 
-              {/* Bill Totals Summary */}
-              <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-primary/5 border-2 border-emerald-500/30 rounded-2xl p-4 flex flex-col justify-between">
+              {/* Bill Totals Summary Card */}
+              <div className="bg-gradient-to-br from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/50 rounded-xl p-5 flex flex-col justify-between shadow-2xl space-y-4">
                 <div>
-                  <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wider block mb-2">
+                  <span className="text-xs font-black text-emerald-400 uppercase tracking-widest block mb-3">
                     Purchase Summary
                   </span>
                   
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Total Items / Qty:</span>
-                      <span className="font-bold text-foreground">
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="font-medium">Total Items / Qty:</span>
+                      <span className="font-black text-white text-sm">
                         {billItems.length} items ({billItems.reduce((acc, it) => acc + (it.qty || 1), 0)} qty)
                       </span>
                     </div>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Subtotal (Gross Cost):</span>
-                      <span className="font-semibold text-foreground">₹{subtotal.toFixed(2)}</span>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="font-medium">Subtotal (Gross Cost):</span>
+                      <span className="font-bold text-white font-mono text-sm">₹{subtotal.toFixed(2)}</span>
                     </div>
                     {totalGst > 0 && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>GST / Tax:</span>
-                        <span className="font-semibold text-foreground">+₹{totalGst.toFixed(2)}</span>
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span className="font-medium">GST / Tax:</span>
+                        <span className="font-bold text-emerald-400 font-mono text-sm">+₹{totalGst.toFixed(2)}</span>
                       </div>
                     )}
                     {roundOff !== 0 && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Round Off:</span>
-                        <span className="font-semibold text-foreground">{roundOff > 0 ? `+₹${roundOff}` : `-₹${Math.abs(roundOff)}`}</span>
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span className="font-medium">Round Off:</span>
+                        <span className="font-semibold text-slate-300 font-mono">{roundOff > 0 ? `+₹${roundOff}` : `-₹${Math.abs(roundOff)}`}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-border/80 mt-3 flex justify-between items-center">
+                <div className="pt-3.5 border-t-2 border-emerald-500/30 flex justify-between items-end">
                   <div>
-                    <span className="text-xs font-extrabold uppercase text-muted-foreground">Net Payable:</span>
-                    <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
+                    <span className="text-xs font-black uppercase text-emerald-300 tracking-wider block mb-0.5">
+                      Net Payable:
+                    </span>
+                    <p className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono drop-shadow-md">
                       ₹{finalPayable.toFixed(2)}
                     </p>
                   </div>
 
-                  <div className="text-right text-xs">
-                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2.5 py-1 rounded-lg">
-                      <Check className="h-3.5 w-3.5" />
+                  <div className="text-right">
+                    <span className="inline-flex items-center gap-1.5 font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-3 py-1.5 rounded-lg text-xs">
+                      <Check className="h-4 w-4 text-emerald-400" />
                       {billItems.filter(i => i.isNewProduct).length} New Products
                     </span>
                   </div>
@@ -1201,21 +1223,21 @@ export function WholesalerBillScannerModal({
         </div>
 
         {/* MODAL FOOTER ACTIONS */}
-        <div className="p-4 border-t bg-muted/30 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+        <div className="p-4 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-xs text-slate-300 flex items-center gap-2 font-medium">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
             <span>
-              Saving will automatically <strong>increase stock</strong>, <strong>update cost & selling rates</strong>, and record invoice.
+              Saving will automatically <strong className="text-white">increase stock</strong>, <strong className="text-white">update cost & selling rates</strong>, and record invoice.
             </span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
               disabled={isSubmitting}
-              className="w-1/3 sm:w-auto font-bold text-xs h-11"
+              className="w-1/3 sm:w-auto font-bold text-xs h-11 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600 rounded-xl"
             >
               Cancel
             </Button>
@@ -1224,7 +1246,7 @@ export function WholesalerBillScannerModal({
               type="button"
               onClick={handleConfirmStockIn}
               disabled={isSubmitting || billItems.length === 0}
-              className="w-2/3 sm:w-auto font-black text-sm h-11 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg px-6"
+              className="w-2/3 sm:w-auto font-black text-sm h-11 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-950 px-8 rounded-xl flex items-center gap-2"
             >
               {isSubmitting ? (
                 <>

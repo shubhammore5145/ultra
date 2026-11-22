@@ -23,14 +23,14 @@ import {
 } from 'firebase/database';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDQYsUZPOuBH_CwvOZXh-u0o1WA8x6oeuY",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "shopastra-6c0c3.firebaseapp.com",
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://shopastra-6c0c3-default-rtdb.firebaseio.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "shopastra-6c0c3",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "shopastra-6c0c3.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "834065478775",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:834065478775:web:2589fb86f95be9c9658272",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-892MV90DME"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();

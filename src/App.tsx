@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { PlanProvider } from './contexts/PlanContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/Layout';
 
 // ── Lazy-loaded Route Components for Optimal Initial Page Load (<500ms) ─────

@@ -65,6 +65,9 @@ export default defineConfig({
       }
     }
   },
+  oxc: {
+    pure: ['console.log', 'console.debug', 'console.info']
+  },
   build: {
     target: 'esnext',
     chunkSizeWarningLimit: 800,

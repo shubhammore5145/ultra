@@ -158,6 +158,23 @@ CREATE INDEX IF NOT EXISTS idx_udhar_customer_id ON udhar_transactions ("custome
 CREATE INDEX IF NOT EXISTS idx_expenses_shop_date ON expenses ("shopId", date DESC);
 CREATE INDEX IF NOT EXISTS idx_purchases_shop_date ON purchases ("shopId", "createdAt" DESC);
 
+-- ── 6. ATOMIC STORE PROCEDURES (Eliminates Race Conditions & Cuts DB Load) ───
+CREATE OR REPLACE FUNCTION decrement_stock(p_product_id TEXT, p_qty NUMERIC)
+RETURNS NUMERIC AS $$
+DECLARE
+  v_new_stock NUMERIC;
+BEGIN
+  UPDATE products 
+  SET stock = GREATEST(0, COALESCE(stock, 0) - p_qty)
+  WHERE id = p_product_id
+  RETURNING stock INTO v_new_stock;
+  
+  RETURN COALESCE(v_new_stock, 0);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION decrement_stock(TEXT, NUMERIC) TO anon, authenticated, service_role;
+
 -- ==============================================================================
--- DONE! Your Supabase database is now protected with active RLS and index shields.
+-- DONE! Your Supabase database is now protected with active RLS, index shields, and atomic procedures.
 -- ==============================================================================

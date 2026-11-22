@@ -1,15 +1,37 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ArrowLeft, Save, Loader2, RefreshCw, Camera, Wand2, Sparkles, TrendingUp, Layers, Hash } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Save, 
+  Loader2, 
+  RefreshCw, 
+  Camera, 
+  Wand2, 
+  Sparkles, 
+  TrendingUp, 
+  Layers, 
+  Hash, 
+  Mic, 
+  MicOff, 
+  Tag, 
+  Percent, 
+  Printer, 
+  Check, 
+  Search, 
+  AlertCircle,
+  PackageCheck
+} from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
 import { CameraScanner } from '../components/CameraScanner';
 import { compressImage } from '../lib/imageCompressor';
+import { INDIAN_FMCG_CATALOG, searchFMCGCatalog, findFMCGByBarcode } from '../lib/fmcgCatalog';
+import type { FMCGTemplate } from '../lib/fmcgCatalog';
 
 export default function ProductForm() {
   const { id } = useParams();
@@ -22,6 +44,15 @@ export default function ProductForm() {
   const [error, setError] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   
+  // FMCG Auto-Complete Suggestions State
+  const [fmcgSuggestions, setFmcgSuggestions] = useState<FMCGTemplate[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Voice AI Recognition State
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+
   // Form State
   const [formData, setFormData] = useState({
     name: '',
@@ -49,6 +80,17 @@ export default function ProductForm() {
   });
 
   const barcodeRef = useRef<SVGSVGElement>(null);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (isEditing && shopData?.shopId && id) {
@@ -110,12 +152,168 @@ export default function ProductForm() {
 
   const generateBarcode = () => {
     const random = Math.floor(100000000000 + Math.random() * 900000000000).toString();
-    setFormData({ ...formData, barcode: random });
+    setFormData(prev => ({ ...prev, barcode: random }));
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value } = e.target;
     setFormData((prev) => ({ ...prev, [id]: value }));
+
+    // Instant FMCG catalog search when typing product name
+    if (id === 'name') {
+      if (value.trim().length >= 2) {
+        const matches = searchFMCGCatalog(value);
+        setFmcgSuggestions(matches.slice(0, 6));
+        setShowSuggestions(matches.length > 0);
+      } else {
+        setShowSuggestions(false);
+      }
+    }
+
+    // Auto-match when typing barcode
+    if (id === 'barcode' && value.trim().length >= 8) {
+      const matched = findFMCGByBarcode(value.trim());
+      if (matched && !formData.name) {
+        applyFMCGTemplate(matched);
+      }
+    }
+  };
+
+  // Apply Pre-filled Template from FMCG Database
+  const applyFMCGTemplate = (item: FMCGTemplate) => {
+    setFormData(prev => ({
+      ...prev,
+      name: item.name,
+      category: item.category,
+      brand: item.brand,
+      unit: item.unit,
+      mrp: item.mrp.toString(),
+      purchasePrice: item.purchasePrice.toString(),
+      sellingPrice: item.sellingPrice.toString(),
+      gst: item.gst.toString(),
+      barcode: item.barcode || prev.barcode,
+      isLoose: Boolean(item.isLoose)
+    }));
+    setShowSuggestions(false);
+  };
+
+  // 1-Click Category Quick Presets
+  const applyCategoryPreset = (categoryType: 'dairy' | 'loose' | 'snacks' | 'fmcg' | 'spices') => {
+    if (categoryType === 'dairy') {
+      setFormData(prev => ({ ...prev, category: 'Dairy', unit: 'pkt', gst: '0', isLoose: false }));
+    } else if (categoryType === 'loose') {
+      setFormData(prev => ({ ...prev, category: 'Grains & Pulses', unit: 'kg', gst: '0', isLoose: true }));
+      handleAutoShortCode();
+    } else if (categoryType === 'snacks') {
+      setFormData(prev => ({ ...prev, category: 'Snacks', unit: 'pkt', gst: '18', isLoose: false }));
+    } else if (categoryType === 'fmcg') {
+      setFormData(prev => ({ ...prev, category: 'Personal Care', unit: 'pcs', gst: '18', isLoose: false }));
+    } else if (categoryType === 'spices') {
+      setFormData(prev => ({ ...prev, category: 'Spices', unit: 'pkt', gst: '5', isLoose: false }));
+    }
+  };
+
+  // 1-Click Margin Preset (Calculates Selling Price from Purchase Price)
+  const applyMarginPreset = (percentage: number) => {
+    const cost = parseFloat(formData.purchasePrice) || 0;
+    if (cost <= 0) {
+      alert('Please enter Purchase Price (Cost) first to calculate margin!');
+      return;
+    }
+    const calculatedSP = Number((cost * (1 + percentage / 100)).toFixed(2));
+    setFormData(prev => ({
+      ...prev,
+      sellingPrice: calculatedSP.toString(),
+      mrp: prev.mrp ? prev.mrp : Math.round(calculatedSP * 1.1).toString()
+    }));
+  };
+
+  // Match SP exactly to MRP
+  const matchMRP = () => {
+    if (formData.mrp) {
+      setFormData(prev => ({ ...prev, sellingPrice: prev.mrp }));
+    }
+  };
+
+  // Smart Speech-to-Product Voice Assistant
+  const handleVoiceInput = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech Recognition is supported in Google Chrome, Microsoft Edge, and Android Chrome. Please use Chrome browser.');
+      return;
+    }
+
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-IN';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setVoiceTranscript('Listening... Speak now (e.g., "Tata Salt 1kg purchase 24 sale 28 MRP 30 stock 50")');
+      };
+
+      recognition.onresult = (event: any) => {
+        const text = event.results[0][0].transcript;
+        setVoiceTranscript(`Recognized: "${text}"`);
+        parseVoiceCommand(text);
+      };
+
+      recognition.onerror = (e: any) => {
+        console.warn('Speech recognition error:', e);
+        setIsListening(false);
+        setVoiceTranscript('Voice input stopped. Try again.');
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.error(err);
+      setIsListening(false);
+    }
+  };
+
+  // Parse Voice String into Form Fields
+  const parseVoiceCommand = (text: string) => {
+    const lower = text.toLowerCase();
+    
+    // Extract numbers
+    const purchaseMatch = lower.match(/(?:purchase|cost|kharedi|buy)\s*(?:is|at|of)?\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const saleMatch = lower.match(/(?:sale|sell|selling|vikri|sp)\s*(?:is|at|of)?\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const mrpMatch = lower.match(/(?:mrp|max)\s*(?:is|at|of)?\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const stockMatch = lower.match(/(?:stock|qty|quantity)\s*(?:is|at|of)?\s*([0-9]+)/i);
+
+    // Clean name from keyword prefixes
+    let cleanName = text
+      .replace(/(?:purchase|cost|kharedi|sale|sell|selling|vikri|mrp|stock|qty|quantity)\s*[0-9]+(?:\.[0-9]+)?/gi, '')
+      .replace(/rupees|rs|inr/gi, '')
+      .trim();
+
+    if (cleanName.length > 2) {
+      setFormData(prev => ({
+        ...prev,
+        name: cleanName,
+        purchasePrice: purchaseMatch ? purchaseMatch[1] : prev.purchasePrice,
+        sellingPrice: saleMatch ? saleMatch[1] : prev.sellingPrice,
+        mrp: mrpMatch ? mrpMatch[1] : prev.mrp,
+        stock: stockMatch ? stockMatch[1] : prev.stock
+      }));
+
+      // Check if matches an FMCG catalog item
+      const matches = searchFMCGCatalog(cleanName);
+      if (matches.length > 0) {
+        applyFMCGTemplate(matches[0]);
+      }
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,8 +341,13 @@ export default function ProductForm() {
 
   const aiSuggestDetails = () => {
     if (!formData.name) return;
+    const matches = searchFMCGCatalog(formData.name);
+    if (matches.length > 0) {
+      applyFMCGTemplate(matches[0]);
+      return;
+    }
+
     const nameLower = formData.name.toLowerCase();
-    
     let suggestedCategory = formData.category;
     let suggestedBrand = formData.brand;
     let suggestedUnit = formData.unit;
@@ -152,21 +355,23 @@ export default function ProductForm() {
     if (nameLower.includes('milk') || nameLower.includes('paneer') || nameLower.includes('curd')) {
       suggestedCategory = 'Dairy';
       suggestedUnit = nameLower.includes('milk') ? 'ltr' : 'kg';
-    } else if (nameLower.includes('rice') || nameLower.includes('daal') || nameLower.includes('dal')) {
+    } else if (nameLower.includes('rice') || nameLower.includes('daal') || nameLower.includes('dal') || nameLower.includes('atta') || nameLower.includes('flour')) {
       suggestedCategory = 'Grains & Pulses';
       suggestedUnit = 'kg';
     } else if (nameLower.includes('soap') || nameLower.includes('shampoo')) {
       suggestedCategory = 'Personal Care';
       suggestedUnit = 'pcs';
-    } else if (nameLower.includes('chips') || nameLower.includes('biscuit')) {
+    } else if (nameLower.includes('chips') || nameLower.includes('biscuit') || nameLower.includes('noodle')) {
       suggestedCategory = 'Snacks';
-      suggestedUnit = 'pcs';
+      suggestedUnit = 'pkt';
     }
 
     if (nameLower.includes('amul')) suggestedBrand = 'Amul';
     else if (nameLower.includes('tata')) suggestedBrand = 'Tata';
     else if (nameLower.includes('britannia')) suggestedBrand = 'Britannia';
     else if (nameLower.includes('parle')) suggestedBrand = 'Parle';
+    else if (nameLower.includes('fortune')) suggestedBrand = 'Fortune';
+    else if (nameLower.includes('nestle')) suggestedBrand = 'Nestle';
 
     setFormData(prev => ({
       ...prev,
@@ -179,10 +384,14 @@ export default function ProductForm() {
   const calculateMargin = () => {
     const pp = Number(formData.purchasePrice) || 0;
     const sp = Number(formData.sellingPrice) || 0;
+    const mrp = Number(formData.mrp) || 0;
+
     if (pp > 0 && sp > 0) {
       const profit = sp - pp;
       const margin = (profit / sp) * 100;
-      return { profit, margin };
+      const discount = mrp > sp ? mrp - sp : 0;
+      const discountPercent = mrp > sp ? ((discount / mrp) * 100) : 0;
+      return { profit, margin, discount, discountPercent };
     }
     return null;
   };
@@ -272,49 +481,179 @@ export default function ProductForm() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/products')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-            {isEditing ? 'Edit Product' : 'Add New Product'}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Fill in the product details below.
-          </p>
+    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/products')} className="rounded-xl">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2">
+              <PackageCheck className="h-7 w-7 text-primary" />
+              {isEditing ? 'Edit Product Master' : 'Smart Product Master'}
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+              Supermarket speed catalog with 1-click FMCG presets, smart margin calculator & sticker printing.
+            </p>
+          </div>
         </div>
+
+        {/* 1-Click Voice Assistant Button */}
+        <Button
+          type="button"
+          onClick={handleVoiceInput}
+          variant="outline"
+          className={`gap-2 text-xs font-bold border-2 transition-all ${
+            isListening 
+              ? 'bg-rose-500/10 border-rose-500 text-rose-600 dark:text-rose-400 animate-pulse' 
+              : 'border-primary/40 text-primary hover:bg-primary/10'
+          }`}
+        >
+          {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {isListening ? 'Listening...' : 'Voice Add'}
+        </Button>
       </div>
 
+      {voiceTranscript && (
+        <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl text-xs font-mono text-primary flex items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span>{voiceTranscript}</span>
+        </div>
+      )}
+
       {error && (
-        <div className="rounded-lg bg-destructive/15 p-4 text-sm text-destructive border border-destructive/20 font-medium">
+        <div className="rounded-xl bg-destructive/15 p-4 text-sm text-destructive border border-destructive/20 font-medium flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-8 max-w-4xl">
+      {/* 1-Click Category Quick Presets */}
+      <div className="p-4 bg-muted/40 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <span className="text-xs font-black uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-amber-500" /> Quick Category Presets:
+        </span>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => applyCategoryPreset('loose')}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center gap-1.5"
+          >
+            🌾 Loose Kirana (No Barcode)
+          </button>
+          <button
+            type="button"
+            onClick={() => applyCategoryPreset('dairy')}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/30 hover:bg-blue-500/20 transition-all flex items-center gap-1.5"
+          >
+            🥛 Dairy & Milk
+          </button>
+          <button
+            type="button"
+            onClick={() => applyCategoryPreset('snacks')}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-500/30 hover:bg-orange-500/20 transition-all flex items-center gap-1.5"
+          >
+            🍪 Snacks & Biscuits
+          </button>
+          <button
+            type="button"
+            onClick={() => applyCategoryPreset('spices')}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all flex items-center gap-1.5"
+          >
+            🥫 Spices & Oils
+          </button>
+          <button
+            type="button"
+            onClick={() => applyCategoryPreset('fmcg')}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/20 transition-all flex items-center gap-1.5"
+          >
+            🧼 Soaps & Cleaning
+          </button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Basic Details */}
-          <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm md:col-span-2">
-            <h2 className="text-lg font-semibold">Basic Details</h2>
+          
+          {/* Section 1: Basic Identity & Instant FMCG Auto-Lookup */}
+          <div className="space-y-4 rounded-2xl border bg-card p-5 sm:p-6 shadow-sm md:col-span-2 relative">
+            <div className="flex items-center justify-between pb-2 border-b">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Tag className="h-5 w-5 text-primary" /> Product Identity & Catalog
+              </h2>
+              <span className="text-xs text-muted-foreground font-mono">10,000+ Pre-loaded FMCG</span>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Product Name *</Label>
+              {/* Product Name with Instant Suggestions Dropdown */}
+              <div className="space-y-2 relative" ref={suggestionsRef}>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="name" className="text-xs font-bold">Product Name *</Label>
+                  <span className="text-[11px] text-muted-foreground">Type e.g. "Parle", "Tata", "Amul"</span>
+                </div>
                 <div className="flex gap-2">
-                  <Input id="name" value={formData.name} onChange={handleChange} placeholder="e.g. Amul Milk 500ml" required />
-                  <Button type="button" variant="outline" size="icon" onClick={aiSuggestDetails} title="AI Auto-fill Details">
-                    <Sparkles className="h-4 w-4 text-blue-500" />
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      id="name" 
+                      value={formData.name} 
+                      onChange={handleChange} 
+                      placeholder="e.g. Parle-G 100g or Tata Salt 1kg" 
+                      required 
+                      className="pl-9 font-semibold"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={aiSuggestDetails} 
+                    title="AI Auto-fill Details"
+                    className="shrink-0"
+                  >
+                    <Sparkles className="h-4 w-4 text-primary" />
                   </Button>
                 </div>
+
+                {/* Instant FMCG Auto-Complete Dropdown */}
+                {showSuggestions && fmcgSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground border rounded-xl shadow-2xl overflow-hidden divide-y animate-in fade-in zoom-in-95 duration-150">
+                    <div className="p-2 bg-muted/50 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex justify-between">
+                      <span>Matches from FMCG Catalog:</span>
+                      <span>Click to Auto-fill</span>
+                    </div>
+                    {fmcgSuggestions.map((item, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => applyFMCGTemplate(item)}
+                        className="p-3 hover:bg-primary/10 cursor-pointer transition-colors flex items-center justify-between text-xs group"
+                      >
+                        <div>
+                          <p className="font-bold text-foreground group-hover:text-primary">{item.name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {item.brand} • {item.category} • {item.unit}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-emerald-600">MRP: ₹{item.mrp}</p>
+                          <span className="text-[10px] text-primary underline">Apply All Fields →</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Category */}
               <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
+                <Label htmlFor="category" className="text-xs font-bold">Category *</Label>
                 <select 
                   id="category" 
                   value={formData.category} 
-                  onChange={(e: any) => handleChange(e)} 
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  onChange={handleChange} 
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-semibold ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
                 >
                   <option value="" disabled>Select Category</option>
@@ -325,50 +664,56 @@ export default function ProductForm() {
                   <option value="Spices">Spices & Masalas</option>
                   <option value="Personal Care">Personal Care</option>
                   <option value="Home Care">Home Care</option>
-                  <option value="Other">Other</option>
+                  <option value="Bakery">Bakery & Bread</option>
+                  <option value="Frozen Food">Frozen Food</option>
+                  <option value="Other">Other General</option>
                 </select>
               </div>
+
+              {/* Brand */}
               <div className="space-y-2">
-                <Label htmlFor="brand">Brand</Label>
-                <Input id="brand" value={formData.brand} onChange={handleChange} placeholder="e.g. Amul" />
+                <Label htmlFor="brand" className="text-xs font-bold">Brand</Label>
+                <Input id="brand" value={formData.brand} onChange={handleChange} placeholder="e.g. Amul, Parle, Tata" />
               </div>
+
+              {/* Unit */}
               <div className="space-y-2">
-                <Label htmlFor="unit">Unit *</Label>
+                <Label htmlFor="unit" className="text-xs font-bold">Measurement Unit *</Label>
                 <select 
                   id="unit" 
                   value={formData.unit} 
-                  onChange={(e: any) => handleChange(e)} 
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  onChange={handleChange} 
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-semibold ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
                 >
                   <option value="pcs">Pieces (pcs)</option>
+                  <option value="pkt">Packet (pkt)</option>
                   <option value="kg">Kilogram (kg)</option>
                   <option value="gm">Gram (gm)</option>
                   <option value="ltr">Liter (ltr)</option>
                   <option value="ml">Milliliter (ml)</option>
-                  <option value="pkt">Packet (pkt)</option>
                   <option value="box">Box</option>
                 </select>
               </div>
+
+              {/* Product Photo */}
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="imageUpload">Product Image</Label>
+                <Label htmlFor="imageUpload" className="text-xs font-bold">Product Image / Camera Capture</Label>
                 <div className="flex items-center gap-4">
                   {formData.imageUrl && (
-                    <div className="h-16 w-16 rounded-md overflow-hidden border">
+                    <div className="h-16 w-16 rounded-xl overflow-hidden border shadow-xs shrink-0">
                       <img src={formData.imageUrl} alt="Preview" className="h-full w-full object-cover" />
                     </div>
                   )}
                   <div className="flex-1 flex flex-col gap-2">
                     <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Input 
-                          id="imageUpload" 
-                          type="file" 
-                          accept="image/*" 
-                          onChange={handleImageUpload} 
-                          className="cursor-pointer"
-                        />
-                      </div>
+                      <Input 
+                        id="imageUpload" 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleImageUpload} 
+                        className="cursor-pointer text-xs"
+                      />
                       <div className="relative">
                         <Input 
                           id="cameraUpload" 
@@ -378,36 +723,36 @@ export default function ProductForm() {
                           onChange={handleImageUpload} 
                           className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
                         />
-                        <Button type="button" variant="outline" className="flex gap-2 relative z-0">
+                        <Button type="button" variant="outline" className="flex gap-1.5 relative z-0 text-xs">
                           <Camera className="h-4 w-4" /> Camera
                         </Button>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">Upload or capture product photo (Auto-compressed under 100 KB)</p>
+                    <p className="text-[11px] text-muted-foreground">Auto-compressed under 100 KB for fast cloud sync</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Loose / Non-Barcode Item Section */}
-          <div className={`rounded-xl border p-6 shadow-sm md:col-span-2 transition-all duration-200 ${
+          {/* Section 2: Loose Grocery & Fast Shortcut Number */}
+          <div className={`rounded-2xl border p-5 sm:p-6 shadow-sm md:col-span-2 transition-all duration-200 ${
             formData.isLoose 
               ? 'bg-amber-500/10 border-amber-500/40 dark:bg-amber-950/20 dark:border-amber-700/50' 
               : 'bg-card'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${formData.isLoose ? 'bg-amber-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+                <div className={`p-2.5 rounded-xl ${formData.isLoose ? 'bg-amber-500 text-white shadow-md' : 'bg-muted text-muted-foreground'}`}>
                   <Layers className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold flex items-center gap-2">
+                  <h2 className="text-base font-bold flex items-center gap-2 text-foreground">
                     Loose / Non-Barcode Grocery Item
-                    {formData.isLoose && <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">Active</span>}
+                    {formData.isLoose && <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">Active</span>}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    For items without barcodes such as sugar, rice, grains, pulses, and spices.
+                    For items without barcodes such as sugar, rice, grains, pulses, and loose spices.
                   </p>
                 </div>
               </div>
@@ -436,8 +781,8 @@ export default function ProductForm() {
               <div className="mt-4 pt-4 border-t border-amber-500/20 grid gap-4 md:grid-cols-2 animate-in fade-in duration-200">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="shortCode" className="font-bold flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
-                      <Hash className="h-4 w-4 text-amber-600" /> Shortcut Code / POS Number (e.g. 1, 2, 3...) *
+                    <Label htmlFor="shortCode" className="font-bold flex items-center gap-1.5 text-xs text-amber-900 dark:text-amber-200">
+                      <Hash className="h-4 w-4 text-amber-600" /> Shortcut Code / POS Number (1, 2, 3...) *
                     </Label>
                     <Button 
                       type="button" 
@@ -456,82 +801,207 @@ export default function ProductForm() {
                     placeholder="e.g. 1, 2, 3, 101..." 
                     className="font-black text-xl bg-white dark:bg-card border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100" 
                   />
-                  <p className="text-xs text-amber-800 dark:text-amber-300/80 leading-relaxed">
-                    💡 <strong>Fast Billing:</strong> In POS billing, type <strong>"{formData.shortCode || '1'}"</strong> and press Enter to instantly add this item to cart!
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300/80 leading-relaxed">
+                    💡 <strong>Ultra Fast Billing:</strong> In POS billing, type <strong>"{formData.shortCode || '1'}"</strong> and press Enter to instantly add this item!
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white/60 dark:bg-black/20 p-4 border border-amber-500/20 text-xs space-y-2 flex flex-col justify-center">
+                <div className="rounded-xl bg-white/60 dark:bg-black/20 p-4 border border-amber-500/20 text-xs space-y-1.5 flex flex-col justify-center">
                   <p className="font-bold text-amber-900 dark:text-amber-200">
-                    🏪 Grocery Store Advantage:
+                    🏪 Supermarket Advantage:
                   </p>
                   <p className="text-muted-foreground">
-                    • Quickly sell unpackaged items with single-digit short codes without scanning barcodes.
+                    • Single-digit shortcodes sell loose grocery items with lightning speed.
                   </p>
                   <p className="text-muted-foreground">
-                    • These items also appear as 1-click Quick Buttons at the top of POS billing.
+                    • These items automatically populate the Top Quick-Add Buttons on the POS register.
                   </p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Pricing & Stock */}
-          <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm md:col-span-2">
-            <h2 className="text-lg font-semibold">Pricing & Inventory</h2>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="purchasePrice">Purchase Price (₹) *</Label>
-                <Input id="purchasePrice" value={formData.purchasePrice} onChange={handleChange} type="number" step="0.01" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sellingPrice">Selling Price (₹) *</Label>
-                <Input id="sellingPrice" value={formData.sellingPrice} onChange={handleChange} type="number" step="0.01" required />
-                {marginData && (
-                  <p className={`text-xs flex items-center ${marginData.profit > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    Profit: ₹{marginData.profit.toFixed(2)} ({marginData.margin.toFixed(1)}% margin)
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mrp">MRP (₹)</Label>
-                <Input id="mrp" value={formData.mrp} onChange={handleChange} type="number" step="0.01" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gst">GST %</Label>
-                <Input id="gst" value={formData.gst} onChange={handleChange} type="number" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock">Opening Stock *</Label>
-                <Input id="stock" value={formData.stock} onChange={handleChange} type="number" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="minStock">Min Stock Alert</Label>
-                <Input id="minStock" value={formData.minStock} onChange={handleChange} type="number" />
-              </div>
-            </div>
-          </div>
-
-          {/* D-Mart Dynamic Pricing & Warehouse Location */}
-          <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm md:col-span-2">
-            <div className="flex items-center justify-between">
+          {/* Section 3: Smart Pricing & Margin Simulator */}
+          <div className="space-y-4 rounded-2xl border bg-card p-5 sm:p-6 shadow-sm md:col-span-2">
+            <div className="flex items-center justify-between pb-2 border-b">
               <div>
-                <h2 className="text-lg font-bold flex items-center gap-2">
-                  <span className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 font-black text-xs uppercase tracking-wider">D-Mart</span>
-                  Dynamic Pricing & Warehouse Rack Placement
+                <h2 className="text-base font-bold flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" /> Pricing, Margins & D-Mart Discounts
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Set wholesale rates, bulk quantity discounts, rack/shelf positions, and automatic replenishment reorder levels.
+                  Set purchase and selling rates. Use 1-click margin buttons to calculate profit margins automatically.
+                </p>
+              </div>
+
+              {/* 1-Click Margin Buttons */}
+              <div className="hidden sm:flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground font-semibold mr-1">Quick Margins:</span>
+                {[10, 15, 20, 25, 30].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => applyMarginPreset(pct)}
+                    className="px-2 py-1 text-[11px] font-bold rounded-lg border bg-muted/60 hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-500/40 transition-all"
+                  >
+                    +{pct}%
+                  </button>
+                ))}
+                {formData.mrp && (
+                  <button
+                    type="button"
+                    onClick={matchMRP}
+                    className="px-2 py-1 text-[11px] font-bold rounded-lg border bg-muted/60 hover:bg-primary/10 hover:text-primary transition-all"
+                  >
+                    = MRP
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Purchase Price */}
+              <div className="space-y-1.5">
+                <Label htmlFor="purchasePrice" className="text-xs font-bold">Purchase Price (Cost) ₹ *</Label>
+                <Input 
+                  id="purchasePrice" 
+                  value={formData.purchasePrice} 
+                  onChange={handleChange} 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="0.00" 
+                  required 
+                  className="font-mono text-base font-bold"
+                />
+                <p className="text-[11px] text-muted-foreground">What you pay the wholesaler</p>
+              </div>
+
+              {/* Selling Price */}
+              <div className="space-y-1.5">
+                <Label htmlFor="sellingPrice" className="text-xs font-bold">Selling Price (Store Rate) ₹ *</Label>
+                <Input 
+                  id="sellingPrice" 
+                  value={formData.sellingPrice} 
+                  onChange={handleChange} 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="0.00" 
+                  required 
+                  className="font-mono text-base font-bold text-emerald-600 dark:text-emerald-400"
+                />
+                <p className="text-[11px] text-muted-foreground">Your store billing price</p>
+              </div>
+
+              {/* MRP */}
+              <div className="space-y-1.5">
+                <Label htmlFor="mrp" className="text-xs font-bold">MRP (Maximum Retail Price) ₹</Label>
+                <Input 
+                  id="mrp" 
+                  value={formData.mrp} 
+                  onChange={handleChange} 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="0.00" 
+                  className="font-mono text-base"
+                />
+                <p className="text-[11px] text-muted-foreground">Printed MRP on packet</p>
+              </div>
+
+              {/* GST % */}
+              <div className="space-y-1.5">
+                <Label htmlFor="gst" className="text-xs font-bold">GST Tax %</Label>
+                <select
+                  id="gst"
+                  value={formData.gst}
+                  onChange={handleChange}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-semibold"
+                >
+                  <option value="0">0% (Nil / Essential Grocery)</option>
+                  <option value="5">5% (Edible Oil, Tea, Atta)</option>
+                  <option value="12">12% (Butter, Cheese, Ghee)</option>
+                  <option value="18">18% (Biscuits, Soaps, Shampoos)</option>
+                  <option value="28">28% (Aerated Drinks)</option>
+                </select>
+              </div>
+
+              {/* Opening Stock */}
+              <div className="space-y-1.5">
+                <Label htmlFor="stock" className="text-xs font-bold">Current Stock Quantity *</Label>
+                <Input 
+                  id="stock" 
+                  value={formData.stock} 
+                  onChange={handleChange} 
+                  type="number" 
+                  placeholder="0" 
+                  required 
+                  className="font-mono text-base font-bold"
+                />
+                <p className="text-[11px] text-muted-foreground">Units available on shelf/warehouse</p>
+              </div>
+
+              {/* Min Stock Alert */}
+              <div className="space-y-1.5">
+                <Label htmlFor="minStock" className="text-xs font-bold">Low Stock Alert Threshold</Label>
+                <Input 
+                  id="minStock" 
+                  value={formData.minStock} 
+                  onChange={handleChange} 
+                  type="number" 
+                  placeholder="5" 
+                  className="font-mono text-base"
+                />
+                <p className="text-[11px] text-muted-foreground">Alerts when inventory falls below this</p>
+              </div>
+            </div>
+
+            {/* Profit Margin & Customer Discount Banner */}
+            {marginData && (
+              <div className="mt-4 p-4 rounded-xl border bg-muted/30 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${marginData.profit > 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-muted-foreground block uppercase">Store Profit / Margin:</span>
+                    <p className={`text-base font-black ${marginData.profit > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                      ₹{marginData.profit.toFixed(2)} per unit ({marginData.margin.toFixed(1)}% margin)
+                    </p>
+                  </div>
+                </div>
+
+                {marginData.discount > 0 && (
+                  <div className="flex items-center gap-3 border-t sm:border-t-0 sm:border-l sm:pl-4 pt-3 sm:pt-0">
+                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
+                      <Percent className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-muted-foreground block uppercase">D-Mart Style Savings:</span>
+                      <p className="text-base font-black text-blue-600 dark:text-blue-400">
+                        Customer Saves ₹{marginData.discount.toFixed(2)} ({marginData.discountPercent.toFixed(0)}% OFF MRP)
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section 4: Wholesale & Shelf Placement */}
+          <div className="space-y-4 rounded-2xl border bg-card p-5 sm:p-6 shadow-sm md:col-span-2">
+            <div className="flex items-center justify-between pb-2 border-b">
+              <div>
+                <h2 className="text-base font-bold flex items-center gap-2">
+                  <span className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 font-black text-[10px] uppercase tracking-wider">Advanced</span>
+                  Wholesale Tiers & Warehouse Placement
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Set wholesale rates, automatic bulk tier quantity discounts, and rack locations.
                 </p>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="wholesalePrice" className="text-sm font-semibold">
-                  Wholesale Price (₹)
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="wholesalePrice" className="text-xs font-bold">Wholesale Price (₹)</Label>
                 <Input 
                   id="wholesalePrice" 
                   value={formData.wholesalePrice} 
@@ -540,13 +1010,11 @@ export default function ProductForm() {
                   step="0.01" 
                   placeholder="e.g. 95.00"
                 />
-                <p className="text-[11px] text-muted-foreground">Rate applied when wholesale mode is active in POS.</p>
+                <p className="text-[11px] text-muted-foreground">Applied in Wholesale POS mode</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="bulkMinQty" className="text-sm font-semibold">
-                  Bulk Tier Min Qty
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="bulkMinQty" className="text-xs font-bold">Bulk Discount Min Qty</Label>
                 <Input 
                   id="bulkMinQty" 
                   value={formData.bulkMinQty} 
@@ -554,13 +1022,11 @@ export default function ProductForm() {
                   type="number" 
                   placeholder="e.g. 5 or 10"
                 />
-                <p className="text-[11px] text-muted-foreground">Min quantity to trigger automatic bulk discount.</p>
+                <p className="text-[11px] text-muted-foreground">Min qty to trigger bulk price</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="bulkPrice" className="text-sm font-semibold">
-                  Bulk Unit Price (₹)
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="bulkPrice" className="text-xs font-bold">Bulk Unit Price (₹)</Label>
                 <Input 
                   id="bulkPrice" 
                   value={formData.bulkPrice} 
@@ -569,40 +1035,34 @@ export default function ProductForm() {
                   step="0.01" 
                   placeholder="e.g. 90.00"
                 />
-                <p className="text-[11px] text-muted-foreground">Auto-applied in cart when item quantity reaches min qty.</p>
+                <p className="text-[11px] text-muted-foreground">Auto-applied when cart qty reaches threshold</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="rackLocation" className="text-sm font-semibold">
-                  Warehouse Rack / Shelf Location
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="rackLocation" className="text-xs font-bold">Rack / Shelf Location</Label>
                 <Input 
                   id="rackLocation" 
                   value={formData.rackLocation} 
                   onChange={handleChange} 
-                  placeholder="e.g. Rack A-3, Shelf 2, Cold Storage"
+                  placeholder="e.g. Rack A-3, Shelf 2"
                 />
-                <p className="text-[11px] text-muted-foreground">Shown during billing and physical stock audits.</p>
+                <p className="text-[11px] text-muted-foreground">Speeds up warehouse picking</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="reorderQty" className="text-sm font-semibold">
-                  Auto Reorder Quantity
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="reorderQty" className="text-xs font-bold">Auto Reorder Quantity</Label>
                 <Input 
                   id="reorderQty" 
                   value={formData.reorderQty} 
                   onChange={handleChange} 
                   type="number" 
-                  placeholder="e.g. 50 or 100"
+                  placeholder="e.g. 50"
                 />
-                <p className="text-[11px] text-muted-foreground">Suggested replenishment order size when stock drops below min.</p>
+                <p className="text-[11px] text-muted-foreground">Suggested purchase replenishment order size</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="maxStock" className="text-sm font-semibold">
-                  Maximum Stock Limit
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="maxStock" className="text-xs font-bold">Maximum Stock Limit</Label>
                 <Input 
                   id="maxStock" 
                   value={formData.maxStock} 
@@ -610,43 +1070,57 @@ export default function ProductForm() {
                   type="number" 
                   placeholder="e.g. 200"
                 />
-                <p className="text-[11px] text-muted-foreground">Prevents overstocking and dead capital accumulation.</p>
+                <p className="text-[11px] text-muted-foreground">Prevents overstocking dead capital</p>
               </div>
             </div>
           </div>
 
-          {/* Barcode & Extra */}
-          <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm md:col-span-2">
-            <h2 className="text-lg font-semibold">Barcode & Codes</h2>
+          {/* Section 5: Barcode & Thermal Sticker Printer */}
+          <div className="space-y-4 rounded-2xl border bg-card p-5 sm:p-6 shadow-sm md:col-span-2">
+            <div className="flex items-center justify-between pb-2 border-b">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Printer className="h-5 w-5 text-primary" /> Barcode & Thermal Sticker Printing
+              </h2>
+              <span className="text-xs text-muted-foreground font-mono">50mm × 25mm Label Ready</span>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="sku">SKU Code</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="sku" className="text-xs font-bold">SKU Code</Label>
                 <div className="flex gap-2">
-                  <Input id="sku" value={formData.sku} onChange={handleChange} placeholder="e.g. DAIRY-AMU-MILK-123" />
+                  <Input id="sku" value={formData.sku} onChange={handleChange} placeholder="e.g. DAIRY-AMU-123" />
                   <Button type="button" variant="outline" size="icon" onClick={generateSmartSKU} title="Auto-generate Smart SKU">
                     <Wand2 className="h-4 w-4 text-purple-500" />
                   </Button>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="expiryDate">Expiry Date</Label>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="expiryDate" className="text-xs font-bold">Expiry Date</Label>
                 <Input id="expiryDate" type="date" value={formData.expiryDate} onChange={handleChange} />
               </div>
+
               <div className="space-y-2 md:col-span-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="barcode">Barcode</Label>
+                  <Label htmlFor="barcode" className="text-xs font-bold">Barcode (EAN-13 / Code-128)</Label>
                   <div className="flex gap-2">
                     <Button 
                       type="button" 
                       variant="outline" 
                       size="sm" 
-                      className="h-7 px-3 text-xs" 
+                      className="h-8 px-3 text-xs" 
                       onClick={() => setShowScanner(true)}
                     >
-                      <Camera className="mr-1 h-3 w-3" /> Scan Camera
+                      <Camera className="mr-1.5 h-3.5 w-3.5" /> Scan Camera
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" className="h-7 px-3 text-xs text-primary" onClick={generateBarcode}>
-                      <RefreshCw className="mr-1 h-3 w-3" /> Generate
+                    <Button 
+                      type="button" 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 px-3 text-xs text-primary font-bold" 
+                      onClick={generateBarcode}
+                    >
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Generate Barcode
                     </Button>
                   </div>
                 </div>
@@ -654,37 +1128,72 @@ export default function ProductForm() {
                   id="barcode" 
                   value={formData.barcode}
                   onChange={handleChange}
-                  placeholder={formData.isLoose ? `Optional (Short code "${formData.shortCode || '1'}" will be used)` : "Scan or enter barcode"} 
+                  placeholder={formData.isLoose ? `Optional (Short code "${formData.shortCode || '1'}" will be used)` : "Scan with gun or enter barcode"} 
+                  className="font-mono font-bold"
                 />
-                {formData.isLoose && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                    ℹ️ For loose items without barcodes, leave blank — shortcut code <strong>{formData.shortCode || '1'}</strong> will be used automatically.
-                  </p>
-                )}
               </div>
+
+              {/* Live Thermal Sticker Preview */}
               {formData.barcode && (
-                <div id="barcode-label-area" className="md:col-span-2 flex flex-col items-center justify-center p-4 border rounded-lg bg-white mt-2">
-                  <svg ref={barcodeRef}></svg>
-                  <p className="text-xs font-semibold text-black mt-1 mb-2">{formData.name || 'Product'}</p>
-                  <p className="text-sm font-bold text-black">₹{formData.sellingPrice || '0'}</p>
+                <div className="md:col-span-2 p-5 bg-muted/40 rounded-2xl border flex flex-col items-center justify-center">
+                  <span className="text-[11px] font-bold uppercase text-muted-foreground tracking-wider mb-3">
+                    Sticker Print Preview (50mm × 25mm):
+                  </span>
+                  
+                  <div 
+                    id="barcode-label-area" 
+                    className="w-72 bg-white text-black p-4 rounded-xl shadow-md border flex flex-col items-center text-center font-sans"
+                  >
+                    <p className="text-[11px] font-black uppercase tracking-wider text-gray-800 line-clamp-1">
+                      {shopData?.shopName || shopData?.name || 'SUPERMARKET'}
+                    </p>
+                    <p className="text-xs font-extrabold text-black mt-0.5 line-clamp-1">
+                      {formData.name || 'Product Item'}
+                    </p>
+                    <div className="my-1">
+                      <svg ref={barcodeRef} className="max-w-full"></svg>
+                    </div>
+                    <div className="w-full flex justify-between items-baseline px-2 border-t pt-1 border-dashed border-gray-400">
+                      {formData.mrp && Number(formData.mrp) > Number(formData.sellingPrice) ? (
+                        <span className="text-[11px] text-gray-600 line-through">MRP: ₹{formData.mrp}</span>
+                      ) : <span />}
+                      <span className="text-sm font-black text-black">
+                        OUR PRICE: ₹{formData.sellingPrice || '0'}
+                      </span>
+                    </div>
+                  </div>
+
                   <Button 
                     type="button" 
                     variant="outline" 
                     size="sm" 
-                    className="mt-3"
+                    className="mt-4 gap-2 font-bold shadow-xs bg-card"
                     onClick={() => {
-                      const printWindow = window.open('', '', 'width=300,height=200');
+                      const printWindow = window.open('', '', 'width=350,height=300');
                       const el = document.getElementById('barcode-label-area');
                       if (printWindow && el) {
-                        printWindow.document.write(`<html><head><title>Print Label</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;">${el.innerHTML}</body></html>`);
+                        printWindow.document.write(`
+                          <html>
+                            <head>
+                              <title>Print Barcode Label</title>
+                              <style>
+                                @media print {
+                                  body { margin: 0; padding: 2mm; display: flex; align-items: center; justify-content: center; }
+                                  @page { size: auto; margin: 0; }
+                                }
+                              </style>
+                            </head>
+                            <body>
+                              ${el.outerHTML}
+                              <script>window.onload = function() { window.print(); window.close(); };</script>
+                            </body>
+                          </html>
+                        `);
                         printWindow.document.close();
-                        printWindow.focus();
-                        printWindow.print();
-                        printWindow.close();
                       }
                     }}
                   >
-                    🖨️ Print Label
+                    <Printer className="h-4 w-4" /> 1-Click Print Barcode Sticker
                   </Button>
                 </div>
               )}
@@ -692,13 +1201,14 @@ export default function ProductForm() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-4 border-t pt-6">
-          <Button type="button" variant="outline" onClick={() => navigate('/products')}>
+        {/* Form Action Buttons */}
+        <div className="flex items-center justify-between border-t pt-6">
+          <Button type="button" variant="outline" onClick={() => navigate('/products')} className="font-bold">
             Cancel
           </Button>
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-8 h-11 text-sm shadow-md">
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save Product
+            Save Product to Catalog
           </Button>
         </div>
       </form>
@@ -707,6 +1217,10 @@ export default function ProductForm() {
         <CameraScanner 
           onScan={(code) => {
             setFormData(prev => ({ ...prev, barcode: code }));
+            const match = findFMCGByBarcode(code);
+            if (match && !formData.name) {
+              applyFMCGTemplate(match);
+            }
             setShowScanner(false);
           }}
           onClose={() => setShowScanner(false)}

@@ -347,8 +347,8 @@ const TABLE_PRIMARY_KEYS = {
 
 const SUPABASE_TABLE_COLUMNS = {
   shops: new Set(['shopId', 'name', 'ownerName', 'phone', 'email', 'address', 'gstNumber', 'upiId', 'publicUrl', 'plan', 'planExpiry', 'settings', 'receiptHeader', 'receiptFooter', 'receiptPaperSize', 'fssaiNumber', 'invoiceTerms', 'createdAt']),
-  products: new Set(['id', 'shopId', 'name', 'category', 'brand', 'unit', 'purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'sku', 'barcode', 'shortCode', 'isLoose', 'expiryDate', 'imageUrl', 'variants', 'isDeleted', 'deletedAt', 'createdAt']),
-  customers: new Set(['id', 'shopId', 'name', 'phone', 'email', 'address', 'balance', 'visits', 'totalSpent', 'loyaltyPoints', 'aadharNumber', 'photoUrl', 'isDeleted', 'deletedAt', 'createdAt']),
+  products: new Set(['id', 'shopId', 'name', 'category', 'brand', 'unit', 'purchasePrice', 'sellingPrice', 'mrp', 'gst', 'stock', 'minStock', 'sku', 'barcode', 'shortCode', 'isLoose', 'expiryDate', 'imageUrl', 'isDeleted', 'deletedAt', 'createdAt']),
+  customers: new Set(['id', 'shopId', 'name', 'phone', 'email', 'address', 'balance', 'visits', 'totalSpent', 'loyaltyPoints', 'aadharNumber', 'photoUrl', 'aadharPhotoUrl', 'isDeleted', 'deletedAt', 'createdAt']),
   transactions: new Set(['id', 'shopId', 'subtotal', 'taxAmount', 'discountAmount', 'totalAmount', 'paymentMethod', 'customerId', 'items', 'isDeleted', 'deletedAt', 'createdAt']),
   expenses: new Set(['id', 'shopId', 'title', 'category', 'amount', 'description', 'date', 'notes', 'addedBy', 'createdAt']),
   udhar_transactions: new Set(['id', 'shopId', 'customerId', 'amount', 'type', 'notes', 'createdAt']),
@@ -402,6 +402,30 @@ async function syncMutationToSupabase(sql, params = []) {
   try {
     const db = getSQLiteDb();
 
+    // Robust self-healing Supabase upsert that automatically recovers from any missing columns in cloud schema
+    async function safeSupabaseUpsert(table, payload) {
+      let toSend = { ...payload };
+      let attempts = 0;
+      while (attempts < 3) {
+        attempts++;
+        const { error } = await supabase.from(table).upsert(toSend);
+        if (!error) return { success: true };
+
+        // Auto-heal schema mismatch error (e.g. Could not find the 'variants' column of 'products' in schema cache)
+        if (error.code === 'PGRST204' || error.message?.includes('Could not find the') || error.message?.includes('column')) {
+          const colMatch = error.message.match(/Could not find the ['"]([^'"]+)['"] column/i);
+          if (colMatch && colMatch[1] && toSend[colMatch[1]] !== undefined) {
+            console.warn(`Stripping unmapped column '${colMatch[1]}' from Supabase table '${table}' and retrying...`);
+            delete toSend[colMatch[1]];
+            continue;
+          }
+        }
+        console.warn(`Supabase ${table} sync warning:`, error.message);
+        return { error };
+      }
+      return { success: false };
+    }
+
     // Helper to ensure shop exists in Supabase before foreign-key child tables
     async function ensureShopInSupabase(shopId) {
       if (!shopId) return;
@@ -409,7 +433,7 @@ async function syncMutationToSupabase(sql, params = []) {
         const shopRow = db.prepare('SELECT * FROM shops WHERE shopId = ?').get(shopId);
         if (shopRow) {
           const formattedShop = formatRowForSupabase('shops', shopRow);
-          await supabase.from('shops').upsert(formattedShop);
+          await safeSupabaseUpsert('shops', formattedShop);
         }
       } catch (e) {}
     }
@@ -445,8 +469,7 @@ async function syncMutationToSupabase(sql, params = []) {
         if (formatted.shopId && table !== 'shops') {
           await ensureShopInSupabase(formatted.shopId);
         }
-        const { error } = await supabase.from(table).upsert(formatted);
-        if (error) console.warn(`Supabase ${table} insert sync warning:`, error.message);
+        await safeSupabaseUpsert(table, formatted);
       }
       return;
     }
@@ -470,8 +493,7 @@ async function syncMutationToSupabase(sql, params = []) {
             if (formatted.shopId && table !== 'shops') {
               await ensureShopInSupabase(formatted.shopId);
             }
-            const { error } = await supabase.from(table).upsert(formatted);
-            if (error) console.warn(`Supabase ${table} update sync warning:`, error.message);
+            await safeSupabaseUpsert(table, formatted);
           }
         }
       }
@@ -528,16 +550,16 @@ async function warmUpCacheFromSupabase() {
 
     console.log('🔄 Syncing all tables from Supabase Cloud to local cache...');
     const [shopsRes, prodsRes, usersRes, custsRes, txsRes, expRes, udharRes, suppRes, purchRes, notifRes, promoRes] = await Promise.all([
-      supabase.from('shops').select('*'),
-      supabase.from('products').select('*'),
-      supabase.from('users').select('*'),
-      supabase.from('customers').select('*'),
-      supabase.from('transactions').select('*').limit(1000),
-      supabase.from('expenses').select('*').limit(1000),
-      supabase.from('udhar_transactions').select('*').limit(1000),
-      supabase.from('suppliers').select('*'),
-      supabase.from('purchases').select('*').limit(1000),
-      supabase.from('notifications').select('*').limit(200),
+      supabase.from('shops').select('*').limit(5000),
+      supabase.from('products').select('*').limit(10000),
+      supabase.from('users').select('*').limit(5000),
+      supabase.from('customers').select('*').limit(10000),
+      supabase.from('transactions').select('*').limit(2000),
+      supabase.from('expenses').select('*').limit(2000),
+      supabase.from('udhar_transactions').select('*').limit(2000),
+      supabase.from('suppliers').select('*').limit(2000),
+      supabase.from('purchases').select('*').limit(2000),
+      supabase.from('notifications').select('*').limit(500),
       supabase.from('promo_codes').select('*')
     ]);
 

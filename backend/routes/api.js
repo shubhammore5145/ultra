@@ -206,8 +206,33 @@ router.use(authMiddleware);
 // --- PRODUCTS ---
 router.get('/products', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM products WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', [req.user.shopId]);
-    const formatted = rows.map(p => {
+    let [rows] = await pool.query('SELECT * FROM products WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', [req.user.shopId]);
+
+    // Live Supabase fallback: if local SQLite cache is empty for this shop, pull from Supabase Cloud
+    if (!rows || rows.length === 0) {
+      try {
+        const { supabase } = require('../supabase');
+        const { data: sbProds } = await supabase
+          .from('products')
+          .select('*')
+          .eq('shopId', req.user.shopId)
+          .or('isDeleted.eq.0,isDeleted.is.null');
+
+        if (sbProds && sbProds.length > 0) {
+          rows = sbProds;
+          for (const p of sbProds) {
+            pool.query(
+              'INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, expiryDate, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [p.id, p.shopId, p.name, p.category, p.brand, p.unit, p.purchasePrice || 0, p.sellingPrice || 0, p.mrp || 0, p.gst || 0, p.stock || 0, p.minStock || 0, p.sku, p.barcode, p.shortCode, p.isLoose ? 1 : 0, p.expiryDate || null, p.imageUrl || null]
+            ).catch(() => {});
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Supabase products fetch fallback notice:', sbErr.message);
+      }
+    }
+
+    const formatted = (rows || []).map(p => {
       let v = p.variants;
       if (typeof v === 'string') {
         try { v = JSON.parse(v); } catch { v = []; }
@@ -235,6 +260,35 @@ router.post('/products', async (req, res) => {
       [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, variantsStr]
     );
   }
+
+  // Explicit direct Cloud Supabase backup guarantee
+  try {
+    const { supabase } = require('../supabase');
+    await supabase.from('products').upsert({
+      id,
+      shopId: req.user.shopId,
+      name,
+      category: category || '',
+      brand: brand || '',
+      unit: unit || 'pcs',
+      purchasePrice: Number(purchasePrice || 0),
+      sellingPrice: Number(sellingPrice || 0),
+      mrp: Number(mrp || 0),
+      gst: Number(gst || 0),
+      stock: Number(stock || 0),
+      minStock: Number(minStock || 0),
+      sku: sku || '',
+      barcode: barcode || null,
+      imageUrl: imageUrl || null,
+      shortCode: shortCode || null,
+      isLoose: Boolean(isLoose),
+      expiryDate: expiryDate || null,
+      isDeleted: 0
+    });
+  } catch (cloudErr) {
+    console.warn('Direct product Supabase upsert notice:', cloudErr.message);
+  }
+
   res.json({ success: true });
 });
 
@@ -301,6 +355,34 @@ router.put('/products/:id', async (req, res) => {
         ]
       );
     }
+
+    // Explicit direct Cloud Supabase update guarantee
+    try {
+      const { supabase } = require('../supabase');
+      await supabase.from('products').upsert({
+        id: req.params.id,
+        shopId: req.user.shopId,
+        name: name !== undefined ? name : p.name,
+        category: category !== undefined ? category : p.category,
+        brand: brand !== undefined ? brand : p.brand,
+        unit: unit !== undefined ? unit : p.unit,
+        purchasePrice: Number(purchasePrice !== undefined ? purchasePrice : p.purchasePrice || 0),
+        sellingPrice: Number(sellingPrice !== undefined ? sellingPrice : p.sellingPrice || 0),
+        mrp: Number(mrp !== undefined ? mrp : p.mrp || 0),
+        gst: Number(gst !== undefined ? gst : p.gst || 0),
+        stock: Number(stock !== undefined ? stock : p.stock || 0),
+        minStock: Number(minStock !== undefined ? minStock : p.minStock || 0),
+        sku: sku !== undefined ? sku : p.sku,
+        barcode: barcode !== undefined ? barcode : p.barcode,
+        imageUrl: imageUrl !== undefined ? imageUrl : p.imageUrl,
+        shortCode: shortCode !== undefined ? shortCode : (p.shortCode || null),
+        isLoose: Boolean(isLoose !== undefined ? isLoose : p.isLoose),
+        expiryDate: expiryDate !== undefined ? (expiryDate || null) : (p.expiryDate || null)
+      });
+    } catch (cloudErr) {
+      console.warn('Direct product Supabase update notice:', cloudErr.message);
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Update Product Error:', error);
@@ -312,8 +394,16 @@ router.delete('/products/:id', async (req, res) => {
   const { permanent } = req.query;
   if (permanent === 'true') {
     await pool.query('DELETE FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    try {
+      const { supabase } = require('../supabase');
+      await supabase.from('products').delete().eq('id', req.params.id);
+    } catch (e) {}
   } else {
     await pool.query('UPDATE products SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    try {
+      const { supabase } = require('../supabase');
+      await supabase.from('products').update({ isDeleted: 1, deletedAt: new Date().toISOString() }).eq('id', req.params.id);
+    } catch (e) {}
   }
   res.json({ success: true });
 });

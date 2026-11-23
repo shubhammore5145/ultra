@@ -20,7 +20,8 @@ import {
   TrendingUp,
   X,
   CheckCircle2,
-  Tag
+  Tag,
+  FolderPlus
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,6 +47,19 @@ export default function Products() {
   const [modalMrp, setModalMrp] = useState<string>('');
   const [priceSaving, setPriceSaving] = useState(false);
   const [priceSuccessMsg, setPriceSuccessMsg] = useState<string | null>(null);
+
+  // Category Management State
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [categorySuccessMsg, setCategorySuccessMsg] = useState('');
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('martgpt_custom_categories');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const openPriceModal = (product: Product) => {
     setPriceModalProduct(product);
@@ -130,16 +144,47 @@ export default function Products() {
     fetchProducts();
   }, [shopData?.shopId]);
 
-  // Extract unique categories
+  // Extract unique categories (combining products + custom categories)
   const categories = useMemo(() => {
     const set = new Set<string>();
+    customCategories.forEach(c => set.add(c));
     if (Array.isArray(products)) {
       products.forEach(p => {
         if (p.category) set.add(p.category);
       });
     }
     return Array.from(set).sort();
-  }, [products]);
+  }, [products, customCategories]);
+
+  const handleCreateCategory = (catName?: string) => {
+    const targetName = (catName || newCategoryInput).trim();
+    if (!targetName) return;
+
+    const updated = Array.from(new Set([...customCategories, targetName]));
+    setCustomCategories(updated);
+    try {
+      localStorage.setItem('martgpt_custom_categories', JSON.stringify(updated));
+    } catch {}
+
+    setSelectedCategory(targetName);
+    setCategorySuccessMsg(`Category "${targetName}" created & filter applied!`);
+    setNewCategoryInput('');
+    setTimeout(() => {
+      setShowCategoryModal(false);
+      setCategorySuccessMsg('');
+    }, 800);
+  };
+
+  const handleDeleteCategory = (catToDelete: string) => {
+    const updated = customCategories.filter(c => c !== catToDelete);
+    setCustomCategories(updated);
+    try {
+      localStorage.setItem('martgpt_custom_categories', JSON.stringify(updated));
+    } catch {}
+    if (selectedCategory === catToDelete) {
+      setSelectedCategory('all');
+    }
+  };
 
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
@@ -463,6 +508,16 @@ export default function Products() {
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCategoryModal(true)}
+                className="h-9 px-2.5 text-xs font-bold gap-1 text-primary border-primary/30 hover:bg-primary/10"
+                title="Add & Manage Categories"
+              >
+                <FolderPlus className="h-3.5 w-3.5" /> + Category
+              </Button>
             </div>
 
             {/* Camera Barcode Quick Search */}
@@ -977,6 +1032,177 @@ export default function Products() {
           }}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {/* Category Creation & Management Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card text-card-foreground border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <FolderPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Categories Manager</h3>
+                  <p className="text-xs text-muted-foreground">Create and manage product categories for your store</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { setShowCategoryModal(false); setCategorySuccessMsg(''); }}
+                className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Success feedback */}
+            {categorySuccessMsg && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 animate-in fade-in">
+                <Check className="h-4 w-4" />
+                <span>{categorySuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Input to Create Category */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold">Create New Category:</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="e.g. Ice Cream, Pooja Samagri, Dry Fruits..."
+                  value={newCategoryInput}
+                  onChange={(e) => setNewCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateCategory();
+                    }
+                  }}
+                  className="text-xs font-medium"
+                  autoFocus
+                />
+                <Button
+                  type="button"
+                  onClick={() => handleCreateCategory()}
+                  disabled={!newCategoryInput.trim()}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Category
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick 1-Click Indian Kirana Category Suggestions */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Popular Indian Kirana Categories (1-Click Add):
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { name: 'Edible Oils & Ghee', icon: '🛢️' },
+                  { name: 'Atta, Rice & Dal', icon: '🌾' },
+                  { name: 'Dry Fruits & Nuts', icon: '🥜' },
+                  { name: 'Namkeen & Farsan', icon: '🥨' },
+                  { name: 'Pooja Samagri', icon: '🪔' },
+                  { name: 'Ice Cream & Frozen', icon: '🍦' },
+                  { name: 'Cleaning & Detergents', icon: '🧼' },
+                  { name: 'Biscuits & Cookies', icon: '🍪' },
+                  { name: 'Cold Drinks & Juices', icon: '🧃' },
+                  { name: 'Patanjali & Ayurvedic', icon: '🌿' },
+                  { name: 'Noodles & Instant Food', icon: '🍝' },
+                  { name: 'Chocolates & Sweets', icon: '🍫' }
+                ].map((item) => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => handleCreateCategory(item.name)}
+                    className="px-2.5 py-1 text-xs font-medium rounded-lg bg-muted hover:bg-primary/10 hover:text-primary transition-all border border-muted-foreground/20 flex items-center gap-1"
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* All Active Store Categories with Product Counts */}
+            <div className="space-y-2 border-t pt-3">
+              <Label className="text-xs font-bold text-muted-foreground">
+                All Active Store Categories ({categories.length}):
+              </Label>
+              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-1">
+                {categories.map(cat => {
+                  const count = products.filter(p => p.category === cat).length;
+                  const isCustom = customCategories.includes(cat);
+                  return (
+                    <div 
+                      key={cat} 
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                        selectedCategory === cat 
+                          ? 'bg-primary text-primary-foreground border-primary shadow-xs' 
+                          : 'bg-card text-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          setShowCategoryModal(false);
+                        }}
+                        className="hover:underline flex items-center gap-1"
+                      >
+                        <span>{cat}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          selectedCategory === cat ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                      {isCustom && count === 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCategory(cat);
+                          }}
+                          title={`Delete unused category ${cat}`}
+                          className="text-muted-foreground hover:text-destructive p-0.5 rounded"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-between items-center pt-2 border-t">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSelectedCategory('all'); setShowCategoryModal(false); }}
+                className="text-xs font-semibold text-muted-foreground"
+              >
+                Clear Filter (Show All)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => { setShowCategoryModal(false); setCategorySuccessMsg(''); }}
+                className="text-xs font-bold"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

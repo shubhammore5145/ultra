@@ -22,7 +22,11 @@ import {
   Check, 
   Search, 
   AlertCircle,
-  PackageCheck
+  PackageCheck,
+  Plus,
+  FolderPlus,
+  Trash2,
+  X
 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { api } from '../lib/api';
@@ -44,6 +48,37 @@ export default function ProductForm() {
   const [error, setError] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   
+  // Standard & Custom Categories Management State
+  const DEFAULT_CATEGORIES = [
+    'Dairy',
+    'Snacks',
+    'Beverages',
+    'Grains & Pulses',
+    'Spices',
+    'Personal Care',
+    'Home Care',
+    'Bakery',
+    'Frozen Food',
+    'Edible Oils & Ghee',
+    'Dry Fruits & Nuts',
+    'Pooja & Agarbatti',
+    'Baby Care',
+    'Stationery',
+    'Other'
+  ];
+
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('martgpt_custom_categories');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [categorySuccessMsg, setCategorySuccessMsg] = useState('');
+
   // FMCG Auto-Complete Suggestions State
   const [fmcgSuggestions, setFmcgSuggestions] = useState<FMCGTemplate[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -134,6 +169,68 @@ export default function ProductForm() {
       fetchProduct();
     }
   }, [isEditing, id, shopData?.shopId]);
+
+  // Load custom categories from existing store products
+  useEffect(() => {
+    const loadCategoriesFromInventory = async () => {
+      try {
+        const prods = await api.products.list();
+        if (Array.isArray(prods)) {
+          const fromProducts = new Set<string>();
+          prods.forEach((p: Product) => {
+            if (p.category && !DEFAULT_CATEGORIES.includes(p.category)) {
+              fromProducts.add(p.category);
+            }
+          });
+          if (fromProducts.size > 0) {
+            setCustomCategories(prev => {
+              const combined = Array.from(new Set([...prev, ...fromProducts]));
+              try { localStorage.setItem('martgpt_custom_categories', JSON.stringify(combined)); } catch {}
+              return combined;
+            });
+          }
+        }
+      } catch (e) {}
+    };
+    loadCategoriesFromInventory();
+  }, []);
+
+  const handleCreateCategory = (catName?: string) => {
+    const targetName = (catName || newCategoryInput).trim();
+    if (!targetName) return;
+
+    const existsInDefault = DEFAULT_CATEGORIES.some(c => c.toLowerCase() === targetName.toLowerCase());
+    const matchedName = existsInDefault 
+      ? DEFAULT_CATEGORIES.find(c => c.toLowerCase() === targetName.toLowerCase())!
+      : targetName;
+
+    if (!existsInDefault) {
+      const updated = Array.from(new Set([...customCategories, targetName]));
+      setCustomCategories(updated);
+      try {
+        localStorage.setItem('martgpt_custom_categories', JSON.stringify(updated));
+      } catch {}
+    }
+
+    setFormData(prev => ({ ...prev, category: matchedName }));
+    setCategorySuccessMsg(`Category "${matchedName}" selected!`);
+    setNewCategoryInput('');
+    setTimeout(() => {
+      setShowCategoryModal(false);
+      setCategorySuccessMsg('');
+    }, 700);
+  };
+
+  const handleDeleteCustomCategory = (catToDelete: string) => {
+    const updated = customCategories.filter(c => c !== catToDelete);
+    setCustomCategories(updated);
+    try {
+      localStorage.setItem('martgpt_custom_categories', JSON.stringify(updated));
+    } catch {}
+    if (formData.category === catToDelete) {
+      setFormData(prev => ({ ...prev, category: '' }));
+    }
+  };
 
   useEffect(() => {
     if (formData.barcode && barcodeRef.current) {
@@ -570,6 +667,13 @@ export default function ProductForm() {
           >
             🧼 Soaps & Cleaning
           </button>
+          <button
+            type="button"
+            onClick={() => setShowCategoryModal(true)}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all flex items-center gap-1.5 shadow-sm"
+          >
+            <FolderPlus className="h-3.5 w-3.5" /> + New Category
+          </button>
         </div>
       </div>
 
@@ -648,25 +752,52 @@ export default function ProductForm() {
 
               {/* Category */}
               <div className="space-y-2">
-                <Label htmlFor="category" className="text-xs font-bold">Category *</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="category" className="text-xs font-bold flex items-center gap-1">
+                    Category *
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryModal(true)}
+                    className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> + Add / Create Category
+                  </button>
+                </div>
                 <select 
                   id="category" 
                   value={formData.category} 
-                  onChange={handleChange} 
+                  onChange={(e) => {
+                    if (e.target.value === '__create_new__') {
+                      setShowCategoryModal(true);
+                    } else {
+                      handleChange(e);
+                    }
+                  }} 
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-semibold ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   required
                 >
                   <option value="" disabled>Select Category</option>
-                  <option value="Dairy">Dairy & Milk</option>
-                  <option value="Snacks">Snacks & Biscuits</option>
-                  <option value="Beverages">Beverages & Drinks</option>
-                  <option value="Grains & Pulses">Grains & Pulses</option>
-                  <option value="Spices">Spices & Masalas</option>
-                  <option value="Personal Care">Personal Care</option>
-                  <option value="Home Care">Home Care</option>
-                  <option value="Bakery">Bakery & Bread</option>
-                  <option value="Frozen Food">Frozen Food</option>
-                  <option value="Other">Other General</option>
+                  <optgroup label="Standard Categories">
+                    {DEFAULT_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </optgroup>
+                  {customCategories.length > 0 && (
+                    <optgroup label="Your Custom Store Categories">
+                      {customCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {formData.category && !DEFAULT_CATEGORIES.includes(formData.category) && !customCategories.includes(formData.category) && (
+                    <optgroup label="Current Product Category">
+                      <option value={formData.category}>{formData.category}</option>
+                    </optgroup>
+                  )}
+                  <option value="__create_new__" className="text-primary font-black bg-primary/5">
+                    ➕ + Create New Category...
+                  </option>
                 </select>
               </div>
 
@@ -1225,6 +1356,163 @@ export default function ProductForm() {
           }}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {/* Category Creation & Management Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card text-card-foreground border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <FolderPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Add or Manage Categories</h3>
+                  <p className="text-xs text-muted-foreground">Create custom categories for your kirana store catalog</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { setShowCategoryModal(false); setCategorySuccessMsg(''); }}
+                className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Success feedback */}
+            {categorySuccessMsg && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 animate-in fade-in">
+                <Check className="h-4 w-4" />
+                <span>{categorySuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Input to Create Category */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold">Type New Category Name:</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="e.g. Ice Cream, Pooja Samagri, Dry Fruits..."
+                  value={newCategoryInput}
+                  onChange={(e) => setNewCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateCategory();
+                    }
+                  }}
+                  className="text-xs font-medium"
+                  autoFocus
+                />
+                <Button
+                  type="button"
+                  onClick={() => handleCreateCategory()}
+                  disabled={!newCategoryInput.trim()}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add & Select
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick 1-Click Indian Kirana Category Suggestions */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Or Choose Popular Indian Kirana Category:
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { name: 'Edible Oils & Ghee', icon: '🛢️' },
+                  { name: 'Atta, Rice & Dal', icon: '🌾' },
+                  { name: 'Dry Fruits & Nuts', icon: '🥜' },
+                  { name: 'Namkeen & Farsan', icon: '🥨' },
+                  { name: 'Pooja Samagri', icon: '🪔' },
+                  { name: 'Ice Cream & Frozen', icon: '🍦' },
+                  { name: 'Cleaning & Detergents', icon: '🧼' },
+                  { name: 'Biscuits & Cookies', icon: '🍪' },
+                  { name: 'Cold Drinks & Juices', icon: '🧃' },
+                  { name: 'Patanjali & Ayurvedic', icon: '🌿' },
+                  { name: 'Noodles & Instant Food', icon: '🍝' },
+                  { name: 'Chocolates & Sweets', icon: '🍫' }
+                ].map((item) => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => handleCreateCategory(item.name)}
+                    className="px-2.5 py-1 text-xs font-medium rounded-lg bg-muted hover:bg-primary/10 hover:text-primary transition-all border border-muted-foreground/20 flex items-center gap-1"
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Created Categories list */}
+            {customCategories.length > 0 && (
+              <div className="space-y-2 border-t pt-3">
+                <Label className="text-xs font-bold text-muted-foreground">
+                  Your Custom Store Categories ({customCategories.length}):
+                </Label>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1">
+                  {customCategories.map(cat => (
+                    <div 
+                      key={cat} 
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                        formData.category === cat 
+                          ? 'bg-primary text-primary-foreground border-primary shadow-xs' 
+                          : 'bg-card text-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, category: cat }));
+                          setCategorySuccessMsg(`Category "${cat}" selected!`);
+                          setTimeout(() => {
+                            setShowCategoryModal(false);
+                            setCategorySuccessMsg('');
+                          }, 500);
+                        }}
+                        className="hover:underline"
+                      >
+                        {cat}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCustomCategory(cat);
+                        }}
+                        title={`Delete ${cat} from custom categories`}
+                        className="ml-1 text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex justify-end pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => { setShowCategoryModal(false); setCategorySuccessMsg(''); }}
+                className="text-xs font-bold"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

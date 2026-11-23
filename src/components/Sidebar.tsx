@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet,
   HelpCircle, ClipboardList, LogOut, X, Barcode, Bell,
-  Receipt, TrendingUp, UserCheck, Trash2, Menu
+  Receipt, TrendingUp, UserCheck, Trash2, Menu, Crown
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -26,6 +26,7 @@ const navItems = [
   { name: 'Reports', href: '/reports', icon: FileText, permissionKey: 'reports', roles: ['admin'], color: 'text-indigo-400' },
   { name: 'Recycle Bin', href: '/recycle-bin', icon: Trash2, permissionKey: 'recycle_bin', roles: ['admin'], color: 'text-rose-500' },
   { name: 'Notifications', href: '/notifications', icon: Bell, permissionKey: 'notifications', roles: ['admin', 'cashier'], color: 'text-amber-500' },
+  { name: 'Super Admin', href: '/superadmin', icon: Crown, permissionKey: 'superadmin', roles: ['admin'], color: 'text-amber-500' },
   { name: 'Settings', href: '/settings', icon: Settings, permissionKey: 'settings', roles: ['admin'], color: 'text-slate-500' },
   { name: 'Support', href: '/support', icon: HelpCircle, permissionKey: 'support', roles: ['admin', 'cashier'], color: 'text-green-500' },
 ];

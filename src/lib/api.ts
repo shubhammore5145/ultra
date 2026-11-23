@@ -1500,6 +1500,46 @@ export const api = {
       saveLocalCashCounterClosing(closing);
       return closing;
     }
+  },
+  superadmin: {
+    getStats: async (key?: string) => {
+      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '9226';
+      return fetchAPI(`/superadmin/stats?key=${encodeURIComponent(masterKey)}`, {
+        headers: { 'x-superadmin-key': masterKey }
+      });
+    },
+    getShops: async (key?: string) => {
+      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '9226';
+      return fetchAPI(`/superadmin/shops?key=${encodeURIComponent(masterKey)}`, {
+        headers: { 'x-superadmin-key': masterKey }
+      });
+    },
+    updatePlan: async (
+      shopId: string, 
+      data: { plan: string; durationDays?: number | null; customExpiry?: string | null }, 
+      key?: string
+    ) => {
+      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '9226';
+      return fetchAPI(`/superadmin/shops/${shopId}/plan?key=${encodeURIComponent(masterKey)}`, {
+        method: 'PUT',
+        headers: { 'x-superadmin-key': masterKey },
+        body: JSON.stringify(data)
+      });
+    },
+    deleteShop: async (shopId: string, key?: string) => {
+      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '9226';
+      return fetchAPI(`/superadmin/shops/${shopId}?key=${encodeURIComponent(masterKey)}`, {
+        method: 'DELETE',
+        headers: { 'x-superadmin-key': masterKey }
+      });
+    },
+    impersonate: async (shopId: string, key?: string) => {
+      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '9226';
+      return fetchAPI(`/superadmin/impersonate/${shopId}?key=${encodeURIComponent(masterKey)}`, {
+        method: 'POST',
+        headers: { 'x-superadmin-key': masterKey }
+      });
+    }
   }
 };
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -14,7 +15,9 @@ import {
   Trash2, 
   Key, 
   CheckCircle,
-  Copy
+  Copy,
+  Crown,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
@@ -37,6 +40,7 @@ import { DataVaultSettingsTab } from '../components/settings/DataVaultSettingsTa
 import { StaffPermissionsModal } from '../components/settings/StaffPermissionsModal';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { userData, shopData, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -723,6 +727,34 @@ export default function Settings() {
         <div className="bg-background px-4 py-2 rounded-lg border font-mono font-bold select-all flex-shrink-0 text-foreground">
           {shopData?.shopId}
         </div>
+      </div>
+
+      {/* Super Admin Central Portal Quick Access */}
+      <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/10 to-primary/10 border border-amber-500/30 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="h-11 w-11 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-md shadow-amber-500/30 shrink-0">
+            <Crown className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="font-bold text-foreground flex items-center gap-2">
+              Super Admin Central Portal
+              <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                Master View
+              </span>
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Inspect all 16+ network shops, upgrade subscription plans, manage validity, and 1-click store access.
+            </p>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          onClick={() => navigate('/superadmin')}
+          className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs h-9 px-4 shrink-0 shadow-sm shadow-amber-500/20 cursor-pointer"
+        >
+          Open Super Admin <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {loading ? (

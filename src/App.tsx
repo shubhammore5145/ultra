@@ -27,6 +27,7 @@ const RecycleBin = lazy(() => import('./pages/RecycleBin'));
 const BillStore = lazy(() => import('./pages/BillStore'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const StaffManagement = lazy(() => import('./pages/StaffManagement'));
+const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 
 // Clean loading placeholder during code-split bundle fetching
 function PageFallback() {
@@ -76,6 +77,7 @@ function App() {
                   <Route path="/staff" element={<ProtectedRoute requiredPermission="staff"><StaffManagement /></ProtectedRoute>} />
                   <Route path="/recycle-bin" element={<ProtectedRoute requiredPermission="recycle_bin"><RecycleBin /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute requiredPermission="settings"><Settings /></ProtectedRoute>} />
+                  <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['admin']}><SuperAdmin /></ProtectedRoute>} />
                   <Route path="/upgrade" element={<Navigate to="/pos" replace />} />
 
                   {/* Common Utilities */}

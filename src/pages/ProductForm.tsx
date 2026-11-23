@@ -910,6 +910,15 @@ export default function ProductForm() {
 
             {formData.isLoose && (
               <div className="mt-4 pt-4 border-t border-amber-500/20 grid gap-4 md:grid-cols-2 animate-in fade-in duration-200">
+                <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl p-3 text-xs md:col-span-2 text-amber-900 dark:text-amber-200">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-amber-600" /> सुट्टा माल बिलिंग (Weight-Based Loose Billing Active):
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed">
+                    साखर, शेंगदाणे, तांदूळ, डाळी इत्यादींसाठी <strong>Measurement Unit: 'Kilogram (kg)'</strong> ठेवा आणि 1 किलोचा दर टाका (उदा. साखर ₹44/kg). 
+                    बिलिंग करताना POS स्क्रीनवर ग्राहकासाठी आपोआप <strong>100gm, 250gm (पाव), 500gm (अर्धा)</strong> आणि <strong>"₹20 ची साखर"</strong> चे 1-क्लिक कॅल्क्युलेटर बटन्स मिळतील!
+                  </p>
+                </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="shortCode" className="font-bold flex items-center gap-1.5 text-xs text-amber-900 dark:text-amber-200">

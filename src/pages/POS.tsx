@@ -204,6 +204,13 @@ export default function POS() {
   const [shiftClosingSaving, setShiftClosingSaving] = useState(false);
   const [shiftClosedSummary, setShiftClosedSummary] = useState<any | null>(null);
 
+  // ⚖️ Weight & Loose Item Calculator Modal State (Grams, Pav, Adha, or ₹ Amount)
+  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [weightModalItem, setWeightModalItem] = useState<CartItem | null>(null);
+  const [weightMode, setWeightMode] = useState<'weight' | 'amount'>('weight'); // 'weight' (grams) or 'amount' (₹ rupees)
+  const [weightInputGrams, setWeightInputGrams] = useState<string>('250');
+  const [amountInputRupees, setAmountInputRupees] = useState<string>('20');
+
   const buildWhatsAppBillText = (
     txId: string, 
     billTotal: number, 
@@ -692,12 +699,48 @@ export default function POS() {
     }
   };
 
+  const isWeightItem = (item: CartItem) => {
+    return Boolean((item as any).isLoose) || 
+      item.unit === 'kg' || 
+      item.unit === 'gm' || 
+      item.unit === 'ltr' || 
+      item.unit === 'ml';
+  };
+
+  const formatQuantityDisplay = (item: CartItem) => {
+    const isWeight = isWeightItem(item);
+    if (!isWeight) {
+      return `${item.qty} ${item.unit || 'pcs'}`;
+    }
+    if (item.unit === 'kg' || Boolean((item as any).isLoose)) {
+      if (Math.abs(item.qty - 0.25) < 0.001) return '250 gm (पाव)';
+      if (Math.abs(item.qty - 0.5) < 0.001) return '500 gm (अर्धा)';
+      if (Math.abs(item.qty - 0.75) < 0.001) return '750 gm (पाऊण)';
+      if (Math.abs(item.qty - 0.1) < 0.001) return '100 gm';
+      if (Math.abs(item.qty - 0.05) < 0.001) return '50 gm';
+      if (item.qty < 1) return `${Math.round(item.qty * 1000)} gm (${item.qty} kg)`;
+      return `${item.qty} kg`;
+    }
+    return `${item.qty} ${item.unit || ''}`;
+  };
+
   const updateQty = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
-        const isLoose = Boolean((item as any).isLoose);
+        const isLoose = isWeightItem(item);
         const maxStock = Number(item.stock ?? 999999);
-        const newQty = item.qty + delta;
+
+        // Smart stepping for weight/loose items
+        let step = delta;
+        if (isLoose && Math.abs(delta) === 1) {
+          if (item.qty <= 0.25 && delta < 0) {
+            step = -0.1;
+          } else if (item.qty <= 1) {
+            step = delta > 0 ? 0.25 : -0.25;
+          }
+        }
+
+        const newQty = Math.round((item.qty + step) * 1000) / 1000;
 
         if (delta > 0 && !isLoose && newQty > maxStock) {
           triggerStockAlert(`⚠️ "${item.name}" has only ${maxStock} in stock! Cannot add more.`);
@@ -721,6 +764,52 @@ export default function POS() {
       }
       return item;
     }));
+  };
+
+  const setExactQty = (id: string, newQty: number) => {
+    if (isNaN(newQty) || newQty <= 0) return;
+    const cleanQty = Math.round(newQty * 1000) / 1000;
+    setCart(prev => prev.map(item => {
+      if (item.id === id) {
+        let effectivePrice = Number(item.sellingPrice);
+        if (item.bulkMinQty && item.bulkPrice && cleanQty >= item.bulkMinQty) {
+          effectivePrice = Number(item.bulkPrice);
+        } else if (item.bulkMinQty && cleanQty < item.bulkMinQty) {
+          const orig = products.find(p => p.id === item.id);
+          effectivePrice = pricingMode === 'wholesale' && orig?.wholesalePrice
+            ? Number(orig.wholesalePrice)
+            : Number(orig?.sellingPrice || item.sellingPrice);
+        }
+        return { ...item, qty: cleanQty, sellingPrice: effectivePrice };
+      }
+      return item;
+    }));
+  };
+
+  const openWeightCalculator = (item: CartItem) => {
+    setWeightModalItem(item);
+    setWeightMode('weight');
+    const currentGrams = Math.round((Number(item.qty) || 1) * 1000);
+    setWeightInputGrams(currentGrams.toString());
+    const currentAmount = Math.round((Number(item.qty) || 1) * Number(item.sellingPrice || 0));
+    setAmountInputRupees(currentAmount > 0 ? currentAmount.toString() : '20');
+    setShowWeightModal(true);
+  };
+
+  const applyWeightCalculator = () => {
+    if (!weightModalItem) return;
+    let finalQty = 1;
+    if (weightMode === 'weight') {
+      const g = parseFloat(weightInputGrams) || 0;
+      finalQty = Math.max(0.01, Math.round((g / 1000) * 1000) / 1000);
+    } else {
+      const amt = parseFloat(amountInputRupees) || 0;
+      const rate = Number(weightModalItem.sellingPrice) || 1;
+      finalQty = Math.max(0.01, Math.round((amt / rate) * 1000) / 1000);
+    }
+    setExactQty(weightModalItem.id, finalQty);
+    setShowWeightModal(false);
+    setWeightModalItem(null);
   };
 
   const togglePricingMode = () => {
@@ -2002,47 +2091,125 @@ export default function POS() {
             </div>
           ) : (
             cart.map(item => {
-              const isLoose = Boolean((item as any).isLoose);
+              const itemIsWeight = isWeightItem(item);
               const maxStock = Number(item.stock ?? 999999);
-              const isMaxStockReached = !isLoose && item.qty >= maxStock;
+              const isMaxStockReached = !itemIsWeight && item.qty >= maxStock;
 
               return (
-                <div key={item.id} className="flex items-center justify-between border-b border-border/70 pb-3">
-                  <div className="flex-1 pr-2">
-                    <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
-                    <p className="text-muted-foreground text-xs mt-1">₹{item.sellingPrice} x {item.qty}</p>
-                    {isMaxStockReached && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold block mt-0.5">
-                        ⚠️ Stock Limit: {maxStock}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <p className="font-bold text-sm text-foreground">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
-                    <div className="flex items-center gap-1 bg-muted rounded-xl p-1 border border-border/40">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg active:scale-90" onClick={() => updateQty(item.id, -1)}>
-                        <Minus className="h-3.5 w-3.5" />
-                      </Button>
-                      <span className="w-7 text-center text-sm font-bold">{item.qty}</span>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        disabled={isMaxStockReached}
-                        className={`h-8 w-8 rounded-lg active:scale-90 ${
-                          isMaxStockReached 
-                            ? 'opacity-35 cursor-not-allowed text-muted-foreground' 
-                            : 'text-primary hover:bg-primary/10'
-                        }`} 
-                        onClick={() => updateQty(item.id, 1)}
-                        title={isMaxStockReached ? `Only ${maxStock} in stock` : 'Add 1 more'}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-rose-500 hover:bg-rose-500/10 active:scale-90" onClick={() => removeItem(item.id)}>
-                        <Trash className="h-3.5 w-3.5" />
-                      </Button>
+                <div key={item.id} className="flex flex-col border-b border-border/70 pb-3 gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 pr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
+                        {itemIsWeight && (
+                          <span className="text-[10px] bg-amber-500 text-white font-black px-2 py-0.5 rounded shadow-2xs">
+                            सुट्टा माल (Loose)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-foreground/80 text-xs mt-1 font-medium">
+                        ₹{item.sellingPrice}{item.unit ? `/${item.unit}` : ''} × <strong className="text-foreground font-black text-xs bg-muted px-1.5 py-0.5 rounded">{formatQuantityDisplay(item)}</strong>
+                      </p>
+                      {isMaxStockReached && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold block mt-0.5">
+                          ⚠️ Stock Limit: {maxStock}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1.5">
+                      <p className="font-black text-sm text-foreground">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
+                      <div className="flex items-center gap-1 bg-muted rounded-xl p-1 border border-border/40">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg active:scale-90" onClick={() => updateQty(item.id, -1)}>
+                          <Minus className="h-3.5 w-3.5" />
+                        </Button>
+                        <input
+                          type="number"
+                          step={itemIsWeight ? "0.05" : "1"}
+                          min="0.01"
+                          value={item.qty}
+                          onChange={(e) => setExactQty(item.id, parseFloat(e.target.value) || 0)}
+                          className="w-14 h-7 text-center text-xs font-black bg-background text-foreground border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary select-all"
+                          title="Click to type exact weight or quantity"
+                        />
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          disabled={isMaxStockReached}
+                          className={`h-7 w-7 rounded-lg active:scale-90 ${
+                            isMaxStockReached 
+                              ? 'opacity-35 cursor-not-allowed text-muted-foreground' 
+                              : 'text-primary hover:bg-primary/10'
+                          }`} 
+                          onClick={() => updateQty(item.id, 1)}
+                          title={isMaxStockReached ? `Only ${maxStock} in stock` : 'Add more'}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-500/10 active:scale-90" onClick={() => removeItem(item.id)}>
+                          <Trash className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
+
+                  {/* High-Contrast Quick Weight Chips for Loose / Weight Items (Sugar, Peanuts, Rice, Dal etc.) */}
+                  {itemIsWeight && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setExactQty(item.id, 0.1)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                          Math.abs(item.qty - 0.1) < 0.001 
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-500/30' 
+                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 shadow-2xs'
+                        }`}
+                      >
+                        100g
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExactQty(item.id, 0.25)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                          Math.abs(item.qty - 0.25) < 0.001 
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-500/30' 
+                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 shadow-2xs'
+                        }`}
+                      >
+                        250g (पाव)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExactQty(item.id, 0.5)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                          Math.abs(item.qty - 0.5) < 0.001 
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-500/30' 
+                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 shadow-2xs'
+                        }`}
+                      >
+                        500g (अर्धा)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExactQty(item.id, 1)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                          Math.abs(item.qty - 1) < 0.001 
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-500/30' 
+                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 shadow-2xs'
+                        }`}
+                      >
+                        1 kg
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openWeightCalculator(item)}
+                        className="ml-auto px-2.5 py-1 rounded-lg text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 shadow-xs flex items-center gap-1 cursor-pointer"
+                        title="Open Weight & Rupees Calculator"
+                      >
+                        ⚖️ वजन / ₹ रुपये
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -3072,7 +3239,9 @@ export default function POS() {
                         ) : (
                           <span style={{ fontWeight: 'bold' }}>Rate: ₹{sp.toFixed(2)}</span>
                         )}
-                        <span style={{ marginLeft: '6px', color: '#555' }}>x {qty}</span>
+                        <span style={{ marginLeft: '6px', color: '#555' }}>
+                          x {(item.unit === 'kg' || Boolean((item as any).isLoose)) && qty < 1 ? `${Math.round(qty * 1000)}gm (${qty}kg)` : qty}
+                        </span>
                       </span>
                       <span style={{ fontWeight: 'bold', fontSize: '11px' }}>
                         ₹{itemTotal.toFixed(2)}
@@ -3207,6 +3376,200 @@ export default function POS() {
         handleSaveShiftClose={handleSaveShiftClose}
         shiftClosingSaving={shiftClosingSaving}
       />
+
+      {/* ⚖️ LOOSE WEIGHT & RUPEES CALCULATOR MODAL (सुट्टा माल / ग्रॅम आणि रुपये कॅल्क्युलेटर) */}
+      {showWeightModal && weightModalItem && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-card text-card-foreground border border-border rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div>
+                <h3 className="text-base font-black text-foreground flex items-center gap-2">
+                  ⚖️ सुट्टा माल / वजन आणि रुपये कॅल्क्युलेटर
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5 font-medium">
+                  माल: <strong className="text-foreground">{weightModalItem.name}</strong> • दर: <strong className="text-primary font-bold">₹{Number(weightModalItem.sellingPrice || 0).toFixed(2)}/{weightModalItem.unit || 'kg'}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowWeightModal(false); setWeightModalItem(null); }}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Mode Switcher: By Weight vs By Rupee Amount */}
+            <div className="grid grid-cols-2 gap-2 bg-muted/60 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setWeightMode('weight')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  weightMode === 'weight'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                ⚖️ वजनानुसार (Grams / kg)
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeightMode('amount')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  weightMode === 'amount'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                💰 रुपयांनुसार (₹20, ₹50 ची साखर)
+              </button>
+            </div>
+
+            {/* Mode A: By Weight */}
+            {weightMode === 'weight' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-foreground block mb-1">
+                    वजन टाका (Grams मध्ये टाका, उदा. 250 किंवा 500):
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={weightInputGrams}
+                      onChange={(e) => setWeightInputGrams(e.target.value)}
+                      placeholder="उदा. 250"
+                      className="w-full h-11 px-3 pr-20 text-lg font-mono font-black bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                      autoFocus
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+                      Grams (gm)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick Gram Presets */}
+                <div>
+                  <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">जलद निवडी (Quick Presets):</span>
+                  <div className="grid grid-cols-4 gap-1.5 text-xs">
+                    {[
+                      { g: '50', label: '50 gm' },
+                      { g: '100', label: '100 gm' },
+                      { g: '200', label: '200 gm' },
+                      { g: '250', label: '250 gm (पाव)' },
+                      { g: '500', label: '500 gm (अर्धा)' },
+                      { g: '750', label: '750 gm (पाऊण)' },
+                      { g: '1000', label: '1 kg' },
+                      { g: '1500', label: '1.5 kg' },
+                      { g: '2000', label: '2 kg' },
+                      { g: '3000', label: '3 kg' },
+                      { g: '5000', label: '5 kg' },
+                      { g: '10000', label: '10 kg' },
+                    ].map(preset => (
+                      <button
+                        key={preset.g}
+                        type="button"
+                        onClick={() => setWeightInputGrams(preset.g)}
+                        className={`py-1.5 px-1 rounded-lg border text-center font-bold text-xs transition-colors cursor-pointer ${
+                          weightInputGrams === preset.g
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                            : 'bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border-border'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Mode B: By Rupee Amount */
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-foreground block mb-1">
+                    रुपये टाका (उदा. कस्टमरने ₹20 किंवा ₹50 मागितले):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-black text-muted-foreground">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={amountInputRupees}
+                      onChange={(e) => setAmountInputRupees(e.target.value)}
+                      placeholder="उदा. 20"
+                      className="w-full h-11 pl-8 pr-3 text-lg font-mono font-black bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Rupee Presets */}
+                <div>
+                  <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">जलद रक्कम (Quick Rupees):</span>
+                  <div className="grid grid-cols-4 gap-1.5 text-xs">
+                    {['10', '20', '30', '40', '50', '60', '70', '80', '100', '150', '200', '500'].map(rupee => (
+                      <button
+                        key={rupee}
+                        type="button"
+                        onClick={() => setAmountInputRupees(rupee)}
+                        className={`py-1.5 px-1 rounded-lg border text-center font-bold text-xs transition-colors cursor-pointer ${
+                          amountInputRupees === rupee
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                            : 'bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border-border'
+                        }`}
+                      >
+                        ₹{rupee}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Live Calculation Preview Banner */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-muted-foreground block text-[11px] font-semibold">निश्चित केलेले वजन (Weight):</span>
+                <span className="text-base font-black text-foreground">
+                  {weightMode === 'weight'
+                    ? `${weightInputGrams || 0} gm (${(parseFloat(weightInputGrams || '0') / 1000).toFixed(3)} kg)`
+                    : `${Math.round((parseFloat(amountInputRupees || '0') / (Number(weightModalItem.sellingPrice) || 1)) * 1000)} gm (${((parseFloat(amountInputRupees || '0') / (Number(weightModalItem.sellingPrice) || 1))).toFixed(3)} kg)`
+                  }
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-muted-foreground block text-[11px] font-semibold">एकूण रक्कम (Total):</span>
+                <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                  ₹{weightMode === 'weight'
+                    ? ((parseFloat(weightInputGrams || '0') / 1000) * Number(weightModalItem.sellingPrice || 0)).toFixed(2)
+                    : Number(amountInputRupees || 0).toFixed(2)
+                  }
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setShowWeightModal(false); setWeightModalItem(null); }}
+              >
+                रद्द करा (Cancel)
+              </Button>
+              <Button
+                size="sm"
+                onClick={applyWeightCalculator}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-4"
+              >
+                बिलात जोडा (Add to Bill) ✅
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

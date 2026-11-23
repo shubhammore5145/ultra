@@ -3,7 +3,7 @@ import Tesseract from 'tesseract.js';
 import { 
   Camera, Upload, FileText, CheckCircle2, AlertTriangle, Trash, 
   Plus, RefreshCw, X, Eye, Sparkles, Building2, IndianRupee, 
-  Loader2, Image as ImageIcon, TrendingUp, Check, Layers
+  Loader2, Image as ImageIcon, TrendingUp, Check, Layers, Zap
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,6 +11,7 @@ import { Label } from './ui/label';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
+import { runInvoiceOcrPipeline } from '../lib/invoiceOcrEngine';
 
 interface Supplier {
   id: string;
@@ -376,33 +377,50 @@ export function WholesalerBillScannerModal({
     }
   };
 
-  // Run Tesseract OCR on File or DataURL
+  // Run High-Accuracy Canvas-Preprocessed OCR Pipeline
   const processImageOCR = async (fileOrUrl: File | string) => {
     setIsProcessing(true);
     setOcrProgress(10);
-    setOcrStatusText('Reading invoice (AI OCR analyzing document)...');
+    setOcrStatusText('Preprocessing invoice (removing shadows & boosting contrast)...');
 
     try {
-      const res = await Tesseract.recognize(fileOrUrl, 'eng', {
-        logger: (m) => {
-          if (m.status === 'recognizing text' && m.progress) {
-            setOcrProgress(Math.round(m.progress * 100));
-            setOcrStatusText(`Reading text... ${Math.round(m.progress * 100)}%`);
-          }
-        }
+      const parsed = await runInvoiceOcrPipeline(fileOrUrl, products, (pct, status) => {
+        setOcrProgress(pct);
+        setOcrStatusText(status);
       });
 
-      const text = res?.data?.text || '';
-      setRawOcrText(text);
-      setOcrStatusText('Extracting items, rates, and quantities...');
-      parseInvoiceText(text);
+      setRawOcrText(parsed.rawText);
 
-      if (billItems.length === 0 && text.toLowerCase().includes('tag')) {
+      if (parsed.supplierName) setSupplierName(parsed.supplierName);
+      if (parsed.supplierPhone) setSupplierPhone(parsed.supplierPhone);
+      if (parsed.supplierGst) setSupplierGst(parsed.supplierGst);
+      if (parsed.invoiceNumber) setInvoiceNumber(parsed.invoiceNumber);
+      if (parsed.invoiceDate) setInvoiceDate(parsed.invoiceDate);
+
+      if (parsed.supplierName) {
+        const existingSupp = suppliers.find(s => 
+          s.name.toLowerCase().includes(parsed.supplierName.toLowerCase()) || 
+          (s.gstNumber && parsed.supplierGst && s.gstNumber === parsed.supplierGst)
+        );
+        if (existingSupp) setSelectedSupplierId(existingSupp.id);
+      }
+
+      if (parsed.items.length > 0) {
+        setBillItems(parsed.items);
+      } else if (parsed.rawText.toLowerCase().includes('tag')) {
         loadDemoInvoice();
       }
     } catch (err: any) {
-      console.error('OCR Error:', err);
-      alert('OCR failed to read the image clearly. Please check lighting or click "Load Sample Bill".');
+      console.error('High-accuracy OCR pipeline error:', err);
+      // Safe fallback to built-in parser
+      try {
+        const res = await Tesseract.recognize(fileOrUrl, 'eng');
+        const text = res?.data?.text || '';
+        setRawOcrText(text);
+        parseInvoiceText(text);
+      } catch (fbErr) {
+        alert('OCR failed to read the image clearly. Please check lighting or click "Load Sample Bill".');
+      }
     } finally {
       setIsProcessing(false);
       setOcrProgress(100);
@@ -674,8 +692,8 @@ export function WholesalerBillScannerModal({
                 <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
                   Wholesaler Bill Scanner & Auto Stock-In
                 </h2>
-                <span className="text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 tracking-wider">
-                  AI OCR
+                <span className="text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 tracking-wider flex items-center gap-1">
+                  <Zap className="h-3 w-3 text-emerald-400" /> High-Accuracy AI OCR
                 </span>
               </div>
               <p className="text-xs text-slate-300 font-medium mt-0.5">

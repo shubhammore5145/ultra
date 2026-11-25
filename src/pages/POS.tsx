@@ -342,11 +342,15 @@ export default function POS() {
       try {
         const prods = await api.products.list();
         if (Array.isArray(prods) && isMounted) {
-          setProducts(prods);
-          try {
-            localStorage.setItem('pos_products_cache', JSON.stringify(prods));
-          } catch (e) {
-            console.warn('LocalStorage quota or write error', e);
+          if (prods.length > 0 || products.length === 0) {
+            setProducts(prods);
+            try {
+              if (prods.length > 0) {
+                localStorage.setItem('pos_products_cache', JSON.stringify(prods));
+              }
+            } catch (e) {
+              console.warn('LocalStorage quota or write error', e);
+            }
           }
         }
       } catch (err) {
@@ -474,6 +478,22 @@ export default function POS() {
     return () => clearTimeout(timer);
   }, [stockWarning]);
 
+  const resolveEffectivePricing = useCallback((item: Product | CartItem, qty: number, mode: 'retail' | 'wholesale' = pricingMode) => {
+    const orig = products.find(p => p.id === item.id);
+    const bulkMin = Number(orig?.bulkMinQty ?? item.bulkMinQty ?? 0);
+    const bulkRate = Number(orig?.bulkPrice ?? item.bulkPrice ?? 0);
+    const wholesaleRate = Number(orig?.wholesalePrice ?? (item as Product).wholesalePrice ?? 0);
+    const singleRate = Number(orig?.sellingPrice ?? item.sellingPrice ?? 0);
+
+    if (bulkMin > 0 && bulkRate > 0 && qty >= bulkMin) {
+      return { sellingPrice: bulkRate, rateType: 'bulk' as const };
+    }
+    if (mode === 'wholesale' && wholesaleRate > 0) {
+      return { sellingPrice: wholesaleRate, rateType: 'wholesale' as const };
+    }
+    return { sellingPrice: singleRate, rateType: 'retail' as const };
+  }, [products, pricingMode]);
+
   const addToCart = useCallback((product: Product) => {
     const isLoose = Boolean((product as any).isLoose);
     const availableStock = Number(product.stock ?? 0);
@@ -492,30 +512,25 @@ export default function POS() {
           return prev;
         }
         const newQty = existing.qty + 1;
-        let effectivePrice = Number(existing.sellingPrice);
-        if (existing.bulkMinQty && existing.bulkPrice && newQty >= existing.bulkMinQty) {
-          effectivePrice = Number(existing.bulkPrice);
-        }
+        const pricing = resolveEffectivePricing(existing, newQty);
         return prev.map(item => 
-          item.id === product.id ? { ...item, qty: newQty, sellingPrice: effectivePrice } : item
+          item.id === product.id ? { ...item, qty: newQty, sellingPrice: pricing.sellingPrice, rateType: pricing.rateType } : item
         );
       }
 
-      const initialPrice = pricingMode === 'wholesale' && product.wholesalePrice && Number(product.wholesalePrice) > 0
-        ? Number(product.wholesalePrice)
-        : Number(product.sellingPrice) || 0;
+      const initialPricing = resolveEffectivePricing(product, 1);
 
       const itemToAdd: CartItem = {
         ...product,
-        sellingPrice: initialPrice,
+        sellingPrice: initialPricing.sellingPrice,
         purchasePrice: Number(product.purchasePrice) || 0,
         mrp: Number(product.mrp || product.sellingPrice) || 0,
         qty: 1,
-        rateType: pricingMode === 'wholesale' ? 'wholesale' : 'retail'
+        rateType: initialPricing.rateType
       };
       return [...prev, itemToAdd];
     });
-  }, [triggerStockAlert, pricingMode]);
+  }, [triggerStockAlert, resolveEffectivePricing]);
 
   const handleBarcodeScan = useCallback((code: string): boolean => {
     // If the quick add modal is open, don't trigger another scan
@@ -749,18 +764,8 @@ export default function POS() {
 
         if (newQty <= 0) return item;
 
-        // Auto apply bulk discount tier if qty reaches threshold
-        let effectivePrice = Number(item.sellingPrice);
-        if (item.bulkMinQty && item.bulkPrice && newQty >= item.bulkMinQty) {
-          effectivePrice = Number(item.bulkPrice);
-        } else if (item.bulkMinQty && newQty < item.bulkMinQty) {
-          const orig = products.find(p => p.id === item.id);
-          effectivePrice = pricingMode === 'wholesale' && orig?.wholesalePrice
-            ? Number(orig.wholesalePrice)
-            : Number(orig?.sellingPrice || item.sellingPrice);
-        }
-
-        return { ...item, qty: newQty, sellingPrice: effectivePrice };
+        const pricing = resolveEffectivePricing(item, newQty);
+        return { ...item, qty: newQty, sellingPrice: pricing.sellingPrice, rateType: pricing.rateType };
       }
       return item;
     }));
@@ -771,16 +776,14 @@ export default function POS() {
     const cleanQty = Math.round(newQty * 1000) / 1000;
     setCart(prev => prev.map(item => {
       if (item.id === id) {
-        let effectivePrice = Number(item.sellingPrice);
-        if (item.bulkMinQty && item.bulkPrice && cleanQty >= item.bulkMinQty) {
-          effectivePrice = Number(item.bulkPrice);
-        } else if (item.bulkMinQty && cleanQty < item.bulkMinQty) {
-          const orig = products.find(p => p.id === item.id);
-          effectivePrice = pricingMode === 'wholesale' && orig?.wholesalePrice
-            ? Number(orig.wholesalePrice)
-            : Number(orig?.sellingPrice || item.sellingPrice);
+        const isLoose = isWeightItem(item);
+        const maxStock = Number(item.stock ?? 999999);
+        if (!isLoose && cleanQty > maxStock) {
+          triggerStockAlert(`⚠️ "${item.name}" has only ${maxStock} in stock! Cannot exceed available stock.`);
+          return item;
         }
-        return { ...item, qty: cleanQty, sellingPrice: effectivePrice };
+        const pricing = resolveEffectivePricing(item, cleanQty);
+        return { ...item, qty: cleanQty, sellingPrice: pricing.sellingPrice, rateType: pricing.rateType };
       }
       return item;
     }));
@@ -816,18 +819,11 @@ export default function POS() {
     const nextMode = pricingMode === 'retail' ? 'wholesale' : 'retail';
     setPricingMode(nextMode);
     setCart(prev => prev.map(item => {
-      const orig = products.find(p => p.id === item.id);
-      let price = Number(orig?.sellingPrice || item.sellingPrice);
-      if (nextMode === 'wholesale' && orig?.wholesalePrice) {
-        price = Number(orig.wholesalePrice);
-      }
-      if (item.bulkMinQty && item.bulkPrice && item.qty >= item.bulkMinQty) {
-        price = Number(item.bulkPrice);
-      }
+      const pricing = resolveEffectivePricing(item, item.qty, nextMode);
       return {
         ...item,
-        sellingPrice: price,
-        rateType: nextMode
+        sellingPrice: pricing.sellingPrice,
+        rateType: pricing.rateType
       };
     }));
   };
@@ -959,8 +955,8 @@ export default function POS() {
     setCart(prev => prev.filter(item => item.id !== id));
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + ((item.sellingPrice || 0) * item.qty), 0);
-  const tax = cart.reduce((sum, item) => sum + (((item.sellingPrice || 0) * item.qty) * ((item.gst || 0) / 100)), 0);
+  const subtotal = cart.reduce((sum, item) => sum + (Math.round((item.sellingPrice || 0) * item.qty * 100) / 100), 0);
+  const tax = cart.reduce((sum, item) => sum + ((Math.round((item.sellingPrice || 0) * item.qty * 100) / 100) * ((item.gst || 0) / 100)), 0);
   
   let discountAmount = 0;
   const numDiscount = Number(discountValue) || 0;
@@ -1170,17 +1166,32 @@ export default function POS() {
 
   const filteredProducts = products.filter(p => {
     const term = searchTerm.trim().toLowerCase();
-    const matchesSearch = !term ||
-                          (p.name || '').toLowerCase().includes(term) || 
-                          (p.barcode || '').toLowerCase().includes(term) ||
-                          (p.sku || '').toLowerCase().includes(term) ||
-                          ((p as any).shortCode && String((p as any).shortCode).toLowerCase() === term);
     
-    if (!matchesSearch) return false;
+    // If not searching, respect active tab filter (All / Barcoded / Loose)
+    if (!term) {
+      if (activeTab === 'barcoded') return !(p as any).isLoose && !!p.barcode && p.barcode.trim() !== '';
+      if (activeTab === 'loose') return (p as any).isLoose || !p.barcode || p.barcode.trim() === '' || !!(p as any).shortCode;
+      return true;
+    }
 
-    if (activeTab === 'barcoded') return !(p as any).isLoose && !!p.barcode && p.barcode.trim() !== '';
-    if (activeTab === 'loose') return (p as any).isLoose || !p.barcode || p.barcode.trim() === '' || !!(p as any).shortCode;
-    return true;
+    // Comprehensive search across Brand, Name, Barcode, SKU, ShortCode, Category
+    const words = term.split(/\s+/).filter(Boolean);
+    const pName = (p.name || '').toLowerCase();
+    const pBrand = (p.brand || '').toLowerCase();
+    const pCategory = (p.category || '').toLowerCase();
+    const pBarcode = (p.barcode || '').toLowerCase();
+    const pSku = (p.sku || '').toLowerCase();
+    const pShortCode = ((p as any).shortCode ? String((p as any).shortCode) : '').toLowerCase();
+
+    // 1. Exact match on shortCode or barcode
+    if (pShortCode === term || pBarcode === term) return true;
+
+    // 2. Brand match: If searching by brand (e.g. "Parle", "Amul", "Tata", "Santoor"), all items of that brand match!
+    if (pBrand && (pBrand === term || pBrand.includes(term))) return true;
+
+    // 3. Combined multi-word match (e.g. "Parle G", "Tata Salt", "Amul Butter")
+    const combined = `${pName} ${pBrand} ${pCategory} ${pBarcode} ${pSku} ${pShortCode}`;
+    return words.every(w => combined.includes(w));
   });
 
   // Loose Items for quick buttons strip (Sugar, Peanuts, Rice etc.)
@@ -1614,7 +1625,7 @@ export default function POS() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input 
               ref={searchInputRef}
-              placeholder="Search item / barcode..." 
+              placeholder="Search item, brand, barcode, code... (उदा. Parle, Amul, Santoor)" 
               className="pl-10 pr-28 sm:pr-36 h-11 sm:h-12 md:h-14 text-sm md:text-base shadow-xs rounded-xl sm:rounded-2xl font-medium bg-background border-border/80"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1637,12 +1648,15 @@ export default function POS() {
                     return;
                   }
 
-                  // 2. Fallback to first filtered product
-                  if (filteredProducts.length > 0) {
+                  // 2. If exactly one product matches, add it directly
+                  if (filteredProducts.length === 1) {
                     addToCart(filteredProducts[0]);
                     setSearchTerm('');
                     e.preventDefault();
+                    return;
                   }
+
+                  // 3. If multiple items match (e.g. brand search like "Parle"), keep them displayed so cashier picks one
                 }
               }}
               autoFocus
@@ -1845,19 +1859,27 @@ export default function POS() {
               >
                 {/* Top Badges */}
                 <div className="flex items-center justify-between gap-1 mb-2">
-                  {shortCode ? (
-                    <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 font-mono font-bold text-[10px] px-2 py-0.5 rounded-md border border-amber-500/30">
-                      ⚡ {shortCode}
-                    </span>
-                  ) : isLoose ? (
-                    <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-[10px] px-2 py-0.5 rounded-md">
-                      Loose
-                    </span>
-                  ) : (
-                    <span className="bg-muted text-muted-foreground font-medium text-[10px] px-1.5 py-0.5 rounded-md truncate max-w-[90px]">
-                      {product.category || 'Item'}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1 flex-wrap overflow-hidden">
+                    {shortCode ? (
+                      <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 font-mono font-bold text-[10px] px-2 py-0.5 rounded-md border border-amber-500/30">
+                        ⚡ {shortCode}
+                      </span>
+                    ) : isLoose ? (
+                      <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-[10px] px-2 py-0.5 rounded-md">
+                        Loose
+                      </span>
+                    ) : null}
+
+                    {product.brand ? (
+                      <span className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] px-1.5 py-0.5 rounded-md border border-indigo-500/20 truncate max-w-[105px]">
+                        🏷️ {product.brand}
+                      </span>
+                    ) : product.category ? (
+                      <span className="bg-muted text-muted-foreground font-medium text-[10px] px-1.5 py-0.5 rounded-md truncate max-w-[90px]">
+                        {product.category}
+                      </span>
+                    ) : null}
+                  </div>
 
                   {isOutOfStock ? (
                     <span className="text-[10px] font-black text-rose-600 bg-rose-100 dark:bg-rose-950/80 px-2 py-0.5 rounded-md border border-rose-300/50">
@@ -1888,11 +1910,16 @@ export default function POS() {
 
                 {/* Bottom Price & Add */}
                 <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-auto">
-                  <div>
+                  <div className="min-w-0 pr-1">
                     <p className="font-black text-sm sm:text-base text-primary">₹{product.sellingPrice}</p>
                     {product.mrp && product.mrp > product.sellingPrice ? (
                       <p className="text-[10px] text-muted-foreground line-through">₹{product.mrp}</p>
                     ) : null}
+                    {Number(product.bulkMinQty || 0) > 0 && Number(product.bulkPrice || 0) > 0 && (
+                      <span className="inline-block mt-0.5 text-[10px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                        📦 {product.bulkMinQty}+ : ₹{Number(Number(product.bulkPrice).toFixed(2))}
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -2094,6 +2121,14 @@ export default function POS() {
               const itemIsWeight = isWeightItem(item);
               const maxStock = Number(item.stock ?? 999999);
               const isMaxStockReached = !itemIsWeight && item.qty >= maxStock;
+              const origProduct = products.find(p => p.id === item.id);
+              const singleUnitPrice = Number(origProduct?.sellingPrice ?? item.sellingPrice ?? 0);
+              const packMinQty = Number(origProduct?.bulkMinQty ?? item.bulkMinQty ?? 0);
+              const packUnitPrice = Number(origProduct?.bulkPrice ?? item.bulkPrice ?? 0);
+              const hasPackDeal = packMinQty > 0 && packUnitPrice > 0;
+              const isPackRateActive = hasPackDeal && item.qty >= packMinQty;
+              const packTotalPrice = hasPackDeal ? Math.round(packMinQty * packUnitPrice * 100) / 100 : 0;
+              const lineTotal = Math.round((item.sellingPrice || 0) * item.qty * 100) / 100;
 
               return (
                 <div key={item.id} className="flex flex-col border-b border-border/70 pb-3 gap-1.5">
@@ -2106,10 +2141,25 @@ export default function POS() {
                             सुट्टा माल (Loose)
                           </span>
                         )}
+                        {isPackRateActive && (
+                          <span className="text-[10px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded shadow-2xs">
+                            📦 पॅक रेट लागू!
+                          </span>
+                        )}
                       </div>
                       <p className="text-foreground/80 text-xs mt-1 font-medium">
-                        ₹{item.sellingPrice}{item.unit ? `/${item.unit}` : ''} × <strong className="text-foreground font-black text-xs bg-muted px-1.5 py-0.5 rounded">{formatQuantityDisplay(item)}</strong>
+                        ₹{Number((item.sellingPrice || 0).toFixed(2))}{item.unit ? `/${item.unit}` : ''} × <strong className="text-foreground font-black text-xs bg-muted px-1.5 py-0.5 rounded">{formatQuantityDisplay(item)}</strong>
+                        {isPackRateActive && singleUnitPrice > packUnitPrice && (
+                          <span className="ml-1.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                            (Single ₹{singleUnitPrice} ऐवजी)
+                          </span>
+                        )}
                       </p>
+                      {hasPackDeal && !isPackRateActive && (
+                        <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                          💡 आणखी {Math.round((packMinQty - item.qty) * 100) / 100} घ्या → ₹{Number(packUnitPrice.toFixed(2))}/{item.unit || 'pc'} (पॅक ₹{packTotalPrice})
+                        </p>
+                      )}
                       {isMaxStockReached && (
                         <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold block mt-0.5">
                           ⚠️ Stock Limit: {maxStock}
@@ -2118,7 +2168,7 @@ export default function POS() {
                     </div>
 
                     <div className="flex flex-col items-end gap-1.5">
-                      <p className="font-black text-sm text-foreground">₹{((item.sellingPrice || 0) * item.qty).toFixed(2)}</p>
+                      <p className="font-black text-sm text-foreground">₹{lineTotal.toFixed(2)}</p>
                       <div className="flex items-center gap-1 bg-muted rounded-xl p-1 border border-border/40">
                         <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg active:scale-90" onClick={() => updateQty(item.id, -1)}>
                           <Minus className="h-3.5 w-3.5" />
@@ -2208,6 +2258,47 @@ export default function POS() {
                       >
                         ⚖️ वजन / ₹ रुपये
                       </button>
+                    </div>
+                  )}
+
+                  {/* High-Contrast Quick Pack vs Single Chips (e.g. Santoor Soap: 1 Single ₹36 vs 6 Pack ₹180) */}
+                  {hasPackDeal && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setExactQty(item.id, 1)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                          item.qty === 1
+                            ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
+                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700'
+                        }`}
+                      >
+                        1 Single (₹{singleUnitPrice})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExactQty(item.id, packMinQty)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                          item.qty === packMinQty
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-500/30'
+                            : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700'
+                        }`}
+                      >
+                        📦 {packMinQty} Pack (₹{packTotalPrice})
+                      </button>
+                      {(itemIsWeight || maxStock >= packMinQty * 2) && (
+                        <button
+                          type="button"
+                          onClick={() => setExactQty(item.id, packMinQty * 2)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                            item.qty === packMinQty * 2
+                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-500/30'
+                              : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700'
+                          }`}
+                        >
+                          📦 {packMinQty * 2} (2 Pack)
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

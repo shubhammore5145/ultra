@@ -73,7 +73,7 @@ export interface CartItem extends Product {
   qty: number;
   variantId?: string;
   variantName?: string;
-  rateType?: 'retail' | 'wholesale';
+  rateType?: 'retail' | 'wholesale' | 'bulk';
   originalPrice?: number;
 }
 

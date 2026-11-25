@@ -127,6 +127,12 @@ function getSQLiteDb() {
         isLoose INTEGER DEFAULT 0,
         expiryDate TEXT,
         imageUrl TEXT,
+        wholesalePrice REAL,
+        bulkMinQty REAL,
+        bulkPrice REAL,
+        rackLocation TEXT,
+        reorderQty REAL,
+        maxStock REAL,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -281,6 +287,12 @@ function getSQLiteDb() {
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isLoose INTEGER DEFAULT 0;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN shortCode TEXT;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN variants TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN wholesalePrice REAL;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN bulkMinQty REAL;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN bulkPrice REAL;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN rackLocation TEXT;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN reorderQty REAL;'); } catch (e) {}
+    try { sqliteDb.exec('ALTER TABLE products ADD COLUMN maxStock REAL;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN isDeleted INTEGER DEFAULT 0;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE products ADD COLUMN deletedAt TEXT;'); } catch (e) {}
     try { sqliteDb.exec('ALTER TABLE transactions ADD COLUMN isDeleted INTEGER DEFAULT 0;'); } catch (e) {}
@@ -563,9 +575,17 @@ async function warmUpCacheFromSupabase() {
       supabase.from('promo_codes').select('*')
     ]);
 
+    const shopProductMetaMap = {};
     if (shopsRes.data) {
       for (const s of shopsRes.data) {
         try {
+          let parsedSettings = s.settings;
+          if (typeof parsedSettings === 'string') {
+            try { parsedSettings = JSON.parse(parsedSettings); } catch { parsedSettings = {}; }
+          }
+          if (parsedSettings && typeof parsedSettings === 'object' && parsedSettings.productMeta && typeof parsedSettings.productMeta === 'object') {
+            shopProductMetaMap[s.shopId] = parsedSettings.productMeta;
+          }
           db.prepare('INSERT OR REPLACE INTO shops (shopId, name, ownerName, phone, email, address, gstNumber, upiId, publicUrl, plan, planExpiry, settings, receiptHeader, receiptFooter, receiptPaperSize, fssaiNumber, invoiceTerms, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             .run(
               s.shopId, 
@@ -593,8 +613,20 @@ async function warmUpCacheFromSupabase() {
     if (prodsRes.data) {
       for (const p of prodsRes.data) {
         try {
-          db.prepare('INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, expiryDate, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .run(p.id, p.shopId, p.name, p.category, p.brand, p.unit, p.purchasePrice || 0, p.sellingPrice || 0, p.mrp || 0, p.gst || 0, p.stock || 0, p.minStock || 0, p.sku, p.barcode, p.shortCode, p.isLoose ? 1 : 0, p.expiryDate || null, p.imageUrl || null);
+          const meta = (shopProductMetaMap[p.shopId] && shopProductMetaMap[p.shopId][p.id]) || {};
+          db.prepare('INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, expiryDate, imageUrl, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(
+              p.id, p.shopId, p.name, p.category, p.brand, p.unit,
+              p.purchasePrice || 0, p.sellingPrice || 0, p.mrp || 0, p.gst || 0,
+              p.stock || 0, p.minStock || 0, p.sku, p.barcode, p.shortCode,
+              p.isLoose ? 1 : 0, p.expiryDate || null, p.imageUrl || null,
+              p.wholesalePrice ?? meta.wholesalePrice ?? null,
+              p.bulkMinQty ?? meta.bulkMinQty ?? null,
+              p.bulkPrice ?? meta.bulkPrice ?? null,
+              p.rackLocation ?? meta.rackLocation ?? null,
+              p.reorderQty ?? meta.reorderQty ?? null,
+              p.maxStock ?? meta.maxStock ?? null
+            );
         } catch (e) {}
       }
     }

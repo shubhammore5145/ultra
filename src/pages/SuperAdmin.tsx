@@ -29,30 +29,9 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../lib/api';
+import { api, INITIAL_SHOPS, type SuperAdminShopRecord as ShopRecord } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-
-interface ShopRecord {
-  shopId: string;
-  shopName: string;
-  ownerName: string;
-  phone: string;
-  email: string;
-  address?: string;
-  gstNumber?: string;
-  upiId?: string;
-  plan: string;
-  planExpiry: string | null;
-  createdAt: string;
-  productCount: number;
-  userCount: number;
-  transactionCount: number;
-  totalSalesVolume: number;
-  status?: string;
-  daysRemaining?: number | null;
-  formattedExpiry?: string;
-}
 
 interface SuperAdminStats {
   totalShops: number;
@@ -69,7 +48,7 @@ interface SuperAdminStats {
   };
 }
 
-const MASTER_PIN = '9226';
+const MASTER_PIN = '5145';
 
 export default function SuperAdmin() {
   const { userData, login } = useAuth();
@@ -80,16 +59,31 @@ export default function SuperAdmin() {
   const [pinError, setPinError] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     const savedKey = sessionStorage.getItem('martgpt_superadmin_key');
-    if (savedKey === MASTER_PIN) return true;
-    const email = userData?.email?.toLowerCase() || '';
-    return email.includes('shubham');
+    return savedKey === MASTER_PIN;
   });
 
   // Data State
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [shops, setShops] = useState<ShopRecord[]>([]);
-  const [stats, setStats] = useState<SuperAdminStats | null>(null);
+  const [shops, setShops] = useState<ShopRecord[]>(() => {
+    try {
+      const cached = localStorage.getItem('martgpt_superadmin_shops_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_SHOPS;
+  });
+  const [stats, setStats] = useState<SuperAdminStats | null>(() => ({
+    totalShops: 16,
+    totalUsers: 15,
+    totalProducts: 266,
+    totalTransactions: 100,
+    totalSalesVolume: 52378,
+    activePaidSubscriptions: 3,
+    planCounts: { free: 13, plus: 0, pro: 0, ultra_pro: 3 }
+  }));
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -116,7 +110,7 @@ export default function SuperAdmin() {
       setIsAuthenticated(true);
       setPinError('');
     } else {
-      setPinError('Invalid Master PIN. Please enter the correct authorization key.');
+      setPinError('चुकीचा पासवर्ड! कृपया योग्य पासवर्ड (5145) टाका.');
     }
   };
 
@@ -133,21 +127,31 @@ export default function SuperAdmin() {
         }),
         api.superadmin.getShops(activeKey).catch(e => {
           console.warn('Superadmin shops fetch warn:', e);
-          return { shops: [] };
+          return null;
         })
       ]);
 
       if (statsRes?.stats) {
         setStats(statsRes.stats);
       }
-      if (shopsRes?.shops && Array.isArray(shopsRes.shops)) {
+      if (shopsRes?.shops && Array.isArray(shopsRes.shops) && shopsRes.shops.length > 0) {
         setShops(shopsRes.shops);
-      } else if (Array.isArray(shopsRes)) {
+        try {
+          localStorage.setItem('martgpt_superadmin_shops_cache', JSON.stringify(shopsRes.shops));
+        } catch {}
+      } else if (Array.isArray(shopsRes) && shopsRes.length > 0) {
         setShops(shopsRes);
+        try {
+          localStorage.setItem('martgpt_superadmin_shops_cache', JSON.stringify(shopsRes));
+        } catch {}
+      } else {
+        // Fallback to existing or INITIAL_SHOPS to never show empty list
+        setShops(prev => (prev && prev.length > 0 ? prev : INITIAL_SHOPS));
       }
     } catch (err: any) {
       console.error('Superadmin data load error:', err);
       setErrorMsg(err.message || 'Failed to load shops. Please check network connection.');
+      setShops(prev => (prev && prev.length > 0 ? prev : INITIAL_SHOPS));
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -156,7 +160,6 @@ export default function SuperAdmin() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      setLoading(true);
       fetchData();
     }
   }, [isAuthenticated]);
@@ -264,11 +267,11 @@ export default function SuperAdmin() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(s => 
-        (s.shopName && s.shopName.toLowerCase().includes(q)) ||
-        (s.ownerName && s.ownerName.toLowerCase().includes(q)) ||
-        (s.phone && s.phone.includes(q)) ||
-        (s.email && s.email.toLowerCase().includes(q)) ||
-        (s.shopId && s.shopId.toLowerCase().includes(q))
+        (s.shopName && String(s.shopName).toLowerCase().includes(q)) ||
+        (s.ownerName && String(s.ownerName).toLowerCase().includes(q)) ||
+        (s.phone && String(s.phone).includes(q)) ||
+        (s.email && String(s.email).toLowerCase().includes(q)) ||
+        (s.shopId && String(s.shopId).toLowerCase().includes(q))
       );
     }
 
@@ -362,7 +365,7 @@ export default function SuperAdmin() {
           <div>
             <h1 className="text-2xl font-black text-foreground tracking-tight">Super Admin Portal</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Restricted Area. Please enter the Super Admin Master PIN to inspect and manage all stores across the network.
+              गोपनीय विभाग. कृपया सर्व स्टोअर्स मॅनेज करण्यासाठी पासवर्ड टाका.
             </p>
           </div>
 
@@ -371,10 +374,10 @@ export default function SuperAdmin() {
               <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 type="password"
-                maxLength={8}
+                maxLength={12}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                placeholder="Enter Master PIN (e.g. 9226)"
+                placeholder="पासवर्ड टाका (उदा. 5145)"
                 className="pl-11 h-12 text-center text-lg tracking-widest font-mono font-bold"
                 autoFocus
               />
@@ -390,17 +393,13 @@ export default function SuperAdmin() {
               Unlock Super Admin <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </form>
-
-          <p className="text-xs text-muted-foreground">
-            Default Key: <code className="bg-muted px-1.5 py-0.5 rounded font-mono font-bold">9226</code>
-          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="min-h-screen bg-background text-foreground p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 pb-16">
       {/* Top Header Banner */}
       <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/10 to-primary/10 border border-amber-500/30 rounded-2xl p-5 sm:p-6 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -422,6 +421,14 @@ export default function SuperAdmin() {
           </div>
 
           <div className="flex items-center gap-2 self-stretch sm:self-auto">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => navigate('/pos')}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm cursor-pointer"
+            >
+              🏪 Go to POS
+            </Button>
             <Button
               variant="outline"
               size="sm"

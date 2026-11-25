@@ -115,6 +115,7 @@ export default function ProductForm() {
   });
 
   const barcodeRef = useRef<SVGSVGElement>(null);
+  const [packTotalStr, setPackTotalStr] = useState('');
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -158,6 +159,11 @@ export default function ProductForm() {
               reorderQty: data.reorderQty?.toString() || '',
               maxStock: data.maxStock?.toString() || ''
             });
+            if (Number(data.bulkMinQty) > 0 && Number(data.bulkPrice) > 0) {
+              setPackTotalStr(String(Math.round(Number(data.bulkMinQty) * Number(data.bulkPrice) * 100) / 100));
+            } else {
+              setPackTotalStr('');
+            }
           }
         } catch (err) {
           console.error(err);
@@ -543,12 +549,12 @@ export default function ProductForm() {
         isLoose: formData.isLoose ? 1 : 0,
         expiryDate: formData.expiryDate || null,
         imageUrl: formData.imageUrl || null,
-        wholesalePrice: formData.wholesalePrice ? parseFloat(formData.wholesalePrice) : undefined,
-        bulkMinQty: formData.bulkMinQty ? parseFloat(formData.bulkMinQty) : undefined,
-        bulkPrice: formData.bulkPrice ? parseFloat(formData.bulkPrice) : undefined,
-        rackLocation: formData.rackLocation.trim() || undefined,
-        reorderQty: formData.reorderQty ? parseFloat(formData.reorderQty) : undefined,
-        maxStock: formData.maxStock ? parseFloat(formData.maxStock) : undefined
+        wholesalePrice: formData.wholesalePrice ? parseFloat(formData.wholesalePrice) : null,
+        bulkMinQty: formData.bulkMinQty ? parseFloat(formData.bulkMinQty) : null,
+        bulkPrice: formData.bulkPrice ? parseFloat(formData.bulkPrice) : null,
+        rackLocation: formData.rackLocation.trim() || null,
+        reorderQty: formData.reorderQty ? parseFloat(formData.reorderQty) : null,
+        maxStock: formData.maxStock ? parseFloat(formData.maxStock) : null
       };
 
       if (isEditing && id) {
@@ -1123,6 +1129,149 @@ export default function ProductForm() {
                 )}
               </div>
             )}
+
+            {/* Pack / Combo Discount Pricing (Single vs Pack Rate e.g. Santoor Soap 1 pc ₹36 vs 6 pcs Pack ₹180) */}
+            {(() => {
+              const packQtyNum = parseFloat(formData.bulkMinQty) || 0;
+              const packUnitNum = parseFloat(formData.bulkPrice) || 0;
+              const singleUnitNum = parseFloat(formData.sellingPrice) || 0;
+              const totalSavings = packQtyNum > 0 && packUnitNum > 0 && singleUnitNum > packUnitNum
+                ? Math.round((singleUnitNum - packUnitNum) * packQtyNum * 100) / 100
+                : 0;
+              const unitSavings = packQtyNum > 0 && packUnitNum > 0 && singleUnitNum > packUnitNum
+                ? Math.round((singleUnitNum - packUnitNum) * 100) / 100
+                : 0;
+
+              return (
+                <div className="mt-4 p-4 sm:p-5 rounded-2xl border-2 border-indigo-500/30 bg-indigo-500/5 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-500/20">
+                    <div>
+                      <h3 className="text-sm font-black text-foreground flex items-center gap-2">
+                        <span>📦 पॅक / बल्क ऑफर किंमत (Pack vs Single Pricing)</span>
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        उदा. संतूर साबण १ नग ₹{singleUnitNum > 0 ? singleUnitNum : 36}, पण ६ नगांचा पॅक घेतल्यास कमी दर आपोआप लागेल!
+                      </p>
+                    </div>
+                    {(packQtyNum > 0 || packUnitNum > 0 || packTotalStr) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, bulkMinQty: '', bulkPrice: '' }));
+                          setPackTotalStr('');
+                        }}
+                        className="text-xs font-bold text-rose-600 hover:text-rose-700 self-start sm:self-center underline cursor-pointer"
+                      >
+                        Clear Pack Price
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bulkMinQty" className="text-xs font-bold">
+                        पॅक नग संख्या (Min Pack Qty)
+                      </Label>
+                      <Input
+                        id="bulkMinQty"
+                        value={formData.bulkMinQty}
+                        onChange={(e) => {
+                          const newQtyStr = e.target.value;
+                          const q = parseFloat(newQtyStr) || 0;
+                          const t = parseFloat(packTotalStr) || 0;
+                          setFormData(prev => {
+                            let nextBulkPrice = prev.bulkPrice;
+                            if (q > 0 && t > 0) {
+                              nextBulkPrice = String(Math.round((t / q) * 10000) / 10000);
+                            }
+                            return { ...prev, bulkMinQty: newQtyStr, bulkPrice: nextBulkPrice };
+                          });
+                        }}
+                        type="number"
+                        min="1"
+                        step="any"
+                        placeholder="उदा. 6 किंवा 12"
+                        className="font-mono font-bold bg-background"
+                      />
+                      <p className="text-[11px] text-muted-foreground">किती नग घेतल्यावर पॅक दर लागू होईल?</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="packTotalInput" className="text-xs font-bold">
+                        पूर्ण पॅकची एकूण किंमत (Pack Total ₹)
+                      </Label>
+                      <Input
+                        id="packTotalInput"
+                        type="number"
+                        step="any"
+                        placeholder={packQtyNum > 0 ? `उदा. ${Math.round(packQtyNum * (singleUnitNum || 30) * 0.9)}` : 'उदा. 180'}
+                        value={packTotalStr}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setPackTotalStr(raw);
+                          const totalVal = parseFloat(raw);
+                          const qty = parseFloat(formData.bulkMinQty) || 0;
+                          if (!raw || isNaN(totalVal) || qty <= 0) {
+                            setFormData(prev => ({ ...prev, bulkPrice: '' }));
+                            return;
+                          }
+                          // Preserve 4 decimals so unit * packQty matches exact Pack Total on bill
+                          const perUnit = Math.round((totalVal / qty) * 10000) / 10000;
+                          setFormData(prev => ({ ...prev, bulkPrice: perUnit.toString() }));
+                        }}
+                        disabled={packQtyNum <= 0}
+                        className="font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-background"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        {packQtyNum > 0 ? `${packQtyNum} नगांचा एकूण पॅक दर (₹)` : 'आधी डावीकडे पॅक संख्या टाका'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bulkPrice" className="text-xs font-bold">
+                        प्रति नग पॅक दर (Per Unit ₹)
+                      </Label>
+                      <Input
+                        id="bulkPrice"
+                        value={formData.bulkPrice}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setFormData(prev => ({ ...prev, bulkPrice: raw }));
+                          const unitVal = parseFloat(raw);
+                          const qty = parseFloat(formData.bulkMinQty) || 0;
+                          if (!raw || isNaN(unitVal) || qty <= 0) {
+                            setPackTotalStr('');
+                          } else {
+                            setPackTotalStr(String(Math.round(unitVal * qty * 100) / 100));
+                          }
+                        }}
+                        type="number"
+                        step="any"
+                        placeholder="उदा. 30.00"
+                        className="font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-background"
+                      />
+                      <p className="text-[11px] text-muted-foreground">POS मध्ये {packQtyNum || 'N'}+ नगांवर आपोआप लागू</p>
+                    </div>
+                  </div>
+
+                  {packQtyNum > 0 && packUnitNum > 0 && (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="font-bold text-foreground">
+                        ✅ सेटिंग तयार: <strong>१ ते {Math.max(1, packQtyNum - 1)} नग = ₹{singleUnitNum || 0}/नग</strong> &nbsp;|&nbsp;{' '}
+                        <strong className="text-emerald-700 dark:text-emerald-400">
+                          {packQtyNum}+ नग (Pack) = ₹{Number(packUnitNum.toFixed(2))}/नग (एकूण ₹{(Math.round(packQtyNum * packUnitNum * 100) / 100).toFixed(2)})
+                        </strong>
+                      </span>
+                      {totalSavings > 0 && (
+                        <span className="bg-emerald-600 text-white font-black px-2.5 py-0.5 rounded-md">
+                          बचत: ₹{totalSavings} (₹{unitSavings}/नग स्वस्त)
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Section 4: Wholesale & Shelf Placement */}
@@ -1131,15 +1280,15 @@ export default function ProductForm() {
               <div>
                 <h2 className="text-base font-bold flex items-center gap-2">
                   <span className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 font-black text-[10px] uppercase tracking-wider">Advanced</span>
-                  Wholesale Tiers & Warehouse Placement
+                  Wholesale Rate & Warehouse Placement
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Set wholesale rates, automatic bulk tier quantity discounts, and rack locations.
+                  Set dedicated wholesale B2B POS price, rack locations, and stock replenishment limits.
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="wholesalePrice" className="text-xs font-bold">Wholesale Price (₹)</Label>
                 <Input 
@@ -1151,31 +1300,6 @@ export default function ProductForm() {
                   placeholder="e.g. 95.00"
                 />
                 <p className="text-[11px] text-muted-foreground">Applied in Wholesale POS mode</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="bulkMinQty" className="text-xs font-bold">Bulk Discount Min Qty</Label>
-                <Input 
-                  id="bulkMinQty" 
-                  value={formData.bulkMinQty} 
-                  onChange={handleChange} 
-                  type="number" 
-                  placeholder="e.g. 5 or 10"
-                />
-                <p className="text-[11px] text-muted-foreground">Min qty to trigger bulk price</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="bulkPrice" className="text-xs font-bold">Bulk Unit Price (₹)</Label>
-                <Input 
-                  id="bulkPrice" 
-                  value={formData.bulkPrice} 
-                  onChange={handleChange} 
-                  type="number" 
-                  step="0.01" 
-                  placeholder="e.g. 90.00"
-                />
-                <p className="text-[11px] text-muted-foreground">Auto-applied when cart qty reaches threshold</p>
               </div>
 
               <div className="space-y-1.5">

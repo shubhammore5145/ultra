@@ -20,6 +20,9 @@ import {
   TrendingUp,
   X,
   CheckCircle2,
+  Check,
+  Sparkles,
+  Trash2,
   Tag,
   FolderPlus
 } from 'lucide-react';
@@ -32,8 +35,15 @@ export default function Products() {
   const { shopData } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = localStorage.getItem('pos_products_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
   
   // Bulk Edit State
   const [bulkEditMode, setBulkEditMode] = useState(false);
@@ -45,6 +55,9 @@ export default function Products() {
   const [modalPurchasePrice, setModalPurchasePrice] = useState<string>('');
   const [modalSellingPrice, setModalSellingPrice] = useState<string>('');
   const [modalMrp, setModalMrp] = useState<string>('');
+  const [modalBulkMinQty, setModalBulkMinQty] = useState<string>('');
+  const [modalBulkPrice, setModalBulkPrice] = useState<string>('');
+  const [modalPackTotalStr, setModalPackTotalStr] = useState<string>('');
   const [priceSaving, setPriceSaving] = useState(false);
   const [priceSuccessMsg, setPriceSuccessMsg] = useState<string | null>(null);
 
@@ -66,6 +79,13 @@ export default function Products() {
     setModalPurchasePrice(product.purchasePrice !== undefined && product.purchasePrice !== null ? String(product.purchasePrice) : '');
     setModalSellingPrice(product.sellingPrice !== undefined && product.sellingPrice !== null ? String(product.sellingPrice) : '');
     setModalMrp(product.mrp !== undefined && product.mrp !== null ? String(product.mrp) : '');
+    setModalBulkMinQty(product.bulkMinQty ? String(product.bulkMinQty) : '');
+    setModalBulkPrice(product.bulkPrice ? String(product.bulkPrice) : '');
+    setModalPackTotalStr(
+      Number(product.bulkMinQty) > 0 && Number(product.bulkPrice) > 0
+        ? String(Math.round(Number(product.bulkMinQty) * Number(product.bulkPrice) * 100) / 100)
+        : ''
+    );
     setPriceSuccessMsg(null);
   };
 
@@ -76,11 +96,15 @@ export default function Products() {
       const pp = parseFloat(modalPurchasePrice) || 0;
       const sp = parseFloat(modalSellingPrice) || 0;
       const mrpVal = parseFloat(modalMrp) || 0;
+      const bMin = modalBulkMinQty ? parseFloat(modalBulkMinQty) : null;
+      const bPrice = modalBulkPrice ? parseFloat(modalBulkPrice) : null;
 
       await api.products.update(priceModalProduct.id, {
         purchasePrice: pp,
         sellingPrice: sp,
-        mrp: mrpVal
+        mrp: mrpVal,
+        bulkMinQty: bMin,
+        bulkPrice: bPrice
       });
 
       // Update local products state immediately
@@ -90,7 +114,9 @@ export default function Products() {
             ...p,
             purchasePrice: pp,
             sellingPrice: sp,
-            mrp: mrpVal
+            mrp: mrpVal,
+            bulkMinQty: bMin ?? undefined,
+            bulkPrice: bPrice ?? undefined
           };
         }
         return p;
@@ -126,15 +152,39 @@ export default function Products() {
     setLoading(true);
     try {
       const data = await api.products.list();
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setProducts(data);
+        try {
+          localStorage.setItem('pos_products_cache', JSON.stringify(data));
+        } catch {}
       } else {
-        console.warn('api.products.list() did not return an array:', data);
-        setProducts([]);
+        // Fallback to local cache if API returns empty
+        try {
+          const cached = localStorage.getItem('pos_products_cache');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setProducts(parsed);
+              return;
+            }
+          }
+        } catch {}
+        if (Array.isArray(data)) {
+          setProducts(data);
+        }
       }
     } catch (err) {
       console.error('Failed to load products', err);
-      setProducts([]);
+      try {
+        const cached = localStorage.getItem('pos_products_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setProducts(parsed);
+            return;
+          }
+        }
+      } catch {}
     } finally {
       setLoading(false);
     }
@@ -188,11 +238,28 @@ export default function Products() {
 
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
+    const term = searchTerm.trim().toLowerCase();
+    const words = term.split(/\s+/).filter(Boolean);
+
     return products.filter(p => {
-      const matchesSearch = 
-        (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (p.barcode || '').includes(searchTerm) ||
-        (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase());
+      let matchesSearch = true;
+      if (term) {
+        const pName = (p.name || '').toLowerCase();
+        const pBrand = (p.brand || '').toLowerCase();
+        const pCategory = (p.category || '').toLowerCase();
+        const pBarcode = (p.barcode || '').toLowerCase();
+        const pSku = (p.sku || '').toLowerCase();
+        const pShortCode = ((p as any).shortCode ? String((p as any).shortCode) : '').toLowerCase();
+
+        if (pShortCode === term || pBarcode === term) {
+          matchesSearch = true;
+        } else if (pBrand && (pBrand === term || pBrand.includes(term))) {
+          matchesSearch = true;
+        } else {
+          const combined = `${pName} ${pBrand} ${pCategory} ${pBarcode} ${pSku} ${pShortCode}`;
+          matchesSearch = words.every(w => combined.includes(w));
+        }
+      }
       
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
@@ -697,6 +764,11 @@ export default function Products() {
                               MRP: ₹{Number(product.mrp).toFixed(2)}
                             </span>
                           )}
+                          {Number(product.bulkMinQty || 0) > 0 && Number(product.bulkPrice || 0) > 0 && (
+                            <span className="inline-block mt-0.5 text-[10px] font-black bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 rounded">
+                              📦 {product.bulkMinQty}+ : ₹{Number(Number(product.bulkPrice).toFixed(2))}/pc
+                            </span>
+                          )}
                         </button>
                       )}
                     </td>
@@ -951,6 +1023,89 @@ export default function Products() {
                     onChange={(e) => setModalMrp(e.target.value)}
                     className="pl-7 h-9 text-xs font-medium bg-background"
                   />
+                </div>
+              </div>
+
+              {/* Pack / Bulk Pricing Quick Setup */}
+              <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-black text-indigo-700 dark:text-indigo-300">
+                    📦 पॅक ऑफर दर (Pack / Bulk Rate - Optional)
+                  </Label>
+                  {(modalBulkMinQty || modalBulkPrice || modalPackTotalStr) && (
+                    <button
+                      type="button"
+                      onClick={() => { setModalBulkMinQty(''); setModalBulkPrice(''); setModalPackTotalStr(''); }}
+                      className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">पॅक नग (Qty)</span>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="any"
+                      placeholder="उदा. 6"
+                      value={modalBulkMinQty}
+                      onChange={(e) => {
+                        const rawQty = e.target.value;
+                        setModalBulkMinQty(rawQty);
+                        const q = parseFloat(rawQty) || 0;
+                        const t = parseFloat(modalPackTotalStr) || 0;
+                        if (q > 0 && t > 0) {
+                          setModalBulkPrice(String(Math.round((t / q) * 10000) / 10000));
+                        }
+                      }}
+                      className="h-8 text-xs font-bold bg-background"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">पॅक एकूण (₹)</span>
+                    <Input
+                      type="number"
+                      step="any"
+                      placeholder="उदा. 180"
+                      disabled={!parseFloat(modalBulkMinQty)}
+                      value={modalPackTotalStr}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setModalPackTotalStr(raw);
+                        const qty = parseFloat(modalBulkMinQty) || 0;
+                        const totalVal = parseFloat(raw);
+                        if (!raw || isNaN(totalVal) || qty <= 0) {
+                          setModalBulkPrice('');
+                          return;
+                        }
+                        setModalBulkPrice(String(Math.round((totalVal / qty) * 10000) / 10000));
+                      }}
+                      className="h-8 text-xs font-bold bg-background text-indigo-700 dark:text-indigo-300"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">प्रति नग (₹)</span>
+                    <Input
+                      type="number"
+                      step="any"
+                      placeholder="उदा. 30"
+                      value={modalBulkPrice}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setModalBulkPrice(raw);
+                        const unitVal = parseFloat(raw);
+                        const qty = parseFloat(modalBulkMinQty) || 0;
+                        if (!raw || isNaN(unitVal) || qty <= 0) {
+                          setModalPackTotalStr('');
+                        } else {
+                          setModalPackTotalStr(String(Math.round(unitVal * qty * 100) / 100));
+                        }
+                      }}
+                      className="h-8 text-xs font-bold bg-background text-emerald-700 dark:text-emerald-300"
+                    />
+                  </div>
                 </div>
               </div>
 

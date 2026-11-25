@@ -532,6 +532,9 @@ export default function POS() {
     });
   }, [triggerStockAlert, resolveEffectivePricing]);
 
+  // Anti-double-scan guard for hardware barcode scanners (prevents duplicate qty on single scan)
+  const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+
   const handleBarcodeScan = useCallback((code: string): boolean => {
     // If the quick add modal is open, don't trigger another scan
     if (quickAddBarcode) return false;
@@ -539,6 +542,20 @@ export default function POS() {
     const trimmed = code.trim();
     if (!trimmed) return false;
     const lower = trimmed.toLowerCase();
+
+    const now = Date.now();
+    // Anti-double-scan guard:
+    // 1. Same barcode scanned twice within 800ms -> hardware bounce/CRLF duplicate -> ignore
+    if (lastScanRef.current.code === lower && (now - lastScanRef.current.time) < 800) {
+      console.log('[Scanner] Debounce blocked duplicate scan of same barcode:', lower);
+      return false;
+    }
+    // 2. Rapid-fire scan of any barcode within 250ms -> physical impossibility -> ignore
+    if ((now - lastScanRef.current.time) < 250) {
+      console.log('[Scanner] Throttle blocked rapid-fire scan within 250ms');
+      return false;
+    }
+    lastScanRef.current = { code: lower, time: now };
 
     // Play supermarket scanner audio beep if enabled
     const scannerBeepEnabled = (shopData as any)?.settings?.scannerBeep !== false;
@@ -580,6 +597,9 @@ export default function POS() {
       addToCart(product);
       setShowPhysicalScannerReady(false);
       setSearchTerm('');
+      if (searchInputRef.current) {
+        searchInputRef.current.value = '';
+      }
       return true;
     } else {
       // Open Quick Add Modal and close camera so staff can immediately enter details
@@ -600,31 +620,41 @@ export default function POS() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // If we are typing in an input other than search, don't capture as barcode
       const activeElement = document.activeElement;
-      if (activeElement?.tagName === 'INPUT' && activeElement !== searchInputRef.current) {
+      if ((activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA') && activeElement !== searchInputRef.current) {
         return;
       }
 
-      if (e.key === 'Enter' && barcodeBufferRef.current) {
-        console.log('[Scanner] Enter key pressed! Full barcode:', barcodeBufferRef.current);
-        // We have a complete barcode scan
-        handleBarcodeScan(barcodeBufferRef.current);
-        barcodeBufferRef.current = '';
-        if (barcodeTimeoutRef.current) {
-          clearTimeout(barcodeTimeoutRef.current);
+      if (e.key === 'Enter') {
+        if (barcodeBufferRef.current && barcodeBufferRef.current.length >= 3) {
+          console.log('[Scanner] Enter key pressed! Full barcode:', barcodeBufferRef.current);
+          const scannedCode = barcodeBufferRef.current;
+          barcodeBufferRef.current = '';
+          if (barcodeTimeoutRef.current) {
+            clearTimeout(barcodeTimeoutRef.current);
+          }
+          // Prevent the Enter key from triggering <Input onKeyDown> or form submission
+          e.preventDefault();
+          e.stopPropagation();
+
+          handleBarcodeScan(scannedCode);
+          setSearchTerm('');
+          if (searchInputRef.current) {
+            searchInputRef.current.value = '';
+          }
+        } else {
+          barcodeBufferRef.current = '';
         }
       } else if (e.key.length === 1) {
         // Accumulate characters
         barcodeBufferRef.current += e.key;
-        console.log('[Scanner] Key received:', e.key, '| Buffer so far:', barcodeBufferRef.current);
         
         // Reset the timeout
         if (barcodeTimeoutRef.current) {
           clearTimeout(barcodeTimeoutRef.current);
         }
         barcodeTimeoutRef.current = setTimeout(() => {
-          console.log('[Scanner] Timeout cleared buffer:', barcodeBufferRef.current);
           barcodeBufferRef.current = '';
-        }, 200); // Increased timeout slightly
+        }, 200);
       }
     };
 
@@ -1631,6 +1661,16 @@ export default function POS() {
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
+                  const now = Date.now();
+                  // Anti-double-scan guard: if a barcode scan was recently processed within 800ms, ignore this Enter key
+                  if ((now - lastScanRef.current.time) < 800) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchTerm('');
+                    if (searchInputRef.current) searchInputRef.current.value = '';
+                    return;
+                  }
+
                   const term = searchTerm.trim().toLowerCase();
                   if (!term) return;
 
@@ -1642,17 +1682,21 @@ export default function POS() {
                   );
 
                   if (exactMatch) {
-                    addToCart(exactMatch);
-                    setSearchTerm('');
                     e.preventDefault();
+                    e.stopPropagation();
+                    handleBarcodeScan(exactMatch.barcode || (exactMatch as any).shortCode || exactMatch.sku || term);
+                    setSearchTerm('');
+                    if (searchInputRef.current) searchInputRef.current.value = '';
                     return;
                   }
 
                   // 2. If exactly one product matches, add it directly
                   if (filteredProducts.length === 1) {
-                    addToCart(filteredProducts[0]);
-                    setSearchTerm('');
                     e.preventDefault();
+                    e.stopPropagation();
+                    handleBarcodeScan(filteredProducts[0].barcode || (filteredProducts[0] as any).shortCode || filteredProducts[0].sku || filteredProducts[0].name);
+                    setSearchTerm('');
+                    if (searchInputRef.current) searchInputRef.current.value = '';
                     return;
                   }
 

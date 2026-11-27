@@ -201,10 +201,10 @@
   #zreport-template {
     display: block !important;
     position: static !important;
-    width: 72mm !important;
-    max-width: 72mm !important;
-    margin: 0 !important;
-    padding: 1.5mm 2.5mm !important;
+    width: 100% !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 1.5mm 2mm !important;
     box-sizing: border-box !important;
     background: #ffffff !important;
     color: #000000 !important;
@@ -219,8 +219,8 @@
 
   #receipt-template[data-paper="58mm"],
   #test-receipt-print[data-paper="58mm"] {
-    width: 48mm !important;
-    max-width: 48mm !important;
+    width: 100% !important;
+    max-width: 58mm !important;
     padding: 1mm 1.5mm !important;
     font-size: 11px !important;
   }

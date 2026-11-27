@@ -882,8 +882,8 @@ export default function Dashboard() {
       {/* ─── HIDDEN Z-REPORT THERMAL SLIP FOR PRINT ─── */}
       <div 
         id="zreport-template" 
-        className="hidden print:block bg-white text-black text-[12px] leading-[1.3] font-mono w-[72mm] max-w-[72mm]"
-        style={{ width: '72mm', maxWidth: '72mm', boxSizing: 'border-box', padding: '1.5mm 2.5mm', fontVariantNumeric: 'tabular-nums', color: '#000' }}
+        className="hidden print:block bg-white text-black text-[12px] leading-[1.3] font-mono w-full max-w-[80mm]"
+        style={{ width: '100%', maxWidth: '80mm', margin: '0 auto', boxSizing: 'border-box', padding: '1.5mm 2mm', fontVariantNumeric: 'tabular-nums', color: '#000' }}
       >
         <div style={{ textAlign: 'center', marginBottom: '8px' }}>
           <h2 style={{ margin: '0 0 2px 0', fontSize: '16px', fontWeight: '900' }}>

@@ -291,8 +291,8 @@ export default function BillStore() {
         paperSpec = '58mm';
       }
     } catch {}
-    const printableWidth = paperSpec === '58mm' ? '48mm' : '72mm';
-    const barcodeMaxWidth = paperSpec === '58mm' ? '44mm' : '64mm';
+    const printableWidth = paperSpec === '58mm' ? '58mm' : '80mm';
+    const barcodeMaxWidth = '96%';
 
     // Generate crisp offline barcode SVG synchronously
     let barcodeSvgHtml = '';
@@ -301,8 +301,8 @@ export default function BillStore() {
         const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         JsBarcode(svgEl, barcodeValue, {
           format: 'CODE128',
-          width: paperSpec === '58mm' ? 1.1 : 1.35,
-          height: 34,
+          width: paperSpec === '58mm' ? 1.15 : 1.45,
+          height: 36,
           displayValue: true,
           fontSize: 10,
           margin: 0,
@@ -374,10 +374,10 @@ export default function BillStore() {
             * { box-sizing: border-box; }
             body { 
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-              width: ${printableWidth};
+              width: 100%;
               max-width: ${printableWidth};
-              margin: 0;
-              padding: 1.5mm 2.5mm;
+              margin: 0 auto;
+              padding: 1.5mm 2mm;
               font-size: 11.5px;
               color: #000;
               background: #fff;

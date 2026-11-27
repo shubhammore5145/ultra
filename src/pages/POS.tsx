@@ -3078,12 +3078,12 @@ export default function POS() {
                   setShowPaymentModal(false);
                   let mainMethod: 'cash' | 'upi' | 'udhar' | 'split' = 'split';
                   
-                  const tenderedNum = parseFloat(cashTendered) || 0;
-                  const cashInputVal = splitAmounts.cash || 0;
-                  const effectiveTendered = tenderedNum > 0 ? tenderedNum : (cashInputVal > 0 ? cashInputVal : total);
-                  
                   const cashNeededForBill = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
-                  const actualCashPortion = Math.min(cashInputVal > 0 ? cashInputVal : total, cashNeededForBill);
+                  const actualCashPortion = Math.max(0, Math.min(splitAmounts.cash || 0, cashNeededForBill));
+                  const tenderedNum = parseFloat(cashTendered) || 0;
+                  const effectiveTendered = actualCashPortion > 0
+                    ? (tenderedNum > 0 ? tenderedNum : actualCashPortion)
+                    : 0;
                   
                   const actualSplit = {
                     cash: actualCashPortion,
@@ -3091,7 +3091,9 @@ export default function POS() {
                     udhar: splitAmounts.udhar
                   };
                   
-                  const changeToReturn = Math.max(0, effectiveTendered - actualCashPortion);
+                  const changeToReturn = actualCashPortion > 0
+                    ? Math.max(0, effectiveTendered - actualCashPortion)
+                    : 0;
 
                   if (Math.abs(actualCashPortion - total) < 0.01) mainMethod = 'cash';
                   else if (Math.abs(splitAmounts.upi - total) < 0.01) mainMethod = 'upi';
@@ -3245,8 +3247,8 @@ export default function POS() {
           hwPaperSize === '58mm' || (activeShop as any)?.settings?.paperSize === '58mm' || (activeShop as any)?.receiptPaperSize === '58mm'
             ? '58mm'
             : '80mm';
-        const printableWidth = paperSpec === '58mm' ? '48mm' : '72mm';
-        const barcodeMaxWidth = paperSpec === '58mm' ? '44mm' : '64mm';
+        const printableWidth = paperSpec === '58mm' ? '58mm' : '80mm';
+        const barcodeMaxWidth = '96%';
         const receiptCustomHeader = (activeShop as any)?.settings?.receiptHeader || (activeShop as any)?.receiptHeader;
         const receiptCustomFooter = (activeShop as any)?.settings?.receiptFooter || (activeShop as any)?.receiptFooter;
 
@@ -3256,11 +3258,11 @@ export default function POS() {
             data-paper={paperSpec}
             className="hidden print:block bg-white text-black font-sans"
             style={{
-              width: printableWidth,
+              width: '100%',
               maxWidth: printableWidth,
               boxSizing: 'border-box',
-              padding: '1.5mm 2.5mm',
-              margin: 0,
+              padding: '1.5mm 2mm',
+              margin: '0 auto',
               color: '#000000',
               backgroundColor: '#ffffff',
               fontSize: paperSpec === '58mm' ? '11px' : '12px',
@@ -3439,8 +3441,8 @@ export default function POS() {
                     try {
                       JsBarcode(el, checkoutResult.id.slice(-12).toUpperCase(), {
                         format: 'CODE128',
-                        width: paperSpec === '58mm' ? 1.1 : 1.35,
-                        height: 34,
+                        width: paperSpec === '58mm' ? 1.15 : 1.45,
+                        height: 36,
                         displayValue: true,
                         fontSize: 10,
                         margin: 0,

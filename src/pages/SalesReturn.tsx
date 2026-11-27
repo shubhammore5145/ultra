@@ -348,10 +348,10 @@ export default function SalesReturn() {
             * { box-sizing: border-box; }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-              width: 72mm;
-              max-width: 72mm;
-              margin: 0;
-              padding: 2mm 2.5mm;
+              width: 100%;
+              max-width: 80mm;
+              margin: 0 auto;
+              padding: 1.5mm 2mm;
               color: #000;
               background: #fff;
               font-size: 11.5px;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -42,6 +42,27 @@ export default function ProductForm() {
   const navigate = useNavigate();
   const { shopData } = useAuth();
   const isEditing = !!id;
+
+  // Check if GST is enabled for this shop (if false, GST fields and options are completely hidden)
+  const isGstEnabled = useMemo(() => {
+    try {
+      const explicitFlag = localStorage.getItem('shop_gst_enabled');
+      if (explicitFlag !== null) {
+        return JSON.parse(explicitFlag) === true;
+      }
+      const rawShop = localStorage.getItem('auth_shop');
+      if (rawShop) {
+        const parsed = JSON.parse(rawShop);
+        if (parsed.settings && typeof parsed.settings.gstEnabled === 'boolean') {
+          return parsed.settings.gstEnabled;
+        }
+      }
+    } catch {}
+    if ((shopData as any)?.settings && typeof (shopData as any).settings.gstEnabled === 'boolean') {
+      return (shopData as any).settings.gstEnabled;
+    }
+    return Boolean(shopData?.gstNumber && shopData.gstNumber.trim().length > 0);
+  }, [shopData]);
   
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEditing);
@@ -293,7 +314,7 @@ export default function ProductForm() {
       mrp: item.mrp.toString(),
       purchasePrice: item.purchasePrice.toString(),
       sellingPrice: item.sellingPrice.toString(),
-      gst: item.gst.toString(),
+      gst: isGstEnabled ? item.gst.toString() : '0',
       barcode: item.barcode || prev.barcode,
       isLoose: Boolean(item.isLoose)
     }));
@@ -302,17 +323,22 @@ export default function ProductForm() {
 
   // 1-Click Category Quick Presets
   const applyCategoryPreset = (categoryType: 'dairy' | 'loose' | 'snacks' | 'fmcg' | 'spices') => {
+    const defaultGst = isGstEnabled ? (
+      categoryType === 'snacks' || categoryType === 'fmcg' ? '18' : 
+      categoryType === 'spices' ? '5' : '0'
+    ) : '0';
+
     if (categoryType === 'dairy') {
-      setFormData(prev => ({ ...prev, category: 'Dairy', unit: 'pkt', gst: '0', isLoose: false }));
+      setFormData(prev => ({ ...prev, category: 'Dairy', unit: 'pkt', gst: defaultGst, isLoose: false }));
     } else if (categoryType === 'loose') {
       setFormData(prev => ({ ...prev, category: 'Grains & Pulses', unit: 'kg', gst: '0', isLoose: true }));
       handleAutoShortCode();
     } else if (categoryType === 'snacks') {
-      setFormData(prev => ({ ...prev, category: 'Snacks', unit: 'pkt', gst: '18', isLoose: false }));
+      setFormData(prev => ({ ...prev, category: 'Snacks', unit: 'pkt', gst: defaultGst, isLoose: false }));
     } else if (categoryType === 'fmcg') {
-      setFormData(prev => ({ ...prev, category: 'Personal Care', unit: 'pcs', gst: '18', isLoose: false }));
+      setFormData(prev => ({ ...prev, category: 'Personal Care', unit: 'pcs', gst: defaultGst, isLoose: false }));
     } else if (categoryType === 'spices') {
-      setFormData(prev => ({ ...prev, category: 'Spices', unit: 'pkt', gst: '5', isLoose: false }));
+      setFormData(prev => ({ ...prev, category: 'Spices', unit: 'pkt', gst: defaultGst, isLoose: false }));
     }
   };
 
@@ -540,7 +566,7 @@ export default function ProductForm() {
         purchasePrice: parseFloat(formData.purchasePrice) || 0,
         sellingPrice: parseFloat(formData.sellingPrice) || 0,
         mrp: parseFloat(formData.mrp) || 0,
-        gst: parseFloat(formData.gst) || 0,
+        gst: isGstEnabled ? (parseFloat(formData.gst) || 0) : 0,
         stock: parseFloat(formData.stock) || 0,
         minStock: parseFloat(formData.minStock) || 0,
         sku: formData.sku,
@@ -1052,22 +1078,24 @@ export default function ProductForm() {
                 <p className="text-[11px] text-muted-foreground">Printed MRP on packet</p>
               </div>
 
-              {/* GST % */}
-              <div className="space-y-1.5">
-                <Label htmlFor="gst" className="text-xs font-bold">GST Tax %</Label>
-                <select
-                  id="gst"
-                  value={formData.gst}
-                  onChange={handleChange}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-semibold"
-                >
-                  <option value="0">0% (Nil / Essential Grocery)</option>
-                  <option value="5">5% (Edible Oil, Tea, Atta)</option>
-                  <option value="12">12% (Butter, Cheese, Ghee)</option>
-                  <option value="18">18% (Biscuits, Soaps, Shampoos)</option>
-                  <option value="28">28% (Aerated Drinks)</option>
-                </select>
-              </div>
+              {/* GST % (Only shown if shop has GST enabled in Settings) */}
+              {isGstEnabled && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="gst" className="text-xs font-bold">GST Tax %</Label>
+                  <select
+                    id="gst"
+                    value={formData.gst}
+                    onChange={handleChange}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-semibold"
+                  >
+                    <option value="0">0% (Nil / Essential Grocery)</option>
+                    <option value="5">5% (Edible Oil, Tea, Atta)</option>
+                    <option value="12">12% (Butter, Cheese, Ghee)</option>
+                    <option value="18">18% (Biscuits, Soaps, Shampoos)</option>
+                    <option value="28">28% (Aerated Drinks)</option>
+                  </select>
+                </div>
+              )}
 
               {/* Opening Stock */}
               <div className="space-y-1.5">

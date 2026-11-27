@@ -17,7 +17,11 @@ import {
   CheckCircle,
   Copy,
   Crown,
-  ArrowRight
+  ArrowRight,
+  Receipt,
+  CheckCircle2,
+  XCircle,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
@@ -53,6 +57,17 @@ export default function Settings() {
     gstNumber: '',
     upiId: '',
     publicUrl: ''
+  });
+
+  // GST Billing Mode (Enabled for GST shops, Disabled for small kirana stores)
+  const [gstEnabled, setGstEnabled] = useState<boolean>(() => {
+    try {
+      const explicitFlag = localStorage.getItem('shop_gst_enabled');
+      if (explicitFlag !== null) {
+        return JSON.parse(explicitFlag) === true;
+      }
+    } catch {}
+    return true;
   });
 
   // POS Hardware State (Thermal Printer & Barcode Scanner Gun)
@@ -207,6 +222,14 @@ export default function Settings() {
       });
 
       const settings = (shopData as any).settings || {};
+      const savedGstFlag = localStorage.getItem('shop_gst_enabled');
+      const isGstOn = savedGstFlag !== null
+        ? JSON.parse(savedGstFlag) === true
+        : (settings.gstEnabled !== undefined 
+            ? Boolean(settings.gstEnabled)
+            : Boolean(shopData.gstNumber && shopData.gstNumber.trim().length > 0));
+      setGstEnabled(isGstOn);
+
       setWhatsappSettings({
         summaryEnabled: settings.whatsappSummaryEnabled !== false,
         summaryTime: settings.whatsappSummaryTime || '21:30',
@@ -537,23 +560,43 @@ export default function Settings() {
 
     setSaving(true);
     try {
+      const finalGst = gstEnabled ? (formData.gstNumber?.trim() || null) : null;
+      const currentSettings = (shopData as any)?.settings || {};
+      const updatedSettings = {
+        ...currentSettings,
+        gstEnabled: gstEnabled,
+        taxEnabled: gstEnabled,
+        whatsappSummaryEnabled: whatsappSettings.summaryEnabled,
+        whatsappSummaryTime: whatsappSettings.summaryTime,
+        whatsappSummaryPhone: whatsappSettings.summaryPhone,
+        billDelaySeconds: whatsappSettings.billDelaySeconds
+      };
+
+      // Immediately sync with localStorage for instantaneous client-side UI updates
+      try {
+        localStorage.setItem('shop_gst_enabled', JSON.stringify(gstEnabled));
+        const rawShop = localStorage.getItem('auth_shop');
+        if (rawShop) {
+          const parsedShop = JSON.parse(rawShop);
+          parsedShop.gstNumber = finalGst;
+          parsedShop.settings = updatedSettings;
+          localStorage.setItem('auth_shop', JSON.stringify(parsedShop));
+        }
+      } catch {}
+
       await api.shops.update({
         name: formData.shopName,
         ownerName: formData.ownerName,
         phone: formData.phone,
         address: formData.address,
-        gstNumber: formData.gstNumber?.trim() || null,
+        gstNumber: finalGst,
         upiId: formData.upiId,
         publicUrl: formData.publicUrl.trim().replace(/\/$/, ''),
-        settings: {
-          ...((shopData as any)?.settings || {}),
-          whatsappSummaryEnabled: whatsappSettings.summaryEnabled,
-          whatsappSummaryTime: whatsappSettings.summaryTime,
-          whatsappSummaryPhone: whatsappSettings.summaryPhone,
-          billDelaySeconds: whatsappSettings.billDelaySeconds
-        }
+        settings: updatedSettings
       });
-      alert("Settings updated successfully!");
+      alert(gstEnabled 
+        ? "Settings updated successfully! ✅ (GST चालू आहे)" 
+        : "Settings updated successfully! ✅ (GST बंद केले आहे - Product Add मध्ये GST लपवले जाईल)");
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Failed to save settings.');
@@ -782,15 +825,110 @@ export default function Settings() {
                 placeholder="Shop Contact Number"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Hash className="h-4 w-4 text-muted-foreground" /> GST Number
-              </label>
-              <Input 
-                value={formData.gstNumber}
-                onChange={e => setFormData({...formData, gstNumber: e.target.value})}
-                placeholder="Optional GSTIN"
-              />
+            {/* GST Billing Settings Card */}
+            <div className={`space-y-3 md:col-span-2 rounded-xl border p-4 transition-all ${gstEnabled ? 'bg-muted/30 border-primary/20' : 'bg-amber-500/5 border-amber-500/20'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-bold text-foreground">GST Billing Mode (जीएसटी बिलिंग पर्याय)</span>
+                    <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${gstEnabled ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20'}`}>
+                      {gstEnabled ? '✅ GST चालू (Enabled)' : '🚫 GST बंद (Non-GST Kirana)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ज्या दुकानांना GST लागत नाही, त्यांनी हे <strong>बंद (OFF)</strong> करावे. यामुळे Product Add करताना GST चे पर्याय दिसणार नाहीत.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {gstEnabled ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (window.confirm('GST बिलिंग बंद करायचे आहे का? यामुळे Product Add करताना GST चे पर्याय लपवले जातील.')) {
+                          setGstEnabled(false);
+                          setFormData(prev => ({ ...prev, gstNumber: '' }));
+                          try {
+                            localStorage.setItem('shop_gst_enabled', 'false');
+                            const rawShop = localStorage.getItem('auth_shop');
+                            if (rawShop) {
+                              const parsed = JSON.parse(rawShop);
+                              parsed.gstNumber = null;
+                              parsed.settings = { ...(parsed.settings || {}), gstEnabled: false, taxEnabled: false };
+                              localStorage.setItem('auth_shop', JSON.stringify(parsed));
+                            }
+                          } catch {}
+                        }
+                      }}
+                      className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 text-xs font-semibold h-9 px-3 gap-1.5"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      GST काढून टाका (Disable GST)
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setGstEnabled(true);
+                        try {
+                          localStorage.setItem('shop_gst_enabled', 'true');
+                          const rawShop = localStorage.getItem('auth_shop');
+                          if (rawShop) {
+                            const parsed = JSON.parse(rawShop);
+                            parsed.settings = { ...(parsed.settings || {}), gstEnabled: true, taxEnabled: true };
+                            localStorage.setItem('auth_shop', JSON.stringify(parsed));
+                          }
+                        } catch {}
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 px-3 gap-1.5"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      GST चालू करा (Enable GST)
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {gstEnabled ? (
+                <div className="pt-3 border-t space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                    <Hash className="h-3.5 w-3.5 text-muted-foreground" /> GSTIN / GST Number
+                  </label>
+                  <div className="flex gap-2">
+                    <Input 
+                      value={formData.gstNumber}
+                      onChange={e => setFormData({...formData, gstNumber: e.target.value.toUpperCase()})}
+                      placeholder="e.g. 27AABCS1429B1Z2"
+                      className="font-mono uppercase text-sm max-w-md"
+                    />
+                    {formData.gstNumber && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setFormData({ ...formData, gstNumber: '' })}
+                        className="text-xs text-muted-foreground hover:text-red-600"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    बिलावर आणि 80mm प्रिंट पावतीवर हा GST नंबर दिसेल.
+                  </p>
+                </div>
+              ) : (
+                <div className="pt-2 border-t">
+                  <div className="text-xs text-amber-700 dark:text-amber-400 font-medium bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>GST बंद आहे — आता नवीन किंवा जुने Product Add/Edit करताना GST Tax % चा रकाना लपवला जाईल आणि पावती साधी (Non-GST) बनेल. बदल कायम करण्यासाठी खाली 'Save Shop Profile' वर क्लिक करा.</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium flex items-center gap-2">

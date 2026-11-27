@@ -262,7 +262,20 @@ export default function BillStore() {
     const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
     const shopAddr = shopData?.address || '';
     const shopPh = shopData?.phone || '';
-    const shopGst = shopData?.gstNumber || '';
+    const isGstActive = (() => {
+      try {
+        const explicitFlag = localStorage.getItem('shop_gst_enabled');
+        if (explicitFlag !== null) return JSON.parse(explicitFlag) === true;
+        const rawShop = localStorage.getItem('auth_shop');
+        if (rawShop) {
+          const parsed = JSON.parse(rawShop);
+          if (parsed.settings && typeof parsed.settings.gstEnabled === 'boolean') return parsed.settings.gstEnabled;
+        }
+      } catch {}
+      if ((shopData as any)?.settings && typeof (shopData as any).settings.gstEnabled === 'boolean') return (shopData as any).settings.gstEnabled;
+      return Boolean(shopData?.gstNumber && shopData.gstNumber.trim().length > 0);
+    })();
+    const shopGst = isGstActive ? (shopData?.gstNumber || '') : '';
     const billShortId = String(bill.id || '').slice(-8).toUpperCase();
     const billDate = bill.createdAt ? new Date(bill.createdAt) : new Date();
 

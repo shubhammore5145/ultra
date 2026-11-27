@@ -61,6 +61,28 @@ const cleanPhone = (val: string) => {
 
 export default function POS() {
   const { shopData } = useAuth();
+
+  // Check if GST is active for this shop
+  const isGstActive = useMemo(() => {
+    try {
+      const explicitFlag = localStorage.getItem('shop_gst_enabled');
+      if (explicitFlag !== null) {
+        return JSON.parse(explicitFlag) === true;
+      }
+      const rawShop = localStorage.getItem('auth_shop');
+      if (rawShop) {
+        const parsed = JSON.parse(rawShop);
+        if (parsed.settings && typeof parsed.settings.gstEnabled === 'boolean') {
+          return parsed.settings.gstEnabled;
+        }
+      }
+    } catch {}
+    if ((shopData as any)?.settings && typeof (shopData as any).settings.gstEnabled === 'boolean') {
+      return (shopData as any).settings.gstEnabled;
+    }
+    return Boolean(shopData?.gstNumber && shopData.gstNumber.trim().length > 0);
+  }, [shopData]);
+
   const { canAccess, requireFeature, openUpgradeModal } = usePlan();
   const [products, setProducts] = useState<Product[]>(() => {
     try {
@@ -221,7 +243,7 @@ export default function POS() {
     const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
     const shopPhone = shopData?.phone ? `📞 Ph: ${shopData.phone}` : '';
     const shopAddr = shopData?.address ? `📍 ${shopData.address}` : '';
-    const shopGst = (shopData?.gstNumber) ? `🏢 GSTIN: ${shopData.gstNumber}` : '';
+    const shopGst = (isGstActive && shopData?.gstNumber) ? `🏢 GSTIN: ${shopData.gstNumber}` : '';
     const now = new Date();
     const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -984,7 +1006,9 @@ export default function POS() {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (Math.round((item.sellingPrice || 0) * item.qty * 100) / 100), 0);
-  const tax = cart.reduce((sum, item) => sum + ((Math.round((item.sellingPrice || 0) * item.qty * 100) / 100) * ((item.gst || 0) / 100)), 0);
+  const tax = isGstActive 
+    ? cart.reduce((sum, item) => sum + ((Math.round((item.sellingPrice || 0) * item.qty * 100) / 100) * ((item.gst || 0) / 100)), 0)
+    : 0;
   
   let discountAmount = 0;
   const numDiscount = Number(discountValue) || 0;
@@ -1110,7 +1134,7 @@ export default function POS() {
           shopName: shopData?.shopName || shopData?.name || 'Kirana Store',
           shopPhone: shopData?.phone || '',
           shopAddress: shopData?.address || '',
-          shopGstNumber: shopData?.gstNumber || '',
+          shopGstNumber: (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '',
           createdAt: new Date().toISOString()
         };
         localStorage.setItem(`receipt_${txId}`, JSON.stringify(fullReceiptObj));
@@ -1377,7 +1401,7 @@ export default function POS() {
         const modalBillDiscount = Number(checkoutResult.discountAmount || 0);
         const modalTotalSavings = modalProductSavings + modalBillDiscount;
         const modalSavingsPercent = modalTotalMrp > 0 ? Math.round((modalTotalSavings / modalTotalMrp) * 100) : 0;
-        const shopGst = shopData?.gstNumber || '';
+        const shopGst = (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '';
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4 no-print">
@@ -3277,7 +3301,7 @@ export default function POS() {
         const savingsPercentage = totalMrpValue > 0 ? Math.round((grandTotalSavings / totalMrpValue) * 100) : 0;
         const taxVal = Number(checkoutResult.taxAmount || 0);
         const halfTax = taxVal / 2;
-        const shopGst = shopData?.gstNumber || '';
+        const shopGst = (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '';
         const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
         const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
         const paperWidth = (shopData as any)?.settings?.paperSize === '58mm' || (shopData as any)?.receiptPaperSize === '58mm' ? '58mm' : '80mm';
@@ -3313,7 +3337,7 @@ export default function POS() {
                 <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600' }}>FSSAI Lic: {(shopData as any).fssaiNumber}</p>
               )}
               <div style={{ margin: '6px 0 3px 0', fontWeight: '900', fontSize: '13px', borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '4px 0' }}>
-                *** RETAIL TAX INVOICE ***
+                {shopGst ? '*** RETAIL TAX INVOICE ***' : '*** RETAIL INVOICE ***'}
               </div>
             </div>
 

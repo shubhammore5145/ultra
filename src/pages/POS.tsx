@@ -3287,38 +3287,38 @@ export default function POS() {
         return (
           <div 
             id="receipt-template" 
-            className={`hidden print:block absolute left-0 top-0 bg-white text-black text-[12px] leading-[1.3] font-mono z-0 p-3 ${paperWidth === '58mm' ? 'w-[58mm]' : 'w-[80mm]'}`}
-            style={{ width: paperWidth }}
+            className={`hidden print:block absolute left-0 top-0 bg-white text-black text-[13px] leading-[1.35] font-sans z-0 p-3.5 ${paperWidth === '58mm' ? 'w-[58mm]' : 'w-[80mm]'}`}
+            style={{ width: paperWidth, color: '#000000', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
           >
             {/* STORE HEADER */}
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
               {receiptCustomHeader && (
-                <p style={{ margin: '0 0 3px 0', fontSize: '11px', fontWeight: 'bold' }}>{receiptCustomHeader}</p>
+                <p style={{ margin: '0 0 3px 0', fontSize: '13px', fontWeight: 'bold' }}>{receiptCustomHeader}</p>
               )}
-              <h2 style={{ margin: '0 0 2px 0', fontSize: '18px', fontWeight: '900', letterSpacing: '0.5px' }}>
+              <h2 style={{ margin: '0 0 3px 0', fontSize: '22px', fontWeight: '900', letterSpacing: '0.5px', color: '#000' }}>
                 {(shopData.shopName || shopData.name || 'KIRANA STORE').toUpperCase()}
               </h2>
               {shopData.address && (
-                <p style={{ margin: '2px 0', fontSize: '11px', lineHeight: '1.2' }}>{shopData.address}</p>
+                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600', lineHeight: '1.25' }}>{shopData.address}</p>
               )}
               {shopData.phone && (
-                <p style={{ margin: '2px 0', fontSize: '11px' }}>Ph: {shopData.phone}</p>
+                <p style={{ margin: '2px 0', fontSize: '12.5px', fontWeight: 'bold' }}>Ph: {shopData.phone}</p>
               )}
               {shopGst ? (
-                <p style={{ margin: '3px 0', fontSize: '12px', fontWeight: 'bold' }}>
+                <p style={{ margin: '3px 0', fontSize: '13px', fontWeight: '900' }}>
                   GSTIN: {shopGst}
                 </p>
               ) : null}
               {(shopData as any).fssaiNumber && (
-                <p style={{ margin: '2px 0', fontSize: '11px' }}>FSSAI Lic: {(shopData as any).fssaiNumber}</p>
+                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600' }}>FSSAI Lic: {(shopData as any).fssaiNumber}</p>
               )}
-              <div style={{ margin: '6px 0 2px 0', fontWeight: 'bold', fontSize: '12px', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '3px 0' }}>
+              <div style={{ margin: '6px 0 3px 0', fontWeight: '900', fontSize: '13px', borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '4px 0' }}>
                 *** RETAIL TAX INVOICE ***
               </div>
             </div>
 
             {/* INVOICE METADATA */}
-            <div style={{ fontSize: '11px', marginBottom: '6px' }}>
+            <div style={{ fontSize: '12.5px', fontWeight: '600', marginBottom: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span><strong>Inv No:</strong> #{checkoutResult.id.slice(-8).toUpperCase()}</span>
                 <span><strong>Date:</strong> {formattedDate}</span>
@@ -3334,10 +3334,10 @@ export default function POS() {
               )}
             </div>
 
-            <div style={{ borderBottom: '1px dashed #000', marginBottom: '6px' }}></div>
+            <div style={{ borderBottom: '2px dashed #000', marginBottom: '6px' }}></div>
 
             {/* TABLE HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '11px', borderBottom: '1px solid #000', paddingBottom: '3px', marginBottom: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '13px', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '4px' }}>
               <span>ITEM (MRP & RATE)</span>
               <span>AMOUNT</span>
             </div>
@@ -3353,27 +3353,27 @@ export default function POS() {
                 const unitStr = item.unit ? ` (${item.unit})` : '';
 
                 return (
-                  <div key={item.id || idx} style={{ padding: '3px 0', borderBottom: '1px dotted #ddd' }}>
-                    <div style={{ fontWeight: '600', fontSize: '11px', wordBreak: 'break-word', lineHeight: '1.2' }}>
+                  <div key={item.id || idx} style={{ padding: '4px 0', borderBottom: '1px dotted #999' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '13.5px', wordBreak: 'break-word', lineHeight: '1.25', color: '#000' }}>
                       {idx + 1}. {item.name}{unitStr}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', marginTop: '2px' }}>
-                      <span style={{ color: '#333' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', fontWeight: '600', marginTop: '2px' }}>
+                      <span style={{ color: '#000' }}>
                         {hasDiscount ? (
                           <>
-                            <span style={{ color: '#666', marginRight: '6px' }}>
+                            <span style={{ marginRight: '6px' }}>
                               MRP: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toFixed(2)}</span>
                             </span>
-                            <span style={{ fontWeight: 'bold', color: '#000' }}>Rate: ₹{sp.toFixed(2)}</span>
+                            <span style={{ fontWeight: '900', color: '#000' }}>Rate: ₹{sp.toFixed(2)}</span>
                           </>
                         ) : (
-                          <span style={{ fontWeight: 'bold' }}>Rate: ₹{sp.toFixed(2)}</span>
+                          <span style={{ fontWeight: '900' }}>Rate: ₹{sp.toFixed(2)}</span>
                         )}
-                        <span style={{ marginLeft: '6px', color: '#555' }}>
+                        <span style={{ marginLeft: '6px', fontWeight: 'bold' }}>
                           x {(item.unit === 'kg' || Boolean((item as any).isLoose)) && qty < 1 ? `${Math.round(qty * 1000)}gm (${qty}kg)` : qty}
                         </span>
                       </span>
-                      <span style={{ fontWeight: 'bold', fontSize: '11px' }}>
+                      <span style={{ fontWeight: '900', fontSize: '13.5px' }}>
                         ₹{itemTotal.toFixed(2)}
                       </span>
                     </div>
@@ -3382,47 +3382,47 @@ export default function POS() {
               })}
             </div>
 
-            <div style={{ borderBottom: '1px dashed #000', margin: '4px 0' }}></div>
+            <div style={{ borderBottom: '2px dashed #000', margin: '5px 0' }}></div>
 
             {/* TOTAL ITEMS & SUMMARY */}
-            <div style={{ fontSize: '11px', lineHeight: '1.5' }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', lineHeight: '1.5' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Total Items / Qty:</span>
-                <span>{totalItemsCount} items ({totalQtyCount} qty)</span>
+                <span style={{ fontWeight: 'bold' }}>{totalItemsCount} items ({totalQtyCount} qty)</span>
               </div>
 
               {totalMrpValue > checkoutResult.total && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Total MRP:</span>
                   <span>₹{totalMrpValue.toFixed(2)}</span>
                 </div>
               )}
 
               {billDiscountAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
                   <span>Special Discount:</span>
                   <span>-₹{billDiscountAmount.toFixed(2)}</span>
                 </div>
               )}
             </div>
 
-            <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
+            <div style={{ borderBottom: '2px solid #000', margin: '5px 0' }}></div>
 
             {/* NET GRAND TOTAL */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '15px', padding: '2px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '18px', padding: '3px 0' }}>
               <span>NET TOTAL:</span>
               <span>₹{checkoutResult.total.toFixed(2)}</span>
             </div>
 
             {/* CASH TENDERED & CHANGE RETURN */}
             {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 ? (
-              <div style={{ fontSize: '11px', padding: '3px 0', borderTop: '1px dashed #666', marginTop: '2px' }}>
+              <div style={{ fontSize: '12.5px', padding: '3px 0', borderTop: '1px dashed #000', marginTop: '2px', fontWeight: '600' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Cash Tendered:</span>
                   <span>₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
                 </div>
                 {Number(checkoutResult.changeReturn || 0) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900' }}>
                     <span>Change Return:</span>
                     <span>₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
                   </div>
@@ -3430,29 +3430,29 @@ export default function POS() {
               </div>
             ) : null}
 
-            <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
+            <div style={{ borderBottom: '2px solid #000', margin: '5px 0' }}></div>
 
             {/* SAVINGS - CLEAN & MINIMAL */}
             {grandTotalSavings > 0 && (
               <div style={{ 
                 textAlign: 'center', 
-                padding: '4px 0', 
-                fontSize: '11px', 
-                fontWeight: 'bold',
-                borderBottom: '1px dashed #000'
+                padding: '5px 0', 
+                fontSize: '13px', 
+                fontWeight: '900',
+                borderBottom: '2px dashed #000'
               }}>
                 ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% savings)
               </div>
             )}
 
             {/* FOOTER */}
-            <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '10px', lineHeight: '1.3' }}>
+            <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px', lineHeight: '1.3', fontWeight: 'bold' }}>
               {receiptCustomFooter && (
-                <p style={{ margin: '2px 0 4px 0', fontWeight: 'bold' }}>{receiptCustomFooter}</p>
+                <p style={{ margin: '2px 0 4px 0', fontWeight: '900' }}>{receiptCustomFooter}</p>
               )}
-              <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Thank You For Shopping!</p>
+              <p style={{ margin: '2px 0', fontWeight: '900' }}>Thank You For Shopping!</p>
               <p style={{ margin: '1px 0' }}>Please Visit Again 🙏</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#777' }}>Software by  Varuag Labs</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#333' }}>Software by Nayashi Kirana POS</p>
             </div>
           </div>
         );

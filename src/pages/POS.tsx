@@ -20,6 +20,7 @@ import { compressImage } from '../lib/imageCompressor';
 import { POSShiftCloseModal } from '../components/pos/POSShiftCloseModal';
 import { POSSalesReturnModal } from '../components/pos/POSSalesReturnModal';
 import { saveReceiptOffline, cacheProductsOffline, getCachedProductsOffline, pruneOldReceipts } from '../lib/storage';
+import JsBarcode from 'jsbarcode';
 
 const playSoundboxAlert = (amount: number, method: string) => {
   try {
@@ -171,6 +172,9 @@ export default function POS() {
     loyaltyPointsEarned?: number,
     createdAt?: string
   } | null>(null);
+
+  // Non-blocking toast notification on bill complete
+  const [checkoutToast, setCheckoutToast] = useState<{ id: string; total: number; paymentMethod: string } | null>(null);
 
   // Track last printed transaction to prevent double printing
   const lastPrintedTxRef = useRef<string>('');
@@ -1185,6 +1189,12 @@ export default function POS() {
         createdAt: new Date().toISOString()
       };
       setCheckoutResult(billDataToSave);
+      setCheckoutToast({
+        id: txId,
+        total,
+        paymentMethod: paymentMethod === 'split' ? 'Split Pay' : paymentMethod.toUpperCase()
+      });
+      setTimeout(() => setCheckoutToast(null), 4500);
       setLastBill(billDataToSave);
       try {
         localStorage.setItem('pos_last_bill', JSON.stringify(billDataToSave));
@@ -1458,193 +1468,31 @@ export default function POS() {
         const shopGst = (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '';
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4 no-print">
-            <div className="bg-card text-card-foreground p-0 rounded-2xl border shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200" id="receipt-modal">
-              {/* Green Header */}
-              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 text-white text-center no-print">
-                <CheckCircle2 className="h-12 w-12 mx-auto mb-2 opacity-95 animate-bounce duration-1000" />
-                <h2 className="text-2xl font-black">Checkout Complete</h2>
-                <p className="text-xl font-bold mt-0.5">Bill Total: ₹{checkoutResult.total.toFixed(2)}</p>
-                {modalTotalSavings > 0 && (
-                  <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold mt-2 shadow-sm">
-                    <span>🎉 Customer Saved ₹{modalTotalSavings.toFixed(2)} ({modalSavingsPercent}% OFF)!</span>
-                  </div>
-                )}
-
-                {/* Change Return Highlight Card */}
-                {Number(checkoutResult.changeReturn || 0) > 0 && (
-                  <div className="mt-3.5 p-3.5 bg-white text-zinc-950 rounded-2xl shadow-lg border-2 border-emerald-400 flex items-center justify-between animate-in zoom-in-95">
-                    <div className="text-left">
-                      <span className="text-[11px] font-extrabold text-zinc-500 uppercase tracking-wider block">
-                        Change Due to Customer
-                      </span>
-                      <span className="text-2xl font-black text-emerald-600">
-                        ₹{Number(checkoutResult.changeReturn).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-right text-xs space-y-0.5">
-                      <p className="text-zinc-600">Cash Tendered: <strong className="text-zinc-950 font-bold">₹{Number(checkoutResult.cashTendered || checkoutResult.total).toFixed(2)}</strong></p>
-                      <p className="text-zinc-600">Bill Total: <strong className="text-zinc-950 font-bold">₹{checkoutResult.total.toFixed(2)}</strong></p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* WhatsApp Status Banner in Modal */}
-              {whatsappStatusBanner && (
-                <div className={`mx-4 mt-3 p-3 rounded-xl border flex items-center gap-3 text-sm animate-in fade-in duration-300 ${
-                  whatsappStatusBanner.type === 'success'
-                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-                    : whatsappStatusBanner.type === 'error'
-                    ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-800 dark:text-red-200'
-                    : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-200'
-                }`}>
-                  {whatsappStatusBanner.type === 'loading' ? (
-                    <Loader2 className="h-5 w-5 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
-                  ) : whatsappStatusBanner.type === 'error' ? (
-                    <X className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
-                  ) : (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  )}
-                  <div className="flex-1 font-semibold text-xs leading-tight">
-                    {whatsappStatusBanner.message}
-                    {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
-                      <span className="ml-1 text-blue-600 dark:text-blue-400">({pendingWhatsApp.countdown}s)</span>
-                    )}
-                  </div>
-                  {pendingWhatsApp && pendingWhatsApp.countdown > 0 && (
-                    <button
-                      onClick={() => { setPendingWhatsApp(null); setWhatsappStatusBanner(null); }}
-                      className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded border border-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                  {whatsappStatusBanner.type !== 'loading' && (
-                    <button
-                      onClick={() => setWhatsappStatusBanner(null)}
-                      className="text-muted-foreground hover:text-foreground ml-auto"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Scrollable Modal Content */}
-              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[calc(92vh-180px)]">
-                {/* Mini Bill Preview */}
-                <div className="bg-muted/40 rounded-xl p-3.5 border text-xs space-y-2">
-                  <div className="flex items-center justify-between pb-2 border-b border-dashed">
-                    <div>
-                      <div className="font-bold text-sm text-foreground uppercase">{shopData?.shopName || shopData?.name || 'Kirana Store'}</div>
-                      {shopGst ? <div className="text-[11px] text-muted-foreground font-mono">GSTIN: {shopGst}</div> : null}
-                    </div>
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-foreground">#{checkoutResult.id.slice(-8).toUpperCase()}</span>
-                      <div className="text-[10px] text-muted-foreground uppercase font-bold">{checkoutResult.paymentMethod || 'Cash'}</div>
-                    </div>
-                  </div>
-
-                  {(checkoutResult.customerName || checkoutResult.customerPhone) && (
-                    <div className="text-[11px] bg-background/60 p-1.5 rounded-lg border border-border/40 flex justify-between items-center">
-                      <span className="text-muted-foreground">Customer:</span>
-                      <span className="font-semibold text-foreground">
-                        {checkoutResult.customerName ? `${checkoutResult.customerName} ` : ''}
-                        {checkoutResult.customerPhone ? `(+91 ${cleanPhone(checkoutResult.customerPhone)})` : ''}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Items Summary */}
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {modalItems.map((item, idx) => {
-                      const sp = Number(item.sellingPrice || 0);
-                      const mrp = Number(item.mrp || 0);
-                      const qty = Number(item.qty || 1);
-                      const hasDiscount = mrp > sp;
-                      const itemSavings = hasDiscount ? (mrp - sp) * qty : 0;
-                      return (
-                        <div key={idx} className="flex justify-between items-start py-0.5 border-b border-border/40 last:border-0">
-                          <div className="flex-1 pr-2">
-                            <span className="font-medium text-foreground">{item.name}</span>
-                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                              <span>₹{sp.toFixed(2)} x {qty}</span>
-                              {hasDiscount && (
-                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">(Saved ₹{itemSavings.toFixed(2)})</span>
-                              )}
-                            </div>
-                          </div>
-                          <span className="font-bold text-foreground">₹{(sp * qty).toFixed(2)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Bill Totals in Mini Preview */}
-                  <div className="pt-2 border-t border-dashed space-y-1 text-[11px]">
-                    {modalTotalMrp > checkoutResult.total && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Total MRP:</span>
-                        <span>₹{modalTotalMrp.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {modalTotalSavings > 0 && (
-                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
-                        <span>Total Savings:</span>
-                        <span>- ₹{modalTotalSavings.toFixed(2)} ({modalSavingsPercent}% OFF)</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-bold text-foreground text-xs pt-1 border-t">
-                      <span>Grand Total:</span>
-                      <span>₹{checkoutResult.total.toFixed(2)}</span>
-                    </div>
-                    {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 && (
-                      <div className="flex justify-between text-muted-foreground pt-1 border-t border-dashed">
-                        <span>Cash Tendered:</span>
-                        <span className="font-semibold text-foreground">₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
-                      </div>
-                    )}
-                    {Number(checkoutResult.changeReturn || 0) > 0 && (
-                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
-                        <span>Change Return:</span>
-                        <span className="text-emerald-600 dark:text-emerald-400">₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="grid grid-cols-3 gap-2 no-print pt-1">
-                  <Button 
-                    variant="outline" 
-                    className="h-11 w-full flex gap-1 font-medium px-2 relative text-xs" 
-                    onClick={handleWhatsAppBill}
-                  >
-                    <MessageCircle className="h-4 w-4 text-green-500 shrink-0" /> WhatsApp
-                    {!canAccess('whatsapp_bills') && (
-                      <span className="ml-1 text-[8px] bg-amber-500/20 text-amber-500 px-1 py-0.2 rounded font-black">
-                        🔒 Plus
-                      </span>
-                    )}
-                  </Button>
-                  <Button 
-                    variant="default" 
-                    className="h-11 w-full flex gap-1 font-bold px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-2 ring-blue-400/50 cursor-pointer" 
-                    onClick={handlePrintReceipt}
-                    autoFocus
-                  >
-                    <Printer className="h-4 w-4 shrink-0" /> Print (Enter ↵)
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="h-11 w-full font-bold px-2 text-xs hover:bg-muted cursor-pointer" 
-                    onClick={() => setCheckoutResult(null)}
-                  >
-                    New Bill (Esc)
-                  </Button>
-                </div>
-              </div>
+          <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 animate-in fade-in slide-in-from-top-4 duration-200 border border-emerald-400/40 no-print" id="receipt-modal">
+            <div className="p-2 rounded-xl bg-white/20 backdrop-blur-md">
+              <CheckCircle2 className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <div className="font-extrabold text-sm tracking-wide">बिल तयार झाले! #{checkoutResult.id.slice(-8).toUpperCase()}</div>
+              <div className="text-xs text-white/90 font-medium">रक्कम: ₹{checkoutResult.total.toFixed(2)} ({checkoutResult.paymentMethod || 'Cash'}) | बिल आपोआप प्रिंट होत आहे...</div>
+            </div>
+            <div className="flex items-center gap-1.5 ml-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="h-8 px-3 bg-white/20 hover:bg-white/30 text-white border-white/30 text-xs rounded-xl font-bold"
+                onClick={handlePrintReceipt}
+              >
+                <Printer className="h-3.5 w-3.5 mr-1" /> पुन्हा प्रिंट
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-white hover:bg-white/20 rounded-xl"
+                onClick={() => setCheckoutResult(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         );
@@ -3528,14 +3376,44 @@ export default function POS() {
               </div>
             )}
 
+            {/* UNIQUE BILL BARCODE FOR RETURN / SCAN */}
+            <div style={{ textAlign: 'center', margin: '8px 0 4px 0', borderTop: '1px dashed #000', paddingTop: '6px' }}>
+              <svg 
+                id="receipt-bill-barcode"
+                ref={(el) => {
+                  if (el && checkoutResult?.id) {
+                    try {
+                      JsBarcode(el, checkoutResult.id.slice(-12).toUpperCase(), {
+                        format: 'CODE128',
+                        width: 1.5,
+                        height: 38,
+                        displayValue: true,
+                        fontSize: 11,
+                        margin: 0,
+                        textMargin: 2
+                      });
+                    } catch (err) {
+                      console.warn('Bill barcode render notice:', err);
+                    }
+                  }
+                }}
+                style={{ margin: '0 auto', display: 'block', maxWidth: '100%' }}
+              />
+              <div style={{ fontSize: '10px', fontWeight: 'bold', marginTop: '2px', color: '#000' }}>
+                Scan Barcode for Return / Exchange
+              </div>
+            </div>
+
             {/* FOOTER */}
-            <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px', lineHeight: '1.3', fontWeight: 'bold' }}>
+            <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '12px', lineHeight: '1.3', fontWeight: 'bold' }}>
               {receiptCustomFooter && (
                 <p style={{ margin: '2px 0 4px 0', fontWeight: '900' }}>{receiptCustomFooter}</p>
               )}
               <p style={{ margin: '2px 0', fontWeight: '900' }}>Thank You For Shopping!</p>
               <p style={{ margin: '1px 0' }}>Please Visit Again 🙏</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#333' }}>Software by Nayashi Kirana POS</p>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13.5px', fontWeight: '900', color: '#000', letterSpacing: '0.3px' }}>
+                Software by Varuag Labs
+              </p>
             </div>
           </div>
         );

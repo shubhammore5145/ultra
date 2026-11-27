@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet,
   HelpCircle, ClipboardList, LogOut, X, Barcode, Bell,
-  Receipt, TrendingUp, UserCheck, Trash2, Menu, Crown
+  Receipt, TrendingUp, UserCheck, Trash2, Menu, Crown, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -14,6 +14,7 @@ const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, permissionKey: 'dashboard', roles: ['admin'], color: 'text-indigo-500' },
   { name: 'POS Billing', href: '/pos', icon: ShoppingCart, permissionKey: 'pos', roles: ['admin', 'cashier'], color: 'text-emerald-500' },
   { name: 'Bill Store', href: '/bill-store', icon: Receipt, permissionKey: 'bill_store', roles: ['admin', 'cashier'], color: 'text-teal-500' },
+  { name: 'Sales Return', href: '/sales-return', icon: RotateCcw, permissionKey: 'pos', roles: ['admin', 'cashier'], color: 'text-amber-500' },
   { name: 'Products', href: '/products', icon: Package, permissionKey: 'products', roles: ['admin', 'cashier'], color: 'text-blue-500' },
   { name: 'Barcode Print', href: '/barcode-print', icon: Barcode, permissionKey: 'barcode_print', roles: ['admin', 'cashier'], color: 'text-violet-500' },
   { name: 'Inventory & AI', href: '/inventory', icon: ClipboardList, permissionKey: 'inventory_ai', roles: ['admin', 'cashier'], color: 'text-purple-500' },

@@ -28,6 +28,7 @@ const BillStore = lazy(() => import('./pages/BillStore'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const StaffManagement = lazy(() => import('./pages/StaffManagement'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
+const SalesReturn = lazy(() => import('./pages/SalesReturn'));
 
 // Clean loading placeholder during code-split bundle fetching
 function PageFallback() {
@@ -59,6 +60,7 @@ function App() {
                   {/* Billing & Sales */}
                   <Route path="/pos" element={<ProtectedRoute requiredPermission="pos"><POS /></ProtectedRoute>} />
                   <Route path="/bill-store" element={<ProtectedRoute requiredPermission="bill_store"><BillStore /></ProtectedRoute>} />
+                  <Route path="/sales-return" element={<ProtectedRoute requiredPermission="pos"><SalesReturn /></ProtectedRoute>} />
                   <Route path="/barcode-print" element={<ProtectedRoute requiredPermission="barcode_print"><BarcodePrint /></ProtectedRoute>} />
                   <Route path="/customers" element={<ProtectedRoute requiredPermission="customers"><Customers /></ProtectedRoute>} />
 

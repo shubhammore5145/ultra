@@ -344,10 +344,27 @@ export default function BillStore() {
             ${Number(bill.changeReturn || 0) > 0 ? `<div class="row bold"><span>Change Return:</span><span>₹${Number(bill.changeReturn).toFixed(2)}</span></div>` : ''}
           ` : ''}
           <div class="dashed"></div>
-          <p class="center" style="margin:10px 0 2px;font-size:11px;font-weight:bold;">Thank You For Shopping! Please Visit Again! 🙏</p>
-          <p class="center" style="margin:0;font-size:9px;color:#555;">Software by Nayashi Kirana POS</p>
+          <div style="text-align:center;margin:6px 0 3px;">
+            <svg id="print-barcode"></svg>
+            <div style="font-size:10px;font-weight:bold;margin-top:2px;">Scan for Return / Exchange</div>
+          </div>
+          <p class="center" style="margin:6px 0 2px;font-size:11px;font-weight:bold;">Thank You For Shopping! Please Visit Again! 🙏</p>
+          <p class="center" style="margin:4px 0 0;font-size:13px;font-weight:bold;color:#000;letter-spacing:0.3px;">Software by Varuag Labs</p>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
           <script>
-            window.onload = function() { window.print(); }
+            window.onload = function() {
+              try {
+                JsBarcode("#print-barcode", "${bill.id.slice(-12).toUpperCase()}", {
+                  format: "CODE128",
+                  width: 1.5,
+                  height: 38,
+                  displayValue: true,
+                  fontSize: 11,
+                  margin: 0
+                });
+              } catch(e) {}
+              setTimeout(function() { window.print(); }, 100);
+            }
           </script>
         </body>
       </html>

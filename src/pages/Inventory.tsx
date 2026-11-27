@@ -1,15 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
-import { api } from '../lib/api';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { api, invalidateProductsCache } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { CameraScanner } from '../components/CameraScanner';
+import { runInvoiceOcrPipeline, type ParsedInvoiceItem } from '../lib/invoiceOcrEngine';
+import { findFMCGByBarcode } from '../lib/fmcgCatalog';
 import { 
   Package, Search, AlertTriangle, Loader2, Save, 
-  Calendar, Trash2, CheckCircle2, History,
-  TrendingDown, Sparkles, Plus, X, MapPin, 
-  Layers, ArrowUpDown
+  Trash2, CheckCircle2, History,
+  TrendingDown, Sparkles, Plus, X, 
+  Camera, Upload, BrainCircuit, ScanBarcode
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import type { Product, DamagedItem, StockMovement, Transaction } from '../types';
+
+interface AiScanRow extends ParsedInvoiceItem {
+  selected: boolean;
+  existingStock: number;
+}
 
 export default function Inventory() {
   const { shopData } = useAuth();
@@ -23,11 +31,41 @@ export default function Inventory() {
   const [categoryFilter, setCategoryFilter] = useState('all');
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'stock' | 'damaged' | 'expiry' | 'audit' | 'deadstock' | 'movements'>('stock');
+  const [activeTab, setActiveTab] = useState<'stock' | 'ai_scan' | 'expiry' | 'audit' | 'damaged' | 'deadstock' | 'movements'>('stock');
 
   // Inline Stock Edits
   const [stockEdits, setStockEdits] = useState<Record<string, number>>({});
   const [rackEdits, setRackEdits] = useState<Record<string, string>>({});
+
+  // AI Scan States (Barcode Live Scan + OCR Photo Scan)
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
+  const [cameraScanTarget, setCameraScanTarget] = useState<'ai_tab' | 'stock_search'>('ai_tab');
+  const [aiBarcodeInput, setAiBarcodeInput] = useState('');
+  const [autoIncrementOnScan, setAutoIncrementOnScan] = useState(false);
+  const [scannedExistingProduct, setScannedExistingProduct] = useState<Product | null>(null);
+  const [quickRestockAddQty, setQuickRestockAddQty] = useState('1');
+  const [quickRestockRack, setQuickRestockRack] = useState('');
+  const [quickRestockExpiry, setQuickRestockExpiry] = useState('');
+  const [quickNewBarcode, setQuickNewBarcode] = useState('');
+  const [quickNewProductForm, setQuickNewProductForm] = useState({
+    name: '',
+    category: 'Grocery',
+    brand: '',
+    unit: 'pcs',
+    purchasePrice: '',
+    sellingPrice: '',
+    mrp: '',
+    stock: '10',
+    minStock: '5',
+    rackLocation: ''
+  });
+  const [aiOcrLoading, setAiOcrLoading] = useState(false);
+  const [aiOcrProgress, setAiOcrProgress] = useState(0);
+  const [aiOcrStatusText, setAiOcrStatusText] = useState('');
+  const [aiPreviewUrl, setAiPreviewUrl] = useState<string | null>(null);
+  const [aiExtractedRows, setAiExtractedRows] = useState<AiScanRow[]>([]);
+  const [aiBannerMessage, setAiBannerMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const aiFileInputRef = useRef<HTMLInputElement>(null);
 
   // Damaged Goods Form Modal
   const [showDamageModal, setShowDamageModal] = useState(false);
@@ -195,6 +233,389 @@ export default function Inventory() {
     setRackEdits(prev => ({ ...prev, [productId]: val }));
   };
 
+  // AI Smart Reorder Recommendations (low stock or fast-moving items running low)
+  const aiReorderSuggestions = useMemo(() => {
+    const salesMap = new Map<string, number>();
+    sales.forEach(tx => {
+      (tx.items || []).forEach(it => {
+        salesMap.set(it.id, (salesMap.get(it.id) || 0) + Number(it.qty || 1));
+      });
+    });
+
+    return products
+      .filter(p => !p.isLoose && Number(p.stock || 0) <= Number(p.minStock || 5))
+      .map(p => {
+        const sold30d = salesMap.get(p.id) || 0;
+        const minThreshold = Number(p.minStock || 5);
+        const currentStock = Number(p.stock || 0);
+        const suggestedQty = Math.max(minThreshold * 2 - currentStock, Math.ceil(sold30d / 2), 5);
+        return {
+          product: p,
+          sold30d,
+          suggestedQty,
+          estimatedCost: suggestedQty * Number(p.purchasePrice || 0)
+        };
+      })
+      .sort((a, b) => a.product.stock - b.product.stock || b.sold30d - a.sold30d)
+      .slice(0, 15);
+  }, [products, sales]);
+
+  // Handle Barcode / ShortCode Lookup in AI Scan
+  const handleAiBarcodeLookup = async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code) return;
+    setAiBannerMessage(null);
+
+    const lower = code.toLowerCase();
+    const matched = products.find(p =>
+      (p.barcode && p.barcode.trim().toLowerCase() === lower) ||
+      (p.sku && p.sku.trim().toLowerCase() === lower) ||
+      (p.shortCode && String(p.shortCode).trim().toLowerCase() === lower) ||
+      p.name.toLowerCase() === lower
+    );
+
+    if (matched) {
+      setQuickNewBarcode('');
+      if (autoIncrementOnScan) {
+        try {
+          const prevStock = Number(matched.stock || 0);
+          const nextStock = prevStock + 1;
+          await api.products.update(matched.id, { stock: nextStock });
+          await api.stockMovements.log({
+            id: crypto.randomUUID(),
+            productId: matched.id,
+            productName: matched.name,
+            type: 'inward_purchase',
+            qty: 1,
+            previousStock: prevStock,
+            newStock: nextStock,
+            reason: 'AI Scan Continuous +1 Restock',
+            createdAt: new Date().toISOString()
+          });
+          invalidateProductsCache();
+          setAiBannerMessage({
+            type: 'success',
+            text: `Added +1 to "${matched.name}" (Stock: ${prevStock} -> ${nextStock})`
+          });
+          await loadData();
+        } catch (err: any) {
+          setAiBannerMessage({ type: 'error', text: 'Failed to update stock: ' + err.message });
+        }
+        return;
+      }
+
+      setScannedExistingProduct(matched);
+      setQuickRestockAddQty('1');
+      setQuickRestockRack(matched.rackLocation || '');
+      setQuickRestockExpiry(matched.expiryDate || '');
+      setAiBannerMessage({
+        type: 'info',
+        text: `Matched "${matched.name}" (Current Stock: ${matched.stock} ${matched.unit || 'pcs'})`
+      });
+    } else {
+      setScannedExistingProduct(null);
+      setQuickNewBarcode(code);
+      const fmcgMatch = findFMCGByBarcode(code);
+      if (fmcgMatch) {
+        setQuickNewProductForm({
+          name: fmcgMatch.name,
+          category: fmcgMatch.category || 'Grocery',
+          brand: fmcgMatch.brand || '',
+          unit: fmcgMatch.unit || 'pcs',
+          purchasePrice: String(fmcgMatch.purchasePrice || ''),
+          sellingPrice: String(fmcgMatch.sellingPrice || ''),
+          mrp: String(fmcgMatch.mrp || ''),
+          stock: '10',
+          minStock: '5',
+          rackLocation: ''
+        });
+        setAiBannerMessage({
+          type: 'success',
+          text: `AI Catalog Auto-Matched "${fmcgMatch.name}" for barcode ${code}! Review & click Add Product.`
+        });
+      } else {
+        setQuickNewProductForm({
+          name: '',
+          category: 'Grocery',
+          brand: '',
+          unit: 'pcs',
+          purchasePrice: '',
+          sellingPrice: '',
+          mrp: '',
+          stock: '10',
+          minStock: '5',
+          rackLocation: ''
+        });
+        setAiBannerMessage({
+          type: 'info',
+          text: `New barcode "${code}" not found in store. Fill details below to add it straight to inventory.`
+        });
+      }
+    }
+  };
+
+  // Save quick restock for scanned existing product
+  const handleSaveScannedRestock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scannedExistingProduct) return;
+    const addQty = Number(quickRestockAddQty || 0);
+    if (isNaN(addQty) || addQty < 0) {
+      alert('Please enter a valid quantity to add.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const prevStock = Number(scannedExistingProduct.stock || 0);
+      const nextStock = prevStock + addQty;
+      await api.products.update(scannedExistingProduct.id, {
+        stock: nextStock,
+        rackLocation: quickRestockRack.trim() || scannedExistingProduct.rackLocation || undefined,
+        expiryDate: quickRestockExpiry || scannedExistingProduct.expiryDate || undefined
+      });
+      if (addQty > 0) {
+        await api.stockMovements.log({
+          id: crypto.randomUUID(),
+          productId: scannedExistingProduct.id,
+          productName: scannedExistingProduct.name,
+          type: 'inward_purchase',
+          qty: addQty,
+          previousStock: prevStock,
+          newStock: nextStock,
+          reason: 'AI Barcode Stock-In',
+          createdAt: new Date().toISOString()
+        });
+      }
+      invalidateProductsCache();
+      setAiBannerMessage({
+        type: 'success',
+        text: `Updated "${scannedExistingProduct.name}": Stock ${prevStock} -> ${nextStock}`
+      });
+      setScannedExistingProduct(null);
+      setAiBarcodeInput('');
+      await loadData();
+    } catch (err: any) {
+      setAiBannerMessage({ type: 'error', text: err.message || 'Failed to save restock.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Create new product from scanned barcode
+  const handleCreateScannedProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickNewProductForm.name.trim()) return;
+    setSaving(true);
+    try {
+      const newId = crypto.randomUUID();
+      const stockNum = Number(quickNewProductForm.stock || 0);
+      await api.products.create({
+        id: newId,
+        name: quickNewProductForm.name.trim(),
+        category: quickNewProductForm.category || 'Grocery',
+        brand: quickNewProductForm.brand || '',
+        unit: quickNewProductForm.unit || 'pcs',
+        purchasePrice: Number(quickNewProductForm.purchasePrice || 0),
+        sellingPrice: Number(quickNewProductForm.sellingPrice || 0),
+        mrp: Number(quickNewProductForm.mrp || quickNewProductForm.sellingPrice || 0),
+        gst: 0,
+        stock: stockNum,
+        minStock: Number(quickNewProductForm.minStock || 5),
+        sku: quickNewBarcode,
+        barcode: quickNewBarcode,
+        rackLocation: quickNewProductForm.rackLocation || null,
+        createdAt: new Date().toISOString()
+      });
+      await api.stockMovements.log({
+        id: crypto.randomUUID(),
+        productId: newId,
+        productName: quickNewProductForm.name.trim(),
+        type: 'inward_purchase',
+        qty: stockNum,
+        previousStock: 0,
+        newStock: stockNum,
+        reason: 'Added via AI Barcode Scan',
+        createdAt: new Date().toISOString()
+      });
+      invalidateProductsCache();
+      setAiBannerMessage({
+        type: 'success',
+        text: `Created "${quickNewProductForm.name.trim()}" in MongoDB Inventory with ${stockNum} units!`
+      });
+      setQuickNewBarcode('');
+      setAiBarcodeInput('');
+      await loadData();
+    } catch (err: any) {
+      setAiBannerMessage({ type: 'error', text: err.message || 'Failed to create product.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle Photo / Bill Upload OCR Scan
+  const handleAiPhotoUpload = async (file: File) => {
+    if (!file) return;
+    setAiOcrLoading(true);
+    setAiOcrProgress(5);
+    setAiOcrStatusText('Preparing image for AI neural OCR...');
+    setAiBannerMessage(null);
+
+    try {
+      const readerUrl = URL.createObjectURL(file);
+      setAiPreviewUrl(readerUrl);
+
+      const result = await runInvoiceOcrPipeline(file, products, (pct, status) => {
+        setAiOcrProgress(pct);
+        setAiOcrStatusText(status);
+      });
+
+      const mappedRows: AiScanRow[] = (result.items || []).map(it => {
+        const existing = it.matchedProductId
+          ? products.find(p => p.id === it.matchedProductId)
+          : products.find(p => p.name.trim().toLowerCase() === it.name.trim().toLowerCase());
+        return {
+          ...it,
+          matchedProductId: existing?.id || it.matchedProductId || '',
+          isNewProduct: !existing,
+          existingStock: existing ? Number(existing.stock || 0) : 0,
+          selected: true
+        };
+      });
+
+      setAiExtractedRows(mappedRows);
+      if (mappedRows.length === 0) {
+        setAiBannerMessage({
+          type: 'error',
+          text: 'Could not detect clear product lines in this image. Try a sharper, well-lit photo of the bill or product list.'
+        });
+      } else {
+        setAiBannerMessage({
+          type: 'success',
+          text: `AI extracted ${mappedRows.length} items! Review quantities below and click "Apply to Inventory".`
+        });
+      }
+    } catch (err: any) {
+      setAiBannerMessage({ type: 'error', text: 'AI OCR error: ' + (err.message || 'Failed to read image') });
+    } finally {
+      setAiOcrLoading(false);
+    }
+  };
+
+  // Apply all checked OCR rows to Inventory
+  const handleApplyAiRowsToInventory = async () => {
+    const selected = aiExtractedRows.filter(r => r.selected);
+    if (selected.length === 0) {
+      alert('Please select at least one item to apply.');
+      return;
+    }
+    setSaving(true);
+    let updatedCount = 0;
+    let createdCount = 0;
+
+    try {
+      for (const row of selected) {
+        const addQty = Math.max(0, Number(row.qty || 0));
+        const existing = row.matchedProductId ? products.find(p => p.id === row.matchedProductId) : null;
+
+        if (existing) {
+          const prevStock = Number(existing.stock || 0);
+          const nextStock = prevStock + addQty;
+          await api.products.update(existing.id, {
+            stock: nextStock,
+            ...(row.purchasePrice > 0 ? { purchasePrice: Number(row.purchasePrice) } : {}),
+            ...(row.sellingPrice > 0 ? { sellingPrice: Number(row.sellingPrice) } : {}),
+            ...(row.mrp > 0 ? { mrp: Number(row.mrp) } : {})
+          });
+          await api.stockMovements.log({
+            id: crypto.randomUUID(),
+            productId: existing.id,
+            productName: existing.name,
+            type: 'inward_purchase',
+            qty: addQty,
+            previousStock: prevStock,
+            newStock: nextStock,
+            reason: 'AI Photo Bill Scan Restock',
+            createdAt: new Date().toISOString()
+          });
+          updatedCount++;
+        } else {
+          const newId = crypto.randomUUID();
+          await api.products.create({
+            id: newId,
+            name: row.name.trim(),
+            category: 'Grocery',
+            brand: '',
+            unit: row.unit || 'pcs',
+            purchasePrice: Number(row.purchasePrice || 0),
+            sellingPrice: Number(row.sellingPrice || row.mrp || 0),
+            mrp: Number(row.mrp || row.sellingPrice || 0),
+            gst: Number(row.gstPercent || 0),
+            stock: addQty,
+            minStock: 5,
+            sku: row.hsn || '',
+            barcode: '',
+            createdAt: new Date().toISOString()
+          });
+          await api.stockMovements.log({
+            id: crypto.randomUUID(),
+            productId: newId,
+            productName: row.name.trim(),
+            type: 'inward_purchase',
+            qty: addQty,
+            previousStock: 0,
+            newStock: addQty,
+            reason: 'Created via AI Photo Scan',
+            createdAt: new Date().toISOString()
+          });
+          createdCount++;
+        }
+      }
+
+      invalidateProductsCache();
+      setAiBannerMessage({
+        type: 'success',
+        text: `Applied to MongoDB Inventory: ${updatedCount} restocked, ${createdCount} new products created!`
+      });
+      setAiExtractedRows([]);
+      setAiPreviewUrl(null);
+      await loadData();
+    } catch (err: any) {
+      setAiBannerMessage({ type: 'error', text: 'Failed to apply AI scan batch: ' + err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Quick 1-click restock for AI suggestion row
+  const handleQuickRestockSuggestion = async (product: Product, addQty: number) => {
+    setSaving(true);
+    try {
+      const prevStock = Number(product.stock || 0);
+      const nextStock = prevStock + addQty;
+      await api.products.update(product.id, { stock: nextStock });
+      await api.stockMovements.log({
+        id: crypto.randomUUID(),
+        productId: product.id,
+        productName: product.name,
+        type: 'inward_purchase',
+        qty: addQty,
+        previousStock: prevStock,
+        newStock: nextStock,
+        reason: 'AI Smart Reorder Restock',
+        createdAt: new Date().toISOString()
+      });
+      invalidateProductsCache();
+      setAiBannerMessage({
+        type: 'success',
+        text: `Restocked "${product.name}" +${addQty} (New Stock: ${nextStock})`
+      });
+      await loadData();
+    } catch (err: any) {
+      setAiBannerMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Save all inline adjustments
   const saveAllEdits = async () => {
     setSaving(true);
@@ -357,7 +778,7 @@ export default function Inventory() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {Object.keys(stockEdits).length > 0 || Object.keys(rackEdits).length > 0 ? (
             <Button
               onClick={saveAllEdits}
@@ -368,6 +789,14 @@ export default function Inventory() {
               Save Changes ({Object.keys(stockEdits).length + Object.keys(rackEdits).length})
             </Button>
           ) : null}
+
+          <Button
+            size="sm"
+            onClick={() => setActiveTab('ai_scan')}
+            className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-xs h-9 rounded-xl shadow-sm"
+          >
+            <Sparkles className="h-4 w-4 mr-1.5" /> AI Scan
+          </Button>
 
           <Button
             variant="outline"
@@ -436,6 +865,7 @@ export default function Inventory() {
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide border-b border-border/70 text-xs font-bold">
         {[
           { id: 'stock', label: '📦 Real-Time Stock Hub', count: filteredProducts.length },
+          { id: 'ai_scan', label: '✨ AI Scan & Restock', count: aiReorderSuggestions.length },
           { id: 'expiry', label: '⏳ Expiry Management', count: expiryAnalysis.expired.length + expiryAnalysis.expiringSoon7.length },
           { id: 'audit', label: '📋 Physical Stock Reconciliation', count: products.length },
           { id: 'damaged', label: '⚠️ Damaged & Write-Off', count: damagedItems.length },
@@ -475,16 +905,29 @@ export default function Inventory() {
                 className="pl-9 h-10 text-xs sm:text-sm bg-background rounded-xl"
               />
             </div>
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="h-10 px-3 rounded-xl border border-input bg-background text-xs font-semibold"
-            >
-              <option value="all">All Categories</option>
-              {categories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className="h-10 px-3 rounded-xl border border-input bg-background text-xs font-semibold flex-1 sm:flex-none"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCameraScanTarget('stock_search');
+                  setShowCameraScanner(true);
+                }}
+                className="h-10 px-3 rounded-xl text-xs font-bold border-indigo-300 text-indigo-700 hover:bg-indigo-50 flex items-center gap-1.5 shrink-0"
+              >
+                <Camera className="h-4 w-4" /> Scan
+              </Button>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-2xs">
@@ -563,6 +1006,472 @@ export default function Inventory() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 1.5: AI Scan & Smart Restock */}
+      {activeTab === 'ai_scan' && (
+        <div className="space-y-5">
+          {aiBannerMessage && (
+            <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs font-bold ${
+              aiBannerMessage.type === 'success'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                : aiBannerMessage.type === 'error'
+                ? 'bg-rose-50 border-rose-300 text-rose-800'
+                : 'bg-indigo-50 border-indigo-300 text-indigo-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span>{aiBannerMessage.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiBannerMessage(null)}
+                className="p-1 rounded-lg hover:bg-black/5 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Mode 1: Live Barcode / Camera AI Stock-In */}
+            <div className="rounded-2xl border border-border/80 bg-card p-5 space-y-4 shadow-2xs">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+                    <ScanBarcode className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-foreground">Live Barcode &amp; Camera Stock-In</h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Scan any product packet to restock existing items or auto-add new FMCG products.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-1.5 text-[11px] font-bold bg-muted/60 px-2.5 py-1.5 rounded-xl cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoIncrementOnScan}
+                    onChange={e => setAutoIncrementOnScan(e.target.checked)}
+                    className="rounded text-indigo-600 cursor-pointer"
+                  />
+                  <span>Auto +1</span>
+                </label>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAiBarcodeLookup(aiBarcodeInput);
+                }}
+                className="flex gap-2"
+              >
+                <div className="relative flex-1">
+                  <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Scan barcode or type code & press Enter..."
+                    value={aiBarcodeInput}
+                    onChange={e => setAiBarcodeInput(e.target.value)}
+                    className="pl-9 h-10 text-xs font-mono bg-background rounded-xl"
+                  />
+                </div>
+                <Button type="submit" size="sm" className="h-10 px-4 rounded-xl font-bold text-xs">
+                  Lookup
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setCameraScanTarget('ai_tab');
+                    setShowCameraScanner(true);
+                  }}
+                  className="h-10 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5"
+                >
+                  <Camera className="h-4 w-4" /> Camera
+                </Button>
+              </form>
+
+              {/* Matched Product Quick Restock Form */}
+              {scannedExistingProduct && (
+                <form onSubmit={handleSaveScannedRestock} className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-300 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-600 text-white">
+                        Matched Store Product
+                      </span>
+                      <h4 className="font-black text-sm text-foreground mt-1">{scannedExistingProduct.name}</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Current Stock: <strong className="text-foreground">{scannedExistingProduct.stock} {scannedExistingProduct.unit || 'pcs'}</strong> • Selling: ₹{scannedExistingProduct.sellingPrice}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScannedExistingProduct(null)}
+                      className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-muted-foreground mr-1">Quick Add:</span>
+                    {[1, 5, 10, 24, 50].map(q => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => setQuickRestockAddQty(String(q))}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
+                          quickRestockAddQty === String(q)
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-white text-foreground border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        +{q}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">Add Qty</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={quickRestockAddQty}
+                        onChange={e => setQuickRestockAddQty(e.target.value)}
+                        className="h-9 text-xs font-black bg-white rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">Rack / Shelf</label>
+                      <Input
+                        placeholder="Rack A-1"
+                        value={quickRestockRack}
+                        onChange={e => setQuickRestockRack(e.target.value)}
+                        className="h-9 text-xs bg-white rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">Expiry Date</label>
+                      <Input
+                        type="date"
+                        value={quickRestockExpiry}
+                        onChange={e => setQuickRestockExpiry(e.target.value)}
+                        className="h-9 text-xs bg-white rounded-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <Button type="submit" disabled={saving} className="w-full h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl">
+                    {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}
+                    Save Stock Update (New Total: {Number(scannedExistingProduct.stock || 0) + (Number(quickRestockAddQty) || 0)})
+                  </Button>
+                </form>
+              )}
+
+              {/* New Scanned Barcode Quick Add Form */}
+              {quickNewBarcode && !scannedExistingProduct && (
+                <form onSubmit={handleCreateScannedProduct} className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-300 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-600 text-white">
+                        New Barcode: {quickNewBarcode}
+                      </span>
+                      <p className="text-xs font-bold text-foreground mt-1">Add directly to MongoDB Inventory</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuickNewBarcode('')}
+                      className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <Input
+                        required
+                        placeholder="Product Name (e.g. Parle-G 100g)"
+                        value={quickNewProductForm.name}
+                        onChange={e => setQuickNewProductForm(p => ({ ...p, name: e.target.value }))}
+                        className="h-9 text-xs font-bold bg-white rounded-lg"
+                      />
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Cost ₹"
+                      value={quickNewProductForm.purchasePrice}
+                      onChange={e => setQuickNewProductForm(p => ({ ...p, purchasePrice: e.target.value }))}
+                      className="h-9 text-xs bg-white rounded-lg"
+                    />
+                    <Input
+                      required
+                      type="number"
+                      step="0.01"
+                      placeholder="Selling Price ₹ *"
+                      value={quickNewProductForm.sellingPrice}
+                      onChange={e => setQuickNewProductForm(p => ({ ...p, sellingPrice: e.target.value }))}
+                      className="h-9 text-xs font-bold bg-white rounded-lg"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="MRP ₹"
+                      value={quickNewProductForm.mrp}
+                      onChange={e => setQuickNewProductForm(p => ({ ...p, mrp: e.target.value }))}
+                      className="h-9 text-xs bg-white rounded-lg"
+                    />
+                    <Input
+                      required
+                      type="number"
+                      placeholder="Opening Stock *"
+                      value={quickNewProductForm.stock}
+                      onChange={e => setQuickNewProductForm(p => ({ ...p, stock: e.target.value }))}
+                      className="h-9 text-xs font-bold bg-white rounded-lg"
+                    />
+                  </div>
+
+                  <Button type="submit" disabled={saving} className="w-full h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl">
+                    {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Plus className="h-4 w-4 mr-1.5" />}
+                    Create Product in Inventory
+                  </Button>
+                </form>
+              )}
+            </div>
+
+            {/* Mode 2: AI Photo Bill / Parchi / Shelf OCR Scanner */}
+            <div className="rounded-2xl border border-border/80 bg-card p-5 space-y-4 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-violet-500/10 text-violet-600 flex items-center justify-center">
+                  <BrainCircuit className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-foreground">AI Bill, Stock List &amp; Photo OCR Scan</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Upload a supplier invoice or handwritten stock list photo — AI extracts items &amp; quantities automatically.
+                  </p>
+                </div>
+              </div>
+
+              <input
+                ref={aiFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleAiPhotoUpload(f);
+                  e.target.value = '';
+                }}
+              />
+
+              <button
+                type="button"
+                disabled={aiOcrLoading}
+                onClick={() => aiFileInputRef.current?.click()}
+                className="w-full border-2 border-dashed border-indigo-300 hover:border-indigo-500 bg-indigo-50/40 hover:bg-indigo-50/70 rounded-2xl p-5 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2"
+              >
+                {aiOcrLoading ? (
+                  <>
+                    <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
+                    <p className="text-xs font-black text-indigo-700">{aiOcrStatusText} ({aiOcrProgress}%)</p>
+                    <div className="w-full max-w-xs h-2 bg-indigo-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${aiOcrProgress}%` }} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-11 w-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+                      <Upload className="h-5 w-5" />
+                    </div>
+                    <p className="text-xs font-black text-foreground">Click to Upload Bill / Invoice / Stock Sheet Photo</p>
+                    <p className="text-[11px] text-muted-foreground">Supports JPG, PNG, WebP • Auto-matches existing items &amp; Indian FMCG catalog</p>
+                  </>
+                )}
+              </button>
+
+              {aiPreviewUrl && (
+                <div className="flex items-center justify-between bg-muted/40 p-2.5 rounded-xl border text-xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img src={aiPreviewUrl} alt="Scanned invoice preview" className="h-10 w-10 rounded-lg object-cover border shrink-0" />
+                    <span className="font-semibold text-muted-foreground truncate">Scanned photo processed by AI OCR</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setAiPreviewUrl(null); setAiExtractedRows([]); }}
+                    className="h-7 text-[11px] text-rose-600"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Extracted AI Items Review Table */}
+          {aiExtractedRows.length > 0 && (
+            <div className="rounded-2xl border-2 border-indigo-400/50 bg-card overflow-hidden shadow-md">
+              <div className="p-3.5 bg-indigo-50/70 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-black text-sm text-indigo-950 flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-indigo-600" />
+                    AI Extracted Inventory Items ({aiExtractedRows.filter(r => r.selected).length} selected)
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground">Verify names, quantities, and rates before applying to MongoDB stock.</p>
+                </div>
+                <Button
+                  onClick={handleApplyAiRowsToInventory}
+                  disabled={saving}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-sm"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}
+                  Apply Selected to Inventory ({aiExtractedRows.filter(r => r.selected).length})
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/70 text-[10px] font-black uppercase border-b">
+                    <tr>
+                      <th className="px-3 py-2.5 text-center">Use</th>
+                      <th className="px-3 py-2.5">Product Name &amp; Match</th>
+                      <th className="px-3 py-2.5 text-center">Current Stock</th>
+                      <th className="px-3 py-2.5 text-center">+ Add Qty</th>
+                      <th className="px-3 py-2.5 text-right">Cost ₹</th>
+                      <th className="px-3 py-2.5 text-right">Selling ₹</th>
+                      <th className="px-3 py-2.5 text-center">Remove</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {aiExtractedRows.map((row, idx) => (
+                      <tr key={row.id} className="hover:bg-muted/20">
+                        <td className="px-3 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={row.selected}
+                            onChange={e => setAiExtractedRows(prev => prev.map((r, i) => i === idx ? { ...r, selected: e.target.checked } : r))}
+                            className="h-4 w-4 rounded text-indigo-600 cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 min-w-[200px]">
+                          <Input
+                            value={row.name}
+                            onChange={e => setAiExtractedRows(prev => prev.map((r, i) => i === idx ? { ...r, name: e.target.value } : r))}
+                            className="h-8 text-xs font-bold bg-background rounded-lg"
+                          />
+                          <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            row.matchedProductId ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+                          }`}>
+                            {row.matchedProductId ? 'Matched Existing Product' : 'New Product Will Be Created'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-mono font-bold text-muted-foreground">
+                          {row.existingStock}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={row.qty}
+                            onChange={e => setAiExtractedRows(prev => prev.map((r, i) => i === idx ? { ...r, qty: Number(e.target.value) || 0 } : r))}
+                            className="h-8 w-20 mx-auto text-center font-black text-xs bg-background rounded-lg"
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.purchasePrice}
+                            onChange={e => setAiExtractedRows(prev => prev.map((r, i) => i === idx ? { ...r, purchasePrice: Number(e.target.value) || 0 } : r))}
+                            className="h-8 w-20 ml-auto text-right font-mono text-xs bg-background rounded-lg"
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.sellingPrice}
+                            onChange={e => setAiExtractedRows(prev => prev.map((r, i) => i === idx ? { ...r, sellingPrice: Number(e.target.value) || 0 } : r))}
+                            className="h-8 w-20 ml-auto text-right font-mono font-bold text-xs bg-background rounded-lg"
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setAiExtractedRows(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Mode 3: AI Smart Reorder Recommendations */}
+          <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-2xs">
+            <div className="p-3.5 bg-muted/40 border-b flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                <span className="font-black text-xs text-foreground">AI Smart Reorder Predictions (Low &amp; Fast-Selling Items)</span>
+              </div>
+              <span className="text-[11px] text-muted-foreground font-semibold">{aiReorderSuggestions.length} recommendations</span>
+            </div>
+            <div className="divide-y divide-border/60">
+              {aiReorderSuggestions.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground text-xs">
+                  All products are well-stocked! No immediate restock needed.
+                </div>
+              ) : (
+                aiReorderSuggestions.map(({ product, sold30d, suggestedQty, estimatedCost }) => (
+                  <div key={product.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-sm text-foreground">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        In Stock: <strong className={product.stock <= 0 ? 'text-rose-600' : 'text-amber-600'}>{product.stock} {product.unit || 'pcs'}</strong> • 30d Sold: <strong>{sold30d}</strong> • Suggested Order: <strong className="text-primary">+{suggestedQty}</strong> (Est. ₹{estimatedCost.toFixed(0)})
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving}
+                        onClick={() => handleQuickRestockSuggestion(product, 5)}
+                        className="h-8 text-xs font-bold rounded-lg"
+                      >
+                        +5
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving}
+                        onClick={() => handleQuickRestockSuggestion(product, 10)}
+                        className="h-8 text-xs font-bold rounded-lg"
+                      >
+                        +10
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={saving}
+                        onClick={() => handleQuickRestockSuggestion(product, suggestedQty)}
+                        className="h-8 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        + {suggestedQty} Restock
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -926,6 +1835,23 @@ export default function Inventory() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Camera Barcode Scanner for Inventory AI Scan */}
+      {showCameraScanner && (
+        <CameraScanner
+          onScan={(code) => {
+            setShowCameraScanner(false);
+            if (cameraScanTarget === 'stock_search') {
+              setSearchTerm(code);
+              setAiBarcodeInput(code);
+            } else {
+              setAiBarcodeInput(code);
+              handleAiBarcodeLookup(code);
+            }
+          }}
+          onClose={() => setShowCameraScanner(false)}
+        />
       )}
     </div>
   );

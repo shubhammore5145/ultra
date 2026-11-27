@@ -332,55 +332,69 @@ export default function SalesReturn() {
     const timeStr = new Date(record.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
     const itemsRows = record.items.map((it, idx) => `
-      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ccc;font-size:12px;">
-        <span style="font-weight:bold;">${idx + 1}. ${it.productName} (x${it.qty}) [${it.condition === 'resellable' ? 'Good' : 'Damaged'}]</span>
-        <span style="font-weight:bold;">₹${it.refundAmount.toFixed(2)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px dotted #000;font-size:11.5px;">
+        <span style="flex:1;min-width:0;font-weight:700;word-break:break-word;">${idx + 1}. ${it.productName} (x${it.qty}) [${it.condition === 'resellable' ? 'Good' : 'Damaged'}]</span>
+        <span style="flex-shrink:0;white-space:nowrap;font-weight:900;font-variant-numeric:tabular-nums;">₹${it.refundAmount.toFixed(2)}</span>
       </div>
     `).join('');
 
     printWindow.document.write(`
       <html>
         <head>
+          <meta charset="utf-8"/>
           <title>Sales Return Voucher #${record.id}</title>
           <style>
-            body { font-family: monospace, sans-serif; width: 78mm; margin: 0 auto; padding: 10px; color: #000; font-size: 12px; }
+            @page { margin: 0mm; size: 80mm auto; }
+            * { box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+              width: 72mm;
+              max-width: 72mm;
+              margin: 0;
+              padding: 2mm 2.5mm;
+              color: #000;
+              background: #fff;
+              font-size: 11.5px;
+              line-height: 1.3;
+              font-variant-numeric: tabular-nums;
+            }
             .center { text-align: center; }
             .bold { font-weight: bold; }
-            .dashed { border-bottom: 2px dashed #000; margin: 6px 0; }
+            .dashed { border-bottom: 1.5px dashed #000; margin: 5px 0; }
           </style>
         </head>
         <body>
           <div class="center">
-            <h2 style="margin:0 0 2px;font-size:18px;">${shopName.toUpperCase()}</h2>
-            ${shopPhone ? `<p style="margin:2px 0;">Ph: ${shopPhone}</p>` : ''}
-            <div style="border-top:2px dashed #000;border-bottom:2px dashed #000;padding:4px 0;margin:6px 0;font-weight:bold;">
+            <h2 style="margin:0 0 2px;font-size:17px;font-weight:900;">${shopName.toUpperCase()}</h2>
+            ${shopPhone ? `<p style="margin:2px 0;font-weight:700;">Ph: ${shopPhone}</p>` : ''}
+            <div style="border-top:1.5px dashed #000;border-bottom:1.5px dashed #000;padding:3px 0;margin:5px 0;font-weight:900;font-size:11.5px;">
               *** SALES RETURN & REFUND VOUCHER ***
             </div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;">
+          <div style="display:flex;justify-content:space-between;gap:4px;font-size:11px;font-weight:600;">
             <span><b>Voucher:</b> #${record.id}</span>
-            <span><b>Date:</b> ${dateStr}</span>
+            <span style="white-space:nowrap;"><b>Date:</b> ${dateStr}</span>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;">
+          <div style="display:flex;justify-content:space-between;gap:4px;font-size:11px;font-weight:600;">
             <span><b>Orig Bill:</b> #${record.originalBillId?.slice(-8).toUpperCase()}</span>
-            <span><b>Time:</b> ${timeStr}</span>
+            <span style="white-space:nowrap;"><b>Time:</b> ${timeStr}</span>
           </div>
-          ${record.customerName ? `<div style="font-size:11px;margin-top:2px;"><b>Customer:</b> ${record.customerName} ${record.customerPhone ? `(${record.customerPhone})` : ''}</div>` : ''}
+          ${record.customerName ? `<div style="font-size:11px;margin-top:2px;font-weight:600;"><b>Customer:</b> ${record.customerName} ${record.customerPhone ? `(${record.customerPhone})` : ''}</div>` : ''}
           <div class="dashed"></div>
-          <div style="font-weight:bold;margin-bottom:4px;">RETURNED ITEMS:</div>
+          <div style="font-weight:900;font-size:11.5px;margin-bottom:4px;">RETURNED ITEMS:</div>
           ${itemsRows}
           <div class="dashed"></div>
-          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:4px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:900;margin:4px 0;">
             <span>TOTAL REFUND:</span>
-            <span>₹${record.totalRefund.toFixed(2)}</span>
+            <span style="white-space:nowrap;">₹${record.totalRefund.toFixed(2)}</span>
           </div>
-          <div style="font-size:11px;font-weight:bold;">Refund Mode: ${record.refundMethod.toUpperCase()}</div>
-          <div style="font-size:10px;color:#555;margin-top:2px;">Reason: ${record.reason}</div>
+          <div style="font-size:11px;font-weight:700;">Refund Mode: ${record.refundMethod.toUpperCase()}</div>
+          <div style="font-size:10.5px;font-weight:600;margin-top:2px;">Reason: ${record.reason}</div>
           <div class="dashed"></div>
-          <p class="center" style="margin:8px 0 2px;font-weight:bold;">Inventory Restocked Successfully ✅</p>
-          <p class="center" style="margin:4px 0 0;font-size:12px;font-weight:bold;">Software by Varuag Labs</p>
+          <p class="center" style="margin:6px 0 2px;font-weight:900;font-size:11.5px;">Inventory Restocked Successfully</p>
+          <p class="center" style="margin:4px 0 2mm;font-size:12.5px;font-weight:900;">Software by Varuag Labs</p>
           <script>
-            window.onload = function() { window.print(); }
+            window.onload = function() { setTimeout(function() { window.print(); }, 80); }
           </script>
         </body>
       </html>

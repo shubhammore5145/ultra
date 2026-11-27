@@ -10,6 +10,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import JsBarcode from 'jsbarcode';
 import type { Transaction, Customer, Product } from '../types';
 
 export default function BillStore() {
@@ -277,19 +278,90 @@ export default function BillStore() {
     })();
     const shopGst = isGstActive ? (shopData?.gstNumber || '') : '';
     const billShortId = String(bill.id || '').slice(-8).toUpperCase();
+    const barcodeValue = String(bill.id || '').slice(-12).toUpperCase();
     const billDate = bill.createdAt ? new Date(bill.createdAt) : new Date();
 
-    const printWindow = window.open('', '', 'width=380,height=620');
+    let paperSpec: '58mm' | '80mm' = '80mm';
+    try {
+      const hwRaw = localStorage.getItem('hardware_settings');
+      if (hwRaw) {
+        const parsedHw = JSON.parse(hwRaw);
+        if (parsedHw?.paperSize === '58mm') paperSpec = '58mm';
+      } else if ((shopData as any)?.settings?.paperSize === '58mm' || (shopData as any)?.receiptPaperSize === '58mm') {
+        paperSpec = '58mm';
+      }
+    } catch {}
+    const printableWidth = paperSpec === '58mm' ? '48mm' : '72mm';
+    const barcodeMaxWidth = paperSpec === '58mm' ? '44mm' : '64mm';
+
+    // Generate crisp offline barcode SVG synchronously
+    let barcodeSvgHtml = '';
+    try {
+      if (barcodeValue) {
+        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(svgEl, barcodeValue, {
+          format: 'CODE128',
+          width: paperSpec === '58mm' ? 1.1 : 1.35,
+          height: 34,
+          displayValue: true,
+          fontSize: 10,
+          margin: 0,
+          textMargin: 2
+        });
+        svgEl.style.width = '100%';
+        svgEl.style.maxWidth = barcodeMaxWidth;
+        svgEl.style.height = 'auto';
+        svgEl.style.margin = '0 auto';
+        svgEl.style.display = 'block';
+        barcodeSvgHtml = svgEl.outerHTML;
+      }
+    } catch {}
+
+    const printWindow = window.open('', '', 'width=380,height=640');
     if (!printWindow) return;
 
-    const itemsHtml = (bill.items || []).map((it, idx) => `
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:12px;">
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:4px;">${idx + 1}. ${it.name}</span>
-        <span style="width:36px;text-align:right;">${it.qty}</span>
-        <span style="width:48px;text-align:right;">₹${Number(it.sellingPrice).toFixed(0)}</span>
-        <span style="width:58px;text-align:right;font-weight:bold;">₹${(Number(it.sellingPrice) * Number(it.qty)).toFixed(2)}</span>
-      </div>
-    `).join('');
+    const billItems = bill.items || [];
+    const totalQtyCount = billItems.reduce((sum, it) => sum + Number(it.qty || 1), 0);
+    const totalMrpValue = billItems.reduce((sum, it) => {
+      const sp = Number(it.sellingPrice || 0);
+      const mrp = Number(it.mrp || 0);
+      return sum + ((mrp > sp ? mrp : sp) * Number(it.qty || 1));
+    }, 0);
+    const productSavings = billItems.reduce((sum, it) => {
+      const sp = Number(it.sellingPrice || 0);
+      const mrp = Number(it.mrp || 0);
+      return sum + (mrp > sp ? (mrp - sp) * Number(it.qty || 1) : 0);
+    }, 0);
+    const totalSavings = productSavings + Number(bill.discountAmount || 0);
+    const savingsPct = totalMrpValue > 0 ? Math.round((totalSavings / totalMrpValue) * 100) : 0;
+
+    const itemsHtml = billItems.map((it, idx) => {
+      const sp = Number(it.sellingPrice || 0);
+      const mrp = Number(it.mrp || 0);
+      const qty = Number(it.qty || 1);
+      const hasDiscount = mrp > sp;
+      const unitStr = it.unit ? ` (${it.unit})` : '';
+      const qtyLabel = (it.unit === 'kg' || Boolean((it as any).isLoose)) && qty < 1
+        ? `${Math.round(qty * 1000)}g`
+        : qty;
+      return `
+        <div style="padding:3px 0;border-bottom:1px dotted #888;">
+          <div style="font-weight:700;font-size:11.5px;line-height:1.25;word-break:break-word;color:#000;">
+            ${idx + 1}. ${it.name}${unitStr}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:11px;font-weight:600;margin-top:1px;">
+            <span style="flex:1;min-width:0;color:#000;">
+              ${hasDiscount ? `<span style="margin-right:4px;">MRP:<span style="text-decoration:line-through;">₹${mrp.toFixed(2)}</span></span>` : ''}
+              <span style="font-weight:800;">₹${sp.toFixed(2)}</span>
+              <span style="margin-left:4px;font-weight:700;">× ${qtyLabel}</span>
+            </span>
+            <span style="flex-shrink:0;white-space:nowrap;font-weight:900;font-size:12px;text-align:right;font-variant-numeric:tabular-nums;">
+              ₹${(sp * qty).toFixed(2)}
+            </span>
+          </div>
+        </div>
+      `;
+    }).join('');
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -298,73 +370,76 @@ export default function BillStore() {
           <meta charset="utf-8"/>
           <title>Receipt #${billShortId}</title>
           <style>
-            @page { margin: 0; size: auto; }
+            @page { margin: 0mm; size: ${paperSpec} auto; }
+            * { box-sizing: border-box; }
             body { 
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, monospace; 
-              margin: 0; 
-              padding: 14px 10px; 
-              font-size: 12px; 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+              width: ${printableWidth};
+              max-width: ${printableWidth};
+              margin: 0;
+              padding: 1.5mm 2.5mm;
+              font-size: 11.5px;
               color: #000;
-              line-height: 1.35;
-              max-width: 300px;
-              margin: 0 auto;
+              background: #fff;
+              line-height: 1.3;
+              font-variant-numeric: tabular-nums;
             }
             .center { text-align: center; }
-            .bold { font-weight: bold; }
-            .dashed { border-bottom: 1px dashed #000; margin: 8px 0; }
-            .row { display: flex; justify-content: space-between; margin: 3px 0; font-size: 11px; }
-            .title { font-size: 16px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
-            .sub { font-size: 10px; margin: 2px 0; color: #222; }
+            .bold { font-weight: 800; }
+            .dashed { border-bottom: 1.5px dashed #000; margin: 5px 0; }
+            .row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; margin: 2px 0; font-size: 11px; font-weight: 600; }
+            .num { white-space: nowrap; flex-shrink: 0; text-align: right; }
+            .title { font-size: 17px; font-weight: 900; margin: 0 0 2px; text-transform: uppercase; letter-spacing: 0.3px; word-break: break-word; }
+            .sub { font-size: 11px; font-weight: 600; margin: 1.5px 0; color: #000; line-height: 1.25; }
           </style>
         </head>
         <body>
           <div class="center">
             <h2 class="title">${shopName}</h2>
             ${shopAddr ? `<p class="sub">${shopAddr}</p>` : ''}
-            ${shopPh ? `<p class="sub">Ph: ${shopPh}</p>` : ''}
-            ${shopGst ? `<p class="sub">GSTIN: ${shopGst}</p>` : ''}
+            ${shopPh ? `<p class="sub" style="font-weight:800;">Ph: ${shopPh}</p>` : ''}
+            ${shopGst ? `<p class="sub" style="font-weight:900;">GSTIN: ${shopGst}</p>` : ''}
+            <div style="margin:5px 0 3px;font-weight:900;font-size:11.5px;border-top:1.5px dashed #000;border-bottom:1.5px dashed #000;padding:3px 0;">
+              ${shopGst ? '*** RETAIL TAX INVOICE ***' : '*** RETAIL INVOICE ***'}
+            </div>
           </div>
+          <div class="row"><span><b>Inv:</b> #${billShortId}</span><span class="num"><b>Date:</b> ${billDate.toLocaleDateString('en-IN')}</span></div>
+          <div class="row"><span><b>Time:</b> ${billDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span><span class="num"><b>Mode:</b> ${(bill.paymentMethod || 'CASH').toUpperCase()}</span></div>
+          ${cust.name || cust.phone ? `<div class="row"><span><b>Customer:</b> ${cust.name || ''}</span><span class="num">${cust.phone ? '+91 ' + cust.phone : ''}</span></div>` : ''}
           <div class="dashed"></div>
-          <div class="row"><span><b>Invoice:</b> #${billShortId}</span><span><b>Mode:</b> ${(bill.paymentMethod || 'Cash').toUpperCase()}</span></div>
-          <div class="row"><span><b>Date:</b> ${billDate.toLocaleDateString('en-IN')}, ${billDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-          ${cust.name ? `<div class="row"><span><b>Customer:</b> ${cust.name}</span><span>${cust.phone ? '+91 ' + cust.phone : ''}</span></div>` : ''}
-          <div class="dashed"></div>
-          <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:11px;margin-bottom:4px;border-bottom:1px solid #000;padding-bottom:2px;">
-            <span style="flex:1;">Item</span><span style="width:36px;text-align:right;">Qty</span><span style="width:48px;text-align:right;">Rate</span><span style="width:58px;text-align:right;">Total</span>
+          <div style="display:flex;justify-content:space-between;font-weight:900;font-size:11px;border-bottom:1.5px solid #000;padding-bottom:2px;margin-bottom:3px;">
+            <span>ITEM (RATE × QTY)</span>
+            <span class="num">AMOUNT</span>
           </div>
           ${itemsHtml}
           <div class="dashed"></div>
-          <div class="row"><span>Subtotal:</span><span>₹${Number(bill.subtotal || bill.totalAmount || 0).toFixed(2)}</span></div>
-          ${Number(bill.discountAmount) > 0 ? `<div class="row" style="font-weight:bold;"><span>Discount:</span><span>-₹${Number(bill.discountAmount).toFixed(2)}</span></div>` : ''}
-          ${Number(bill.taxAmount) > 0 ? `<div class="row"><span>Tax (GST):</span><span>+₹${Number(bill.taxAmount).toFixed(2)}</span></div>` : ''}
-          <div class="dashed"></div>
-          <div class="row bold" style="font-size:15px;margin-top:4px;"><span>GRAND TOTAL:</span><span>₹${Number(bill.totalAmount || 0).toFixed(2)}</span></div>
+          <div class="row"><span>Items / Qty:</span><span class="num">${billItems.length} items (${totalQtyCount} qty)</span></div>
+          <div class="row"><span>Subtotal:</span><span class="num">₹${Number(bill.subtotal || bill.totalAmount || 0).toFixed(2)}</span></div>
+          ${Number(bill.discountAmount) > 0 ? `<div class="row bold"><span>Discount:</span><span class="num">-₹${Number(bill.discountAmount).toFixed(2)}</span></div>` : ''}
+          ${Number(bill.taxAmount) > 0 ? `<div class="row"><span>Tax (GST):</span><span class="num">+₹${Number(bill.taxAmount).toFixed(2)}</span></div>` : ''}
+          <div style="border-bottom:1.5px solid #000;margin:4px 0;"></div>
+          <div class="row" style="font-size:15.5px;font-weight:900;padding:2px 0;"><span>NET TOTAL:</span><span class="num">₹${Number(bill.totalAmount || 0).toFixed(2)}</span></div>
           ${Number(bill.cashTendered || 0) > 0 ? `
-            <div class="row" style="margin-top:3px;border-top:1px dashed #555;padding-top:2px;"><span>Cash Tendered:</span><span>₹${Number(bill.cashTendered).toFixed(2)}</span></div>
-            ${Number(bill.changeReturn || 0) > 0 ? `<div class="row bold"><span>Change Return:</span><span>₹${Number(bill.changeReturn).toFixed(2)}</span></div>` : ''}
+            <div style="border-top:1px dashed #000;margin-top:2px;padding-top:2px;">
+              <div class="row"><span>Cash Tendered:</span><span class="num">₹${Number(bill.cashTendered).toFixed(2)}</span></div>
+              ${Number(bill.changeReturn || 0) > 0 ? `<div class="row bold"><span>Change Return:</span><span class="num">₹${Number(bill.changeReturn).toFixed(2)}</span></div>` : ''}
+            </div>
           ` : ''}
-          <div class="dashed"></div>
+          ${totalSavings > 0 ? `
+            <div style="text-align:center;padding:4px 0;font-size:11.5px;font-weight:900;border-top:1.5px dashed #000;border-bottom:1.5px dashed #000;margin-top:4px;">
+              You Saved: ₹${totalSavings.toFixed(2)} (${savingsPct}% savings)
+            </div>
+          ` : `<div class="dashed"></div>`}
           <div style="text-align:center;margin:6px 0 3px;">
-            <svg id="print-barcode"></svg>
-            <div style="font-size:10px;font-weight:bold;margin-top:2px;">Scan for Return / Exchange</div>
+            ${barcodeSvgHtml}
+            <div style="font-size:9.5px;font-weight:800;margin-top:2px;">Scan Barcode for Return / Exchange</div>
           </div>
-          <p class="center" style="margin:6px 0 2px;font-size:11px;font-weight:bold;">Thank You For Shopping! Please Visit Again! 🙏</p>
-          <p class="center" style="margin:4px 0 0;font-size:13px;font-weight:bold;color:#000;letter-spacing:0.3px;">Software by Varuag Labs</p>
-          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+          <p class="center" style="margin:5px 0 1px;font-size:11px;font-weight:900;">Thank You For Shopping! Please Visit Again</p>
+          <p class="center" style="margin:3px 0 2mm;font-size:12.5px;font-weight:900;color:#000;letter-spacing:0.3px;">Software by Varuag Labs</p>
           <script>
             window.onload = function() {
-              try {
-                JsBarcode("#print-barcode", "${bill.id.slice(-12).toUpperCase()}", {
-                  format: "CODE128",
-                  width: 1.5,
-                  height: 38,
-                  displayValue: true,
-                  fontSize: 11,
-                  margin: 0
-                });
-              } catch(e) {}
-              setTimeout(function() { window.print(); }, 100);
-            }
+              setTimeout(function() { window.print(); }, 80);
+            };
           </script>
         </body>
       </html>

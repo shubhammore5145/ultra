@@ -1420,10 +1420,10 @@ export default function POS() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-full gap-6 relative">
+    <div className="flex flex-col md:flex-row h-full gap-6 relative print:block print:h-auto print:gap-0">
       {/* Floating Notification for WhatsApp Bill */}
       {floatingNotification && (
-        <div className="fixed top-5 right-5 z-[9999] max-w-sm w-full bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-400/40 animate-in slide-in-from-top-4 fade-in duration-300">
+        <div className="fixed top-5 right-5 z-[9999] max-w-sm w-full bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-400/40 animate-in slide-in-from-top-4 fade-in duration-300 print:hidden">
           <CheckCircle2 className="h-6 w-6 text-white shrink-0" />
           <div className="flex-1 text-sm font-semibold">
             {floatingNotification}
@@ -1436,7 +1436,7 @@ export default function POS() {
 
       {/* Floating Stock Limit Warning Notification */}
       {stockWarning && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] max-w-md w-[92%] sm:w-auto bg-rose-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-rose-400 animate-in slide-in-from-top-4 duration-200">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] max-w-md w-[92%] sm:w-auto bg-rose-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-rose-400 animate-in slide-in-from-top-4 duration-200 print:hidden">
           <AlertTriangle className="h-5 w-5 text-amber-300 shrink-0 animate-bounce" />
           <p className="text-sm font-bold flex-1">{stockWarning}</p>
           <button 
@@ -1468,7 +1468,7 @@ export default function POS() {
         const shopGst = (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '';
 
         return (
-          <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 animate-in fade-in slide-in-from-top-4 duration-200 border border-emerald-400/40 no-print" id="receipt-modal">
+          <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 animate-in fade-in slide-in-from-top-4 duration-200 border border-emerald-400/40 no-print print:hidden" id="receipt-modal">
             <div className="p-2 rounded-xl bg-white/20 backdrop-blur-md">
               <CheckCircle2 className="h-6 w-6 text-white" />
             </div>
@@ -1569,7 +1569,7 @@ export default function POS() {
       )}
 
       {/* Products & Search Section */}
-      <div className={`flex-1 flex flex-col gap-3 min-w-0 md:h-full md:overflow-hidden ${cart.length > 0 ? 'pb-32' : 'pb-20'} md:pb-0`}>
+      <div className={`flex-1 flex flex-col gap-3 min-w-0 md:h-full md:overflow-hidden print:hidden ${cart.length > 0 ? 'pb-32' : 'pb-20'} md:pb-0`}>
         {/* Sticky Search & Actions Bar for Mobile & Desktop */}
         <div className="sticky top-0 bg-background/95 backdrop-blur-md pt-0.5 pb-2 z-20">
           <div className="relative flex items-center">
@@ -2011,7 +2011,7 @@ export default function POS() {
 
       {/* Cart Section (Sidebar on Desktop, Full Overlay on Mobile) */}
       <div className={`
-        fixed inset-0 z-[120] bg-background text-foreground flex flex-col
+        fixed inset-0 z-[120] bg-background text-foreground flex flex-col print:hidden
         md:static md:w-[380px] lg:w-[420px] md:bg-card md:text-card-foreground md:rounded-2xl md:border md:shadow-sm md:h-full md:overflow-hidden md:z-auto shrink-0
         transition-transform duration-300 ease-in-out
         ${showMobileCart ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
@@ -3236,66 +3236,92 @@ export default function POS() {
         const shopGst = (isGstActive && activeShop.gstNumber) ? activeShop.gstNumber : '';
         const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
         const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const paperWidth = (activeShop as any)?.settings?.paperSize === '58mm' || (activeShop as any)?.receiptPaperSize === '58mm' ? '58mm' : '80mm';
+        let hwPaperSize: string | undefined;
+        try {
+          const hwRaw = localStorage.getItem('hardware_settings');
+          if (hwRaw) hwPaperSize = JSON.parse(hwRaw)?.paperSize;
+        } catch {}
+        const paperSpec: '58mm' | '80mm' =
+          hwPaperSize === '58mm' || (activeShop as any)?.settings?.paperSize === '58mm' || (activeShop as any)?.receiptPaperSize === '58mm'
+            ? '58mm'
+            : '80mm';
+        const printableWidth = paperSpec === '58mm' ? '48mm' : '72mm';
+        const barcodeMaxWidth = paperSpec === '58mm' ? '44mm' : '64mm';
         const receiptCustomHeader = (activeShop as any)?.settings?.receiptHeader || (activeShop as any)?.receiptHeader;
         const receiptCustomFooter = (activeShop as any)?.settings?.receiptFooter || (activeShop as any)?.receiptFooter;
 
         return (
           <div 
-            id="receipt-template" 
-            className={`hidden print:block absolute left-0 top-0 bg-white text-black text-[13px] leading-[1.35] font-sans z-0 p-3.5 ${paperWidth === '58mm' ? 'w-[58mm]' : 'w-[80mm]'}`}
-            style={{ width: paperWidth, color: '#000000', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
+            id="receipt-template"
+            data-paper={paperSpec}
+            className="hidden print:block bg-white text-black font-sans"
+            style={{
+              width: printableWidth,
+              maxWidth: printableWidth,
+              boxSizing: 'border-box',
+              padding: '1.5mm 2.5mm',
+              margin: 0,
+              color: '#000000',
+              backgroundColor: '#ffffff',
+              fontSize: paperSpec === '58mm' ? '11px' : '12px',
+              lineHeight: '1.3',
+              fontVariantNumeric: 'tabular-nums',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+            }}
           >
             {/* STORE HEADER */}
-            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '6px' }}>
               {receiptCustomHeader && (
-                <p style={{ margin: '0 0 3px 0', fontSize: '13px', fontWeight: 'bold' }}>{receiptCustomHeader}</p>
+                <p style={{ margin: '0 0 2px 0', fontSize: '11.5px', fontWeight: 'bold' }}>{receiptCustomHeader}</p>
               )}
-              <h2 style={{ margin: '0 0 3px 0', fontSize: '22px', fontWeight: '900', letterSpacing: '0.5px', color: '#000' }}>
+              <h2 style={{ margin: '0 0 2px 0', fontSize: paperSpec === '58mm' ? '16px' : '19px', fontWeight: '900', letterSpacing: '0.3px', color: '#000', wordBreak: 'break-word' }}>
                 {(activeShop.shopName || activeShop.name || 'KIRANA STORE').toUpperCase()}
               </h2>
               {activeShop.address && (
-                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600', lineHeight: '1.25' }}>{activeShop.address}</p>
+                <p style={{ margin: '1.5px 0', fontSize: '11px', fontWeight: '600', lineHeight: '1.25', wordBreak: 'break-word' }}>{activeShop.address}</p>
               )}
               {activeShop.phone && (
-                <p style={{ margin: '2px 0', fontSize: '12.5px', fontWeight: 'bold' }}>Ph: {activeShop.phone}</p>
+                <p style={{ margin: '1.5px 0', fontSize: '11.5px', fontWeight: 'bold' }}>Ph: {activeShop.phone}</p>
               )}
               {shopGst ? (
-                <p style={{ margin: '3px 0', fontSize: '13px', fontWeight: '900' }}>
+                <p style={{ margin: '2px 0', fontSize: '11.5px', fontWeight: '900' }}>
                   GSTIN: {shopGst}
                 </p>
               ) : null}
               {(activeShop as any).fssaiNumber && (
-                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600' }}>FSSAI Lic: {(activeShop as any).fssaiNumber}</p>
+                <p style={{ margin: '1.5px 0', fontSize: '11px', fontWeight: '600' }}>FSSAI Lic: {(activeShop as any).fssaiNumber}</p>
               )}
-              <div style={{ margin: '6px 0 3px 0', fontWeight: '900', fontSize: '13px', borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '4px 0' }}>
+              <div style={{ margin: '5px 0 3px 0', fontWeight: '900', fontSize: '11.5px', borderTop: '1.5px dashed #000', borderBottom: '1.5px dashed #000', padding: '3px 0' }}>
                 {shopGst ? '*** RETAIL TAX INVOICE ***' : '*** RETAIL INVOICE ***'}
               </div>
             </div>
 
             {/* INVOICE METADATA */}
-            <div style={{ fontSize: '12.5px', fontWeight: '600', marginBottom: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span><strong>Inv No:</strong> #{checkoutResult.id.slice(-8).toUpperCase()}</span>
-                <span><strong>Date:</strong> {formattedDate}</span>
+            <div style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px' }}>
+                <span><strong>Inv:</strong> #{checkoutResult.id.slice(-8).toUpperCase()}</span>
+                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}><strong>Date:</strong> {formattedDate}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span><strong>Time:</strong> {formattedTime}</span>
-                <span><strong>Pay Mode:</strong> {(checkoutResult.paymentMethod || 'CASH').toUpperCase()}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px' }}>
+                <span style={{ whiteSpace: 'nowrap' }}><strong>Time:</strong> {formattedTime}</span>
+                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}><strong>Mode:</strong> {(checkoutResult.paymentMethod || 'CASH').toUpperCase()}</span>
               </div>
-              {checkoutResult.customerPhone && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span><strong>Customer:</strong> +91 {checkoutResult.customerPhone}</span>
+              {(checkoutResult.customerName || checkoutResult.customerPhone) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px' }}>
+                  <span style={{ minWidth: 0, wordBreak: 'break-word' }}><strong>Cust:</strong> {checkoutResult.customerName || 'Walk-in'}</span>
+                  {checkoutResult.customerPhone && (
+                    <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>+91 {checkoutResult.customerPhone}</span>
+                  )}
                 </div>
               )}
             </div>
 
-            <div style={{ borderBottom: '2px dashed #000', marginBottom: '6px' }}></div>
+            <div style={{ borderBottom: '1.5px dashed #000', marginBottom: '4px' }}></div>
 
             {/* TABLE HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '13px', borderBottom: '2px solid #000', paddingBottom: '3px', marginBottom: '4px' }}>
-              <span>ITEM (MRP & RATE)</span>
-              <span>AMOUNT</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px', fontWeight: '900', fontSize: '11.5px', borderBottom: '1.5px solid #000', paddingBottom: '2px', marginBottom: '3px' }}>
+              <span>ITEM (MRP &amp; RATE)</span>
+              <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>AMOUNT</span>
             </div>
 
             {/* ITEMS LIST */}
@@ -3307,29 +3333,32 @@ export default function POS() {
                 const itemTotal = sp * qty;
                 const hasDiscount = mrp > sp;
                 const unitStr = item.unit ? ` (${item.unit})` : '';
+                const qtyLabel = (item.unit === 'kg' || Boolean((item as any).isLoose)) && qty < 1
+                  ? `${Math.round(qty * 1000)}g`
+                  : qty;
 
                 return (
-                  <div key={item.id || idx} style={{ padding: '4px 0', borderBottom: '1px dotted #999' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '13.5px', wordBreak: 'break-word', lineHeight: '1.25', color: '#000' }}>
+                  <div key={item.id || idx} style={{ padding: '3px 0', borderBottom: '1px dotted #888' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '12px', wordBreak: 'break-word', lineHeight: '1.25', color: '#000' }}>
                       {idx + 1}. {item.name}{unitStr}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', fontWeight: '600', marginTop: '2px' }}>
-                      <span style={{ color: '#000' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '4px', fontSize: '11.5px', fontWeight: '600', marginTop: '1px' }}>
+                      <span style={{ color: '#000', flex: 1, minWidth: 0 }}>
                         {hasDiscount ? (
                           <>
-                            <span style={{ marginRight: '6px' }}>
-                              MRP: <span style={{ textDecoration: 'line-through' }}>₹{mrp.toFixed(2)}</span>
+                            <span style={{ marginRight: '4px' }}>
+                              MRP:<span style={{ textDecoration: 'line-through' }}>₹{mrp.toFixed(2)}</span>
                             </span>
-                            <span style={{ fontWeight: '900', color: '#000' }}>Rate: ₹{sp.toFixed(2)}</span>
+                            <span style={{ fontWeight: '900', color: '#000' }}>₹{sp.toFixed(2)}</span>
                           </>
                         ) : (
                           <span style={{ fontWeight: '900' }}>Rate: ₹{sp.toFixed(2)}</span>
                         )}
-                        <span style={{ marginLeft: '6px', fontWeight: 'bold' }}>
-                          x {(item.unit === 'kg' || Boolean((item as any).isLoose)) && qty < 1 ? `${Math.round(qty * 1000)}gm (${qty}kg)` : qty}
+                        <span style={{ marginLeft: '5px', fontWeight: 'bold' }}>
+                          × {qtyLabel}
                         </span>
                       </span>
-                      <span style={{ fontWeight: '900', fontSize: '13.5px' }}>
+                      <span style={{ fontWeight: '900', fontSize: '12.5px', whiteSpace: 'nowrap', flexShrink: 0, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                         ₹{itemTotal.toFixed(2)}
                       </span>
                     </div>
@@ -3338,71 +3367,71 @@ export default function POS() {
               })}
             </div>
 
-            <div style={{ borderBottom: '2px dashed #000', margin: '5px 0' }}></div>
+            <div style={{ borderBottom: '1.5px dashed #000', margin: '4px 0' }}></div>
 
             {/* TOTAL ITEMS & SUMMARY */}
-            <div style={{ fontSize: '13px', fontWeight: '600', lineHeight: '1.5' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: '600', lineHeight: '1.4' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px' }}>
                 <span>Total Items / Qty:</span>
-                <span style={{ fontWeight: 'bold' }}>{totalItemsCount} items ({totalQtyCount} qty)</span>
+                <span style={{ fontWeight: 'bold', whiteSpace: 'nowrap', flexShrink: 0 }}>{totalItemsCount} items ({totalQtyCount} qty)</span>
               </div>
 
               {totalMrpValue > checkoutResult.total && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px' }}>
                   <span>Total MRP:</span>
-                  <span>₹{totalMrpValue.toFixed(2)}</span>
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>₹{totalMrpValue.toFixed(2)}</span>
                 </div>
               )}
 
               {billDiscountAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', fontWeight: 'bold' }}>
                   <span>Special Discount:</span>
-                  <span>-₹{billDiscountAmount.toFixed(2)}</span>
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>-₹{billDiscountAmount.toFixed(2)}</span>
                 </div>
               )}
             </div>
 
-            <div style={{ borderBottom: '2px solid #000', margin: '5px 0' }}></div>
+            <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
 
             {/* NET GRAND TOTAL */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900', fontSize: '18px', padding: '3px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px', fontWeight: '900', fontSize: paperSpec === '58mm' ? '14px' : '16.5px', padding: '2px 0' }}>
               <span>NET TOTAL:</span>
-              <span>₹{checkoutResult.total.toFixed(2)}</span>
+              <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>₹{checkoutResult.total.toFixed(2)}</span>
             </div>
 
             {/* CASH TENDERED & CHANGE RETURN */}
             {checkoutResult.cashTendered && Number(checkoutResult.cashTendered) > 0 ? (
-              <div style={{ fontSize: '12.5px', padding: '3px 0', borderTop: '1px dashed #000', marginTop: '2px', fontWeight: '600' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '11.5px', padding: '3px 0', borderTop: '1px dashed #000', marginTop: '2px', fontWeight: '600' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px' }}>
                   <span>Cash Tendered:</span>
-                  <span>₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>₹{Number(checkoutResult.cashTendered).toFixed(2)}</span>
                 </div>
                 {Number(checkoutResult.changeReturn || 0) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '900' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', fontWeight: '900' }}>
                     <span>Change Return:</span>
-                    <span>₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
+                    <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>₹{Number(checkoutResult.changeReturn).toFixed(2)}</span>
                   </div>
                 )}
               </div>
             ) : null}
 
-            <div style={{ borderBottom: '2px solid #000', margin: '5px 0' }}></div>
+            <div style={{ borderBottom: '1.5px solid #000', margin: '4px 0' }}></div>
 
             {/* SAVINGS - CLEAN & MINIMAL */}
             {grandTotalSavings > 0 && (
               <div style={{ 
                 textAlign: 'center', 
-                padding: '5px 0', 
-                fontSize: '13px', 
+                padding: '4px 0', 
+                fontSize: '12px', 
                 fontWeight: '900',
-                borderBottom: '2px dashed #000'
+                borderBottom: '1.5px dashed #000'
               }}>
                 ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% savings)
               </div>
             )}
 
             {/* UNIQUE BILL BARCODE FOR RETURN / SCAN */}
-            <div style={{ textAlign: 'center', margin: '8px 0 4px 0', borderTop: '1px dashed #000', paddingTop: '6px' }}>
+            <div style={{ textAlign: 'center', margin: '6px 0 3px 0', borderTop: '1px dashed #000', paddingTop: '5px' }}>
               <svg 
                 id="receipt-bill-barcode"
                 ref={(el) => {
@@ -3410,10 +3439,10 @@ export default function POS() {
                     try {
                       JsBarcode(el, checkoutResult.id.slice(-12).toUpperCase(), {
                         format: 'CODE128',
-                        width: 1.5,
-                        height: 38,
+                        width: paperSpec === '58mm' ? 1.1 : 1.35,
+                        height: 34,
                         displayValue: true,
-                        fontSize: 11,
+                        fontSize: 10,
                         margin: 0,
                         textMargin: 2
                       });
@@ -3422,21 +3451,21 @@ export default function POS() {
                     }
                   }
                 }}
-                style={{ margin: '0 auto', display: 'block', maxWidth: '100%' }}
+                style={{ width: '100%', maxWidth: barcodeMaxWidth, height: 'auto', margin: '0 auto', display: 'block' }}
               />
-              <div style={{ fontSize: '10px', fontWeight: 'bold', marginTop: '2px', color: '#000' }}>
+              <div style={{ fontSize: '9.5px', fontWeight: 'bold', marginTop: '2px', color: '#000' }}>
                 Scan Barcode for Return / Exchange
               </div>
             </div>
 
             {/* FOOTER */}
-            <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '12px', lineHeight: '1.3', fontWeight: 'bold' }}>
+            <div style={{ textAlign: 'center', marginTop: '5px', paddingBottom: '2mm', fontSize: '11.5px', lineHeight: '1.3', fontWeight: 'bold' }}>
               {receiptCustomFooter && (
-                <p style={{ margin: '2px 0 4px 0', fontWeight: '900' }}>{receiptCustomFooter}</p>
+                <p style={{ margin: '2px 0 3px 0', fontWeight: '900' }}>{receiptCustomFooter}</p>
               )}
               <p style={{ margin: '2px 0', fontWeight: '900' }}>Thank You For Shopping!</p>
               <p style={{ margin: '1px 0' }}>Please Visit Again 🙏</p>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13.5px', fontWeight: '900', color: '#000', letterSpacing: '0.3px' }}>
+              <p style={{ margin: '3px 0 0 0', fontSize: '12.5px', fontWeight: '900', color: '#000', letterSpacing: '0.3px' }}>
                 Software by Varuag Labs
               </p>
             </div>

@@ -128,9 +128,9 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-background text-foreground">
+    <div className="flex h-[100dvh] flex-col bg-background text-foreground print:block print:h-auto print:overflow-visible print:bg-white">
       {/* Top Navigation Bar */}
-      <header className="shrink-0 border-b border-border bg-card/80 backdrop-blur-md z-40 sticky top-0">
+      <header className="shrink-0 border-b border-border bg-card/80 backdrop-blur-md z-40 sticky top-0 print:hidden">
         <div className="flex h-14 items-center justify-between px-4">
           {/* Left: Brand */}
           <div className="flex items-center gap-3">
@@ -247,15 +247,15 @@ export default function Layout() {
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden print:block print:overflow-visible print:h-auto">
         {/* Desktop Sidebar */}
-        <aside className="hidden md:block">
+        <aside className="hidden md:block print:hidden">
           <Sidebar />
         </aside>
 
         {/* Main Content with Native Touch Scrolling on Mobile */}
-        <main className={`flex-1 bg-background ${isPosPage ? 'md:overflow-hidden md:flex md:flex-col overflow-y-auto' : 'overflow-y-auto'} overscroll-y-contain`}>
-          <div className={`${isPosPage ? 'p-2 sm:p-3 md:p-4 md:pb-4 max-w-[1600px] md:h-full md:flex md:flex-col min-h-0' : 'p-3 sm:p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1`}>
+        <main className={`flex-1 bg-background ${isPosPage ? 'md:overflow-hidden md:flex md:flex-col overflow-y-auto' : 'overflow-y-auto'} overscroll-y-contain print:block print:overflow-visible print:h-auto print:bg-white`}>
+          <div className={`${isPosPage ? 'p-2 sm:p-3 md:p-4 md:pb-4 max-w-[1600px] md:h-full md:flex md:flex-col min-h-0' : 'p-3 sm:p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1 print:p-0 print:m-0 print:max-w-none print:h-auto print:block`}>
             <ErrorBoundary inline fallbackTitle="Screen Module Recovered">
               <Outlet />
             </ErrorBoundary>
@@ -264,7 +264,9 @@ export default function Layout() {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav onOpenMore={() => setMoreMenuOpen(true)} />
+      <div className="print:hidden">
+        <MobileBottomNav onOpenMore={() => setMoreMenuOpen(true)} />
+      </div>
 
       {/* Mobile Drawer */}
       <MobileMoreMenu isOpen={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} unreadNotifs={unreadNotifs} />

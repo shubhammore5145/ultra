@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   FileText, Search, Printer, MessageCircle, Eye, 
   Trash2, RefreshCw, Calendar, IndianRupee,
-  CreditCard, Smartphone, Banknote, User,
-  X, AlertTriangle, TrendingUp, Sparkles, 
-  ArrowUpDown, Package
+  CreditCard, Banknote, User,
+  X, TrendingUp, Sparkles, 
+  Package
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';

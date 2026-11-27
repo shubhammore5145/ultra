@@ -6,9 +6,9 @@ import { Label } from '../components/ui/label';
 import { 
   Search, Plus, Minus, Trash, IndianRupee, FileText, ShoppingCart, 
   Loader2, X, CheckCircle2, MessageCircle, Mic, Camera, Printer, 
-  Barcode, Smartphone, Sparkles, Clock, Send, User, AlertTriangle, UserCheck,
-  RotateCcw, BadgePercent, Calculator, Receipt, ShieldAlert,
-  Coins, Wallet
+  Barcode, Smartphone, Sparkles, User, AlertTriangle, UserCheck,
+  RotateCcw, BadgePercent, Calculator,
+  Coins
 } from 'lucide-react';
 import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
@@ -83,7 +83,7 @@ export default function POS() {
     return Boolean(shopData?.gstNumber && shopData.gstNumber.trim().length > 0);
   }, [shopData]);
 
-  const { canAccess, requireFeature, openUpgradeModal } = usePlan();
+  const { canAccess, requireFeature } = usePlan();
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const cached = localStorage.getItem('pos_products_cache');
@@ -278,6 +278,8 @@ export default function POS() {
       text += `*Customer:* ${custName} (+91 ${phone})\n`;
     }
     text += `*Items:* ${itemsList.length} (${totalQty} qty)\n`;
+    if (discount > 0) text += `🏷️ *Discount:* -₹${discount.toFixed(2)}\n`;
+    if (paymentMode) text += `💳 *Payment Mode:* ${paymentMode.toUpperCase()}\n`;
     text += `💰 *Total: ₹${numTotal.toFixed(2)}*\n`;
     text += `────────────────────\n`;
 
@@ -914,42 +916,49 @@ export default function POS() {
           const newStock = (targetProd.stock || 0) + qtyToReturn;
           await api.products.update(targetProd.id, { ...targetProd, stock: newStock });
           await api.stockMovements.log({
+            id: crypto.randomUUID(),
             productId: targetProd.id,
             productName: targetProd.name,
-            changeQty: qtyToReturn,
+            qty: qtyToReturn,
+            previousStock: targetProd.stock || 0,
             newStock,
-            type: 'return',
+            type: 'return_inward',
             reason: `Return from Invoice #${selectedReturnTx.id?.slice(0, 8)}`,
-            staffName: 'Cashier'
+            createdAt: new Date().toISOString()
           });
         } else {
           await api.damagedGoods.create({
+            id: crypto.randomUUID(),
             productId: targetProd.id,
             productName: targetProd.name,
             qty: qtyToReturn,
             costPrice: targetProd.purchasePrice || 0,
-            retailPrice: selectedReturnItem.price,
-            reason: `Customer return: ${returnReason}`,
-            reportedBy: 'Cashier'
+            totalLoss: (targetProd.purchasePrice || selectedReturnItem.price || 0) * qtyToReturn,
+            reason: 'other',
+            notes: `Customer return: ${returnReason}`,
+            createdAt: new Date().toISOString()
           });
         }
       }
 
       await api.salesReturns.create({
-        invoiceNumber: selectedReturnTx.id?.slice(0, 8) || 'TX-RET',
+        id: crypto.randomUUID(),
+        originalBillId: selectedReturnTx.id || 'TX-RET',
         customerName: selectedReturnTx.customerName || 'Walk-in Customer',
         customerPhone: selectedReturnTx.customerPhone || '',
         items: [{
           productId: targetProd?.id || selectedReturnItem.id,
-          name: selectedReturnItem.name,
+          productName: selectedReturnItem.name,
           qty: qtyToReturn,
+          sellingPrice: selectedReturnItem.price || 0,
           refundAmount: refundTotal,
           condition: returnCondition
         }],
         totalRefund: refundTotal,
-        refundMethod: returnRefundMethod,
-        reason: returnReason
-      });
+        refundMethod: returnRefundMethod === 'udhar' ? 'credit_note' : 'cash',
+        reason: returnReason,
+        createdAt: new Date().toISOString()
+      } as any);
 
       const updatedProds = await api.products.list();
       setProducts(updatedProds);
@@ -988,11 +997,17 @@ export default function POS() {
   const handleSaveShiftClose = async () => {
     setShiftClosingSaving(true);
     try {
-      const summary = {
+      const summary: any = {
+        id: crypto.randomUUID(),
         closedAt: new Date().toISOString(),
         cashierName: shopData?.name || 'Cashier',
         openingCash: parseFloat(openingCash) || 0,
-        actualCash: totalCountedCash,
+        cashSales: 0,
+        cashReturns: 0,
+        cashExpenses: 0,
+        expectedCash: totalCountedCash,
+        actualCountedCash: totalCountedCash,
+        discrepancy: 0,
         notes: 'End of Shift Z-Report'
       };
       await api.cashCounter.closeShift(summary);
@@ -3337,8 +3352,6 @@ export default function POS() {
         const billDiscountAmount = Number(checkoutResult.discountAmount || 0);
         const grandTotalSavings = totalProductSavings + billDiscountAmount;
         const savingsPercentage = totalMrpValue > 0 ? Math.round((grandTotalSavings / totalMrpValue) * 100) : 0;
-        const taxVal = Number(checkoutResult.taxAmount || 0);
-        const halfTax = taxVal / 2;
         const shopGst = (isGstActive && activeShop.gstNumber) ? activeShop.gstNumber : '';
         const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
         const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });

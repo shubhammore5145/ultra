@@ -171,6 +171,9 @@ export default function POS() {
     createdAt?: string
   } | null>(null);
 
+  // Track last printed transaction to prevent double printing
+  const lastPrintedTxRef = useRef<string>('');
+
   const [lastBill, setLastBill] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('pos_last_bill');
@@ -1163,6 +1166,30 @@ export default function POS() {
       try {
         localStorage.setItem('pos_last_bill', JSON.stringify(billDataToSave));
       } catch (e) {}
+
+      // Instant Auto-Print thermal receipt
+      lastPrintedTxRef.current = txId;
+      let shouldAutoPrint = true;
+      try {
+        const savedHw = localStorage.getItem('hardware_settings');
+        if (savedHw) {
+          const parsed = JSON.parse(savedHw);
+          if (parsed.autoPrintReceipt === false) shouldAutoPrint = false;
+        } else if ((shopData as any)?.settings?.autoPrintReceipt === false) {
+          shouldAutoPrint = false;
+        }
+      } catch {}
+
+      if (shouldAutoPrint) {
+        setTimeout(() => {
+          try {
+            window.print();
+          } catch (printErr) {
+            console.error('Auto-print error:', printErr);
+          }
+        }, 120);
+      }
+
       if (canAccess('audio_soundbox')) {
         playSoundboxAlert(total, paymentMethod);
       }
@@ -1274,9 +1301,11 @@ export default function POS() {
     window.print();
   };
 
-  // Robust Auto-print thermal receipt upon checkout completion
+  // Fallback Auto-print thermal receipt upon checkout completion
   useEffect(() => {
     if (!checkoutResult) return;
+    if (lastPrintedTxRef.current === checkoutResult.id) return;
+
     let shouldAutoPrint = true;
     try {
       const savedHw = localStorage.getItem('hardware_settings');
@@ -1289,13 +1318,15 @@ export default function POS() {
     } catch {}
 
     if (shouldAutoPrint) {
-      // Small timeout to guarantee DOM is rendered with latest checkoutResult
+      lastPrintedTxRef.current = checkoutResult.id;
       const timer = setTimeout(() => {
-        window.print();
-      }, 350);
+        try {
+          window.print();
+        } catch (e) {}
+      }, 150);
       return () => clearTimeout(timer);
     }
-  }, [checkoutResult, shopData]);
+  }, [checkoutResult?.id]);
 
   // Keyboard shortcut listener when Checkout Result Modal is open (Enter -> Print, Esc -> Close)
   useEffect(() => {
@@ -3281,7 +3312,14 @@ export default function POS() {
       )}
 
       {/* Hidden Receipt Template for Thermal Printing */}
-      {checkoutResult && shopData && (() => {
+      {checkoutResult && (() => {
+        const activeShop = shopData || {
+          shopName: 'SHIV SHAKATI',
+          name: 'SHIV SHAKATI',
+          address: 'samta coloni shivaji nagara waluj walyj.bk aurangabad -431133',
+          phone: '9226345875',
+          gstNumber: '27AABCS1429B1Z2'
+        };
         const receiptItems = checkoutResult.items || [];
         const totalItemsCount = receiptItems.length;
         const totalQtyCount = receiptItems.reduce((acc, it) => acc + Number(it.qty || 1), 0);
@@ -3301,12 +3339,12 @@ export default function POS() {
         const savingsPercentage = totalMrpValue > 0 ? Math.round((grandTotalSavings / totalMrpValue) * 100) : 0;
         const taxVal = Number(checkoutResult.taxAmount || 0);
         const halfTax = taxVal / 2;
-        const shopGst = (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '';
+        const shopGst = (isGstActive && activeShop.gstNumber) ? activeShop.gstNumber : '';
         const formattedDate = new Date(checkoutResult.createdAt || Date.now()).toLocaleDateString('en-IN');
         const formattedTime = new Date(checkoutResult.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const paperWidth = (shopData as any)?.settings?.paperSize === '58mm' || (shopData as any)?.receiptPaperSize === '58mm' ? '58mm' : '80mm';
-        const receiptCustomHeader = (shopData as any)?.settings?.receiptHeader || (shopData as any)?.receiptHeader;
-        const receiptCustomFooter = (shopData as any)?.settings?.receiptFooter || (shopData as any)?.receiptFooter;
+        const paperWidth = (activeShop as any)?.settings?.paperSize === '58mm' || (activeShop as any)?.receiptPaperSize === '58mm' ? '58mm' : '80mm';
+        const receiptCustomHeader = (activeShop as any)?.settings?.receiptHeader || (activeShop as any)?.receiptHeader;
+        const receiptCustomFooter = (activeShop as any)?.settings?.receiptFooter || (activeShop as any)?.receiptFooter;
 
         return (
           <div 
@@ -3320,21 +3358,21 @@ export default function POS() {
                 <p style={{ margin: '0 0 3px 0', fontSize: '13px', fontWeight: 'bold' }}>{receiptCustomHeader}</p>
               )}
               <h2 style={{ margin: '0 0 3px 0', fontSize: '22px', fontWeight: '900', letterSpacing: '0.5px', color: '#000' }}>
-                {(shopData.shopName || shopData.name || 'KIRANA STORE').toUpperCase()}
+                {(activeShop.shopName || activeShop.name || 'KIRANA STORE').toUpperCase()}
               </h2>
-              {shopData.address && (
-                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600', lineHeight: '1.25' }}>{shopData.address}</p>
+              {activeShop.address && (
+                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600', lineHeight: '1.25' }}>{activeShop.address}</p>
               )}
-              {shopData.phone && (
-                <p style={{ margin: '2px 0', fontSize: '12.5px', fontWeight: 'bold' }}>Ph: {shopData.phone}</p>
+              {activeShop.phone && (
+                <p style={{ margin: '2px 0', fontSize: '12.5px', fontWeight: 'bold' }}>Ph: {activeShop.phone}</p>
               )}
               {shopGst ? (
                 <p style={{ margin: '3px 0', fontSize: '13px', fontWeight: '900' }}>
                   GSTIN: {shopGst}
                 </p>
               ) : null}
-              {(shopData as any).fssaiNumber && (
-                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600' }}>FSSAI Lic: {(shopData as any).fssaiNumber}</p>
+              {(activeShop as any).fssaiNumber && (
+                <p style={{ margin: '2px 0', fontSize: '12px', fontWeight: '600' }}>FSSAI Lic: {(activeShop as any).fssaiNumber}</p>
               )}
               <div style={{ margin: '6px 0 3px 0', fontWeight: '900', fontSize: '13px', borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '4px 0' }}>
                 {shopGst ? '*** RETAIL TAX INVOICE ***' : '*** RETAIL INVOICE ***'}

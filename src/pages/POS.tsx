@@ -795,9 +795,9 @@ export default function POS() {
       return `${item.qty} ${item.unit || 'pcs'}`;
     }
     if (item.unit === 'kg' || Boolean((item as any).isLoose)) {
-      if (Math.abs(item.qty - 0.25) < 0.001) return '250 gm (पाव)';
-      if (Math.abs(item.qty - 0.5) < 0.001) return '500 gm (अर्धा)';
-      if (Math.abs(item.qty - 0.75) < 0.001) return '750 gm (पाऊण)';
+      if (Math.abs(item.qty - 0.25) < 0.001) return '250 gm (Quarter)';
+      if (Math.abs(item.qty - 0.5) < 0.001) return '500 gm (Half)';
+      if (Math.abs(item.qty - 0.75) < 0.001) return '750 gm (Three-quarter)';
       if (Math.abs(item.qty - 0.1) < 0.001) return '100 gm';
       if (Math.abs(item.qty - 0.05) < 0.001) return '50 gm';
       if (item.qty < 1) return `${Math.round(item.qty * 1000)} gm (${item.qty} kg)`;
@@ -1473,8 +1473,8 @@ export default function POS() {
               <CheckCircle2 className="h-6 w-6 text-white" />
             </div>
             <div>
-              <div className="font-extrabold text-sm tracking-wide">बिल तयार झाले! #{checkoutResult.id.slice(-8).toUpperCase()}</div>
-              <div className="text-xs text-white/90 font-medium">रक्कम: ₹{checkoutResult.total.toFixed(2)} ({checkoutResult.paymentMethod || 'Cash'}) | बिल आपोआप प्रिंट होत आहे...</div>
+              <div className="font-extrabold text-sm tracking-wide">Bill Generated! #{checkoutResult.id.slice(-8).toUpperCase()}</div>
+              <div className="text-xs text-white/90 font-medium">Amount: ₹{checkoutResult.total.toFixed(2)} ({checkoutResult.paymentMethod || 'Cash'}) | Auto-printing receipt...</div>
             </div>
             <div className="flex items-center gap-1.5 ml-2">
               <Button 
@@ -1483,7 +1483,7 @@ export default function POS() {
                 className="h-8 px-3 bg-white/20 hover:bg-white/30 text-white border-white/30 text-xs rounded-xl font-bold"
                 onClick={handlePrintReceipt}
               >
-                <Printer className="h-3.5 w-3.5 mr-1" /> पुन्हा प्रिंट
+                <Printer className="h-3.5 w-3.5 mr-1" /> Reprint
               </Button>
               <Button
                 size="sm"
@@ -1576,7 +1576,7 @@ export default function POS() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input 
               ref={searchInputRef}
-              placeholder="Search item, brand, barcode, code... (उदा. Parle, Amul, Santoor)" 
+              placeholder="Search item, brand, barcode, code... (e.g. Parle, Amul, Santoor)" 
               className="pl-10 pr-28 sm:pr-36 h-11 sm:h-12 md:h-14 text-sm md:text-base shadow-xs rounded-xl sm:rounded-2xl font-medium bg-background border-border/80"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -2103,12 +2103,12 @@ export default function POS() {
                         <p className="font-bold text-sm leading-tight text-foreground">{item.name}</p>
                         {itemIsWeight && (
                           <span className="text-[10px] bg-amber-500 text-white font-black px-2 py-0.5 rounded shadow-2xs">
-                            सुट्टा माल (Loose)
+                            Loose Item
                           </span>
                         )}
                         {isPackRateActive && (
                           <span className="text-[10px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded shadow-2xs">
-                            📦 पॅक रेट लागू!
+                            📦 Pack Deal Applied!
                           </span>
                         )}
                       </div>
@@ -2116,13 +2116,13 @@ export default function POS() {
                         ₹{Number((item.sellingPrice || 0).toFixed(2))}{item.unit ? `/${item.unit}` : ''} × <strong className="text-foreground font-black text-xs bg-muted px-1.5 py-0.5 rounded">{formatQuantityDisplay(item)}</strong>
                         {isPackRateActive && singleUnitPrice > packUnitPrice && (
                           <span className="ml-1.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-                            (Single ₹{singleUnitPrice} ऐवजी)
+                            (instead of Single ₹{singleUnitPrice})
                           </span>
                         )}
                       </p>
                       {hasPackDeal && !isPackRateActive && (
                         <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
-                          💡 आणखी {Math.round((packMinQty - item.qty) * 100) / 100} घ्या → ₹{Number(packUnitPrice.toFixed(2))}/{item.unit || 'pc'} (पॅक ₹{packTotalPrice})
+                          💡 Buy {Math.round((packMinQty - item.qty) * 100) / 100} more → ₹{Number(packUnitPrice.toFixed(2))}/{item.unit || 'pc'} (Pack ₹{packTotalPrice})
                         </p>
                       )}
                       {isMaxStockReached && (
@@ -2191,7 +2191,7 @@ export default function POS() {
                             : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 shadow-2xs'
                         }`}
                       >
-                        250g (पाव)
+                        250g
                       </button>
                       <button
                         type="button"
@@ -2202,7 +2202,7 @@ export default function POS() {
                             : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 shadow-2xs'
                         }`}
                       >
-                        500g (अर्धा)
+                        500g
                       </button>
                       <button
                         type="button"
@@ -2221,7 +2221,7 @@ export default function POS() {
                         className="ml-auto px-2.5 py-1 rounded-lg text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 shadow-xs flex items-center gap-1 cursor-pointer"
                         title="Open Weight & Rupees Calculator"
                       >
-                        ⚖️ वजन / ₹ रुपये
+                        ⚖️ Weight / ₹ Rupees
                       </button>
                     </div>
                   )}
@@ -3455,17 +3455,17 @@ export default function POS() {
         shiftClosingSaving={shiftClosingSaving}
       />
 
-      {/* ⚖️ LOOSE WEIGHT & RUPEES CALCULATOR MODAL (सुट्टा माल / ग्रॅम आणि रुपये कॅल्क्युलेटर) */}
+      {/* ⚖️ LOOSE WEIGHT & RUPEES CALCULATOR MODAL */}
       {showWeightModal && weightModalItem && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
           <div className="bg-card text-card-foreground border border-border rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <div>
                 <h3 className="text-base font-black text-foreground flex items-center gap-2">
-                  ⚖️ सुट्टा माल / वजन आणि रुपये कॅल्क्युलेटर
+                  ⚖️ Loose Weight & Price Calculator
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5 font-medium">
-                  माल: <strong className="text-foreground">{weightModalItem.name}</strong> • दर: <strong className="text-primary font-bold">₹{Number(weightModalItem.sellingPrice || 0).toFixed(2)}/{weightModalItem.unit || 'kg'}</strong>
+                  Item: <strong className="text-foreground">{weightModalItem.name}</strong> • Rate: <strong className="text-primary font-bold">₹{Number(weightModalItem.sellingPrice || 0).toFixed(2)}/{weightModalItem.unit || 'kg'}</strong>
                 </p>
               </div>
               <button
@@ -3487,7 +3487,7 @@ export default function POS() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                ⚖️ वजनानुसार (Grams / kg)
+                ⚖️ By Weight (Grams / kg)
               </button>
               <button
                 type="button"
@@ -3498,7 +3498,7 @@ export default function POS() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                💰 रुपयांनुसार (₹20, ₹50 ची साखर)
+                💰 By Amount (₹20, ₹50 Worth)
               </button>
             </div>
 
@@ -3507,7 +3507,7 @@ export default function POS() {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-bold text-foreground block mb-1">
-                    वजन टाका (Grams मध्ये टाका, उदा. 250 किंवा 500):
+                    Enter Weight (in Grams, e.g. 250 or 500):
                   </label>
                   <div className="relative">
                     <input
@@ -3516,7 +3516,7 @@ export default function POS() {
                       min="1"
                       value={weightInputGrams}
                       onChange={(e) => setWeightInputGrams(e.target.value)}
-                      placeholder="उदा. 250"
+                      placeholder="e.g. 250"
                       className="w-full h-11 px-3 pr-20 text-lg font-mono font-black bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                       autoFocus
                     />
@@ -3528,15 +3528,15 @@ export default function POS() {
 
                 {/* Quick Gram Presets */}
                 <div>
-                  <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">जलद निवडी (Quick Presets):</span>
+                  <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">Quick Presets:</span>
                   <div className="grid grid-cols-4 gap-1.5 text-xs">
                     {[
                       { g: '50', label: '50 gm' },
                       { g: '100', label: '100 gm' },
                       { g: '200', label: '200 gm' },
-                      { g: '250', label: '250 gm (पाव)' },
-                      { g: '500', label: '500 gm (अर्धा)' },
-                      { g: '750', label: '750 gm (पाऊण)' },
+                      { g: '250', label: '250 gm' },
+                      { g: '500', label: '500 gm' },
+                      { g: '750', label: '750 gm' },
                       { g: '1000', label: '1 kg' },
                       { g: '1500', label: '1.5 kg' },
                       { g: '2000', label: '2 kg' },
@@ -3565,7 +3565,7 @@ export default function POS() {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-bold text-foreground block mb-1">
-                    रुपये टाका (उदा. कस्टमरने ₹20 किंवा ₹50 मागितले):
+                    Enter Amount (e.g. customer asked for ₹20 or ₹50):
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-black text-muted-foreground">
@@ -3577,7 +3577,7 @@ export default function POS() {
                       min="1"
                       value={amountInputRupees}
                       onChange={(e) => setAmountInputRupees(e.target.value)}
-                      placeholder="उदा. 20"
+                      placeholder="e.g. 20"
                       className="w-full h-11 pl-8 pr-3 text-lg font-mono font-black bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                       autoFocus
                     />
@@ -3586,7 +3586,7 @@ export default function POS() {
 
                 {/* Quick Rupee Presets */}
                 <div>
-                  <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">जलद रक्कम (Quick Rupees):</span>
+                  <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">Quick Rupees:</span>
                   <div className="grid grid-cols-4 gap-1.5 text-xs">
                     {['10', '20', '30', '40', '50', '60', '70', '80', '100', '150', '200', '500'].map(rupee => (
                       <button
@@ -3610,7 +3610,7 @@ export default function POS() {
             {/* Live Calculation Preview Banner */}
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-center justify-between text-xs">
               <div>
-                <span className="text-muted-foreground block text-[11px] font-semibold">निश्चित केलेले वजन (Weight):</span>
+                <span className="text-muted-foreground block text-[11px] font-semibold">Selected Weight:</span>
                 <span className="text-base font-black text-foreground">
                   {weightMode === 'weight'
                     ? `${weightInputGrams || 0} gm (${(parseFloat(weightInputGrams || '0') / 1000).toFixed(3)} kg)`
@@ -3619,7 +3619,7 @@ export default function POS() {
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-muted-foreground block text-[11px] font-semibold">एकूण रक्कम (Total):</span>
+                <span className="text-muted-foreground block text-[11px] font-semibold">Total Amount:</span>
                 <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
                   ₹{weightMode === 'weight'
                     ? ((parseFloat(weightInputGrams || '0') / 1000) * Number(weightModalItem.sellingPrice || 0)).toFixed(2)
@@ -3635,14 +3635,14 @@ export default function POS() {
                 size="sm"
                 onClick={() => { setShowWeightModal(false); setWeightModalItem(null); }}
               >
-                रद्द करा (Cancel)
+                Cancel
               </Button>
               <Button
                 size="sm"
                 onClick={applyWeightCalculator}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-4"
               >
-                बिलात जोडा (Add to Bill) ✅
+                Add to Bill ✅
               </Button>
             </div>
           </div>

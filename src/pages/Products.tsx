@@ -1021,7 +1021,7 @@ export default function Products() {
               <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-black text-indigo-700 dark:text-indigo-300">
-                    📦 पॅक ऑफर दर (Pack / Bulk Rate - Optional)
+                    📦 Pack / Bulk Rate (Optional)
                   </Label>
                   {(modalBulkMinQty || modalBulkPrice || modalPackTotalStr) && (
                     <button
@@ -1035,12 +1035,12 @@ export default function Products() {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">पॅक नग (Qty)</span>
+                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">Pack Qty</span>
                     <Input
                       type="number"
                       min="1"
                       step="any"
-                      placeholder="उदा. 6"
+                      placeholder="e.g. 6"
                       value={modalBulkMinQty}
                       onChange={(e) => {
                         const rawQty = e.target.value;
@@ -1055,11 +1055,11 @@ export default function Products() {
                     />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">पॅक एकूण (₹)</span>
+                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">Pack Total (₹)</span>
                     <Input
                       type="number"
                       step="any"
-                      placeholder="उदा. 180"
+                      placeholder="e.g. 180"
                       disabled={!parseFloat(modalBulkMinQty)}
                       value={modalPackTotalStr}
                       onChange={(e) => {
@@ -1077,11 +1077,11 @@ export default function Products() {
                     />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">प्रति नग (₹)</span>
+                    <span className="text-[10px] font-bold text-muted-foreground block mb-1">Per Unit (₹)</span>
                     <Input
                       type="number"
                       step="any"
-                      placeholder="उदा. 30"
+                      placeholder="e.g. 30"
                       value={modalBulkPrice}
                       onChange={(e) => {
                         const raw = e.target.value;

@@ -595,8 +595,8 @@ export default function Settings() {
         settings: updatedSettings
       });
       alert(gstEnabled 
-        ? "Settings updated successfully! ✅ (GST चालू आहे)" 
-        : "Settings updated successfully! ✅ (GST बंद केले आहे - Product Add मध्ये GST लपवले जाईल)");
+        ? "Settings updated successfully! ✅ (GST is Enabled)" 
+        : "Settings updated successfully! ✅ (GST is Disabled - GST fields hidden in Product Add)");
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('Failed to save settings.');
@@ -831,13 +831,13 @@ export default function Settings() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <Receipt className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-bold text-foreground">GST Billing Mode (जीएसटी बिलिंग पर्याय)</span>
+                    <span className="text-sm font-bold text-foreground">GST Billing Mode</span>
                     <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${gstEnabled ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20'}`}>
-                      {gstEnabled ? '✅ GST चालू (Enabled)' : '🚫 GST बंद (Non-GST Kirana)'}
+                      {gstEnabled ? '✅ GST Enabled' : '🚫 GST Disabled (Non-GST Kirana)'}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    ज्या दुकानांना GST लागत नाही, त्यांनी हे <strong>बंद (OFF)</strong> करावे. यामुळे Product Add करताना GST चे पर्याय दिसणार नाहीत.
+                    For shops without GST registration, turn this <strong>OFF</strong> to hide GST tax percentage fields when adding products.
                   </p>
                 </div>
 
@@ -848,7 +848,7 @@ export default function Settings() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        if (window.confirm('GST बिलिंग बंद करायचे आहे का? यामुळे Product Add करताना GST चे पर्याय लपवले जातील.')) {
+                        if (window.confirm('Do you want to disable GST billing? This will hide GST tax fields during product entry.')) {
                           setGstEnabled(false);
                           setFormData(prev => ({ ...prev, gstNumber: '' }));
                           try {
@@ -866,7 +866,7 @@ export default function Settings() {
                       className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 text-xs font-semibold h-9 px-3 gap-1.5"
                     >
                       <XCircle className="h-4 w-4" />
-                      GST काढून टाका (Disable GST)
+                      Disable GST
                     </Button>
                   ) : (
                     <Button
@@ -887,7 +887,7 @@ export default function Settings() {
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 px-3 gap-1.5"
                     >
                       <CheckCircle2 className="h-4 w-4" />
-                      GST चालू करा (Enable GST)
+                      Enable GST
                     </Button>
                   )}
                 </div>
@@ -918,14 +918,14 @@ export default function Settings() {
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    बिलावर आणि 80mm प्रिंट पावतीवर हा GST नंबर दिसेल.
+                    This GST number will appear on printed retail invoices.
                   </p>
                 </div>
               ) : (
                 <div className="pt-2 border-t">
                   <div className="text-xs text-amber-700 dark:text-amber-400 font-medium bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    <span>GST बंद आहे — आता नवीन किंवा जुने Product Add/Edit करताना GST Tax % चा रकाना लपवला जाईल आणि पावती साधी (Non-GST) बनेल. बदल कायम करण्यासाठी खाली 'Save Shop Profile' वर क्लिक करा.</span>
+                    <span>GST is disabled — GST Tax % fields are hidden during product creation and invoices are generated as standard Non-GST retail receipts. Click 'Save Shop Profile' below to save changes.</span>
                   </div>
                 </div>
               )}

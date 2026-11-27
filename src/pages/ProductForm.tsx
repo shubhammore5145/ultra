@@ -944,11 +944,11 @@ export default function ProductForm() {
               <div className="mt-4 pt-4 border-t border-amber-500/20 grid gap-4 md:grid-cols-2 animate-in fade-in duration-200">
                 <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl p-3 text-xs md:col-span-2 text-amber-900 dark:text-amber-200">
                   <p className="font-bold flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-amber-600" /> सुट्टा माल बिलिंग (Weight-Based Loose Billing Active):
+                    <Sparkles className="h-4 w-4 text-amber-600" /> Loose Weight-Based Billing (Active):
                   </p>
                   <p className="mt-1 text-[11px] leading-relaxed">
-                    साखर, शेंगदाणे, तांदूळ, डाळी इत्यादींसाठी <strong>Measurement Unit: 'Kilogram (kg)'</strong> ठेवा आणि 1 किलोचा दर टाका (उदा. साखर ₹44/kg). 
-                    बिलिंग करताना POS स्क्रीनवर ग्राहकासाठी आपोआप <strong>100gm, 250gm (पाव), 500gm (अर्धा)</strong> आणि <strong>"₹20 ची साखर"</strong> चे 1-क्लिक कॅल्क्युलेटर बटन्स मिळतील!
+                    For sugar, peanuts, rice, pulses, etc., keep <strong>Measurement Unit: 'Kilogram (kg)'</strong> and enter price per kg (e.g. Sugar ₹44/kg). 
+                    During billing on POS, quick 1-click buttons like <strong>100gm, 250gm, 500gm</strong> and <strong>"₹20 Worth"</strong> will appear automatically!
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1175,10 +1175,10 @@ export default function ProductForm() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-500/20">
                     <div>
                       <h3 className="text-sm font-black text-foreground flex items-center gap-2">
-                        <span>📦 पॅक / बल्क ऑफर किंमत (Pack vs Single Pricing)</span>
+                        <span>📦 Pack / Bulk Offer Rate (Pack vs Single Pricing)</span>
                       </h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        उदा. संतूर साबण १ नग ₹{singleUnitNum > 0 ? singleUnitNum : 36}, पण ६ नगांचा पॅक घेतल्यास कमी दर आपोआप लागेल!
+                        e.g. Santoor Soap 1 unit ₹{singleUnitNum > 0 ? singleUnitNum : 36}, but buy a pack of 6 units for a discounted rate!
                       </p>
                     </div>
                     {(packQtyNum > 0 || packUnitNum > 0 || packTotalStr) && (
@@ -1198,7 +1198,7 @@ export default function ProductForm() {
                   <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="bulkMinQty" className="text-xs font-bold">
-                        पॅक नग संख्या (Min Pack Qty)
+                        Pack Quantity (Min Pack Qty)
                       </Label>
                       <Input
                         id="bulkMinQty"
@@ -1218,21 +1218,21 @@ export default function ProductForm() {
                         type="number"
                         min="1"
                         step="any"
-                        placeholder="उदा. 6 किंवा 12"
+                        placeholder="e.g. 6 or 12"
                         className="font-mono font-bold bg-background"
                       />
-                      <p className="text-[11px] text-muted-foreground">किती नग घेतल्यावर पॅक दर लागू होईल?</p>
+                      <p className="text-[11px] text-muted-foreground">Minimum quantity required to trigger pack rate</p>
                     </div>
 
                     <div className="space-y-1.5">
                       <Label htmlFor="packTotalInput" className="text-xs font-bold">
-                        पूर्ण पॅकची एकूण किंमत (Pack Total ₹)
+                        Full Pack Total Price (Pack Total ₹)
                       </Label>
                       <Input
                         id="packTotalInput"
                         type="number"
                         step="any"
-                        placeholder={packQtyNum > 0 ? `उदा. ${Math.round(packQtyNum * (singleUnitNum || 30) * 0.9)}` : 'उदा. 180'}
+                        placeholder={packQtyNum > 0 ? `e.g. ${Math.round(packQtyNum * (singleUnitNum || 30) * 0.9)}` : 'e.g. 180'}
                         value={packTotalStr}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -1251,13 +1251,13 @@ export default function ProductForm() {
                         className="font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-background"
                       />
                       <p className="text-[11px] text-muted-foreground">
-                        {packQtyNum > 0 ? `${packQtyNum} नगांचा एकूण पॅक दर (₹)` : 'आधी डावीकडे पॅक संख्या टाका'}
+                        {packQtyNum > 0 ? `Total price for ${packQtyNum} units (₹)` : 'Enter pack quantity on the left first'}
                       </p>
                     </div>
 
                     <div className="space-y-1.5">
                       <Label htmlFor="bulkPrice" className="text-xs font-bold">
-                        प्रति नग पॅक दर (Per Unit ₹)
+                        Per Unit Pack Rate (Per Unit ₹)
                       </Label>
                       <Input
                         id="bulkPrice"
@@ -1275,24 +1275,24 @@ export default function ProductForm() {
                         }}
                         type="number"
                         step="any"
-                        placeholder="उदा. 30.00"
+                        placeholder="e.g. 30.00"
                         className="font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-background"
                       />
-                      <p className="text-[11px] text-muted-foreground">POS मध्ये {packQtyNum || 'N'}+ नगांवर आपोआप लागू</p>
+                      <p className="text-[11px] text-muted-foreground">Applies automatically in POS when adding {packQtyNum || 'N'}+ units</p>
                     </div>
                   </div>
 
                   {packQtyNum > 0 && packUnitNum > 0 && (
                     <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
                       <span className="font-bold text-foreground">
-                        ✅ सेटिंग तयार: <strong>१ ते {Math.max(1, packQtyNum - 1)} नग = ₹{singleUnitNum || 0}/नग</strong> &nbsp;|&nbsp;{' '}
+                        ✅ Configuration Ready: <strong>1 to {Math.max(1, packQtyNum - 1)} units = ₹{singleUnitNum || 0}/unit</strong> &nbsp;|&nbsp;{' '}
                         <strong className="text-emerald-700 dark:text-emerald-400">
-                          {packQtyNum}+ नग (Pack) = ₹{Number(packUnitNum.toFixed(2))}/नग (एकूण ₹{(Math.round(packQtyNum * packUnitNum * 100) / 100).toFixed(2)})
+                          {packQtyNum}+ units (Pack) = ₹{Number(packUnitNum.toFixed(2))}/unit (Total ₹{(Math.round(packQtyNum * packUnitNum * 100) / 100).toFixed(2)})
                         </strong>
                       </span>
                       {totalSavings > 0 && (
                         <span className="bg-emerald-600 text-white font-black px-2.5 py-0.5 rounded-md">
-                          बचत: ₹{totalSavings} (₹{unitSavings}/नग स्वस्त)
+                          Savings: ₹{totalSavings} (₹{unitSavings}/unit discount)
                         </span>
                       )}
                     </div>

@@ -130,7 +130,7 @@ export default function SuperAdmin() {
     e.preventDefault();
     const enteredKey = pinInput.trim();
     if (!enteredKey) {
-      setPinError('कृपया मास्टर पासवर्ड टाका.');
+      setPinError('Please enter the master password.');
       return;
     }
 
@@ -147,7 +147,7 @@ export default function SuperAdmin() {
           sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
           setIsAuthenticated(true);
         } else {
-          setPinError('चुकीचा पासवर्ड! कृपया योग्य ॲडमिन पासवर्ड टाका.');
+          setPinError('Incorrect password! Please enter the valid admin password.');
         }
       }
     } catch {
@@ -155,7 +155,7 @@ export default function SuperAdmin() {
         sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
         setIsAuthenticated(true);
       } else {
-        setPinError('चुकीचा पासवर्ड! कृपया योग्य ॲडमिन पासवर्ड टाका.');
+        setPinError('Incorrect password! Please enter the valid admin password.');
       }
     } finally {
       setAuthenticating(false);
@@ -413,7 +413,7 @@ export default function SuperAdmin() {
           <div>
             <h1 className="text-2xl font-black text-foreground tracking-tight">Super Admin Portal</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              गोपनीय विभाग. कृपया सर्व स्टोअर्स मॅनेज करण्यासाठी पासवर्ड टाका.
+              Restricted area. Please enter master password to manage all stores.
             </p>
           </div>
 
@@ -425,7 +425,7 @@ export default function SuperAdmin() {
                 maxLength={24}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                placeholder="सुरक्षित मास्टर पासवर्ड टाका"
+                placeholder="Enter Secure Master Password"
                 className="pl-11 h-12 text-center text-lg tracking-widest font-mono font-bold"
                 autoFocus
               />

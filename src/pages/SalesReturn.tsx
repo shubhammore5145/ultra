@@ -43,7 +43,7 @@ export default function SalesReturn() {
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [returnItems, setReturnItems] = useState<ReturnItemState[]>([]);
   const [refundMethod, setRefundMethod] = useState<'cash' | 'udhar' | 'upi'>('cash');
-  const [returnReason, setReturnReason] = useState('चुकीचा माल (Wrong Item)');
+  const [returnReason, setReturnReason] = useState('Wrong Item Delivered');
   const [customReason, setCustomReason] = useState('');
 
   // Success Voucher State
@@ -145,7 +145,7 @@ export default function SalesReturn() {
       return;
     }
 
-    alert(`⚠️ बिल सापडले नाही: "${rawQuery}". कृपया बरोबर बारकोड स्कॅन करा किंवा बिल नंबर तपासा.`);
+    alert(`⚠️ Bill not found for "${rawQuery}". Please scan the barcode or check the invoice number.`);
   };
 
   // Toggle item selection
@@ -205,12 +205,12 @@ export default function SalesReturn() {
   const handleConfirmReturn = async () => {
     const selected = returnItems.filter(it => it.selected);
     if (!selectedTx || selected.length === 0) {
-      alert('कृपया परत करण्यासाठी किमान १ प्रॉडक्ट सिलेक्ट करा.');
+      alert('Please select at least 1 item to return.');
       return;
     }
 
     if (totalRefundAmount <= 0) {
-      alert('रिफंड रक्कम शून्य असू शकत नाही.');
+      alert('Refund amount cannot be zero.');
       return;
     }
 
@@ -312,7 +312,7 @@ export default function SalesReturn() {
       setCustomReason('');
     } catch (err: any) {
       console.error('Failed to process sales return:', err);
-      alert('सेल्स रिटर्न सेव्ह करताना एरर आला: ' + (err.message || 'Error'));
+      alert('Error processing sales return: ' + (err.message || 'Error'));
     } finally {
       setActionLoading(false);
     }
@@ -322,7 +322,7 @@ export default function SalesReturn() {
   const handlePrintVoucher = (record: SalesReturnType) => {
     const printWindow = window.open('', '_blank', 'width=380,height=600');
     if (!printWindow) {
-      alert('कृपया ब्राऊझर पॉप-अप अनलॉक करा.');
+      alert('Please allow browser popups to print the return slip.');
       return;
     }
 
@@ -398,10 +398,10 @@ export default function SalesReturn() {
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
-              Sales Return & Refund (माल परत व रिफंड)
+              Sales Return & Refund
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground font-medium mt-0.5">
-              बिल स्कॅन करून माल परत घ्या, ग्राहकाला रिफंड द्या आणि प्रॉडक्ट थेट इन्व्हेंटरीमध्ये जमा करा.
+              Scan receipt barcode to process returns, refund customers, and automatically restock inventory.
             </p>
           </div>
         </div>
@@ -409,11 +409,11 @@ export default function SalesReturn() {
         {/* Quick Stats */}
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="bg-card px-4 py-2.5 rounded-xl border shadow-sm flex-1 sm:flex-initial text-center">
-            <span className="text-[11px] font-bold text-muted-foreground block uppercase">आजचे रिटर्न्स</span>
-            <span className="text-lg font-black text-foreground">{todayStats.count} बिलांमधून</span>
+            <span className="text-[11px] font-bold text-muted-foreground block uppercase">Today's Returns</span>
+            <span className="text-lg font-black text-foreground">{todayStats.count} bills</span>
           </div>
           <div className="bg-card px-4 py-2.5 rounded-xl border shadow-sm flex-1 sm:flex-initial text-center">
-            <span className="text-[11px] font-bold text-muted-foreground block uppercase">आजचा रिफंड</span>
+            <span className="text-[11px] font-bold text-muted-foreground block uppercase">Today's Refund</span>
             <span className="text-lg font-black text-emerald-600">₹{todayStats.amount.toFixed(2)}</span>
           </div>
         </div>
@@ -429,7 +429,7 @@ export default function SalesReturn() {
               : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          <Barcode className="h-4 w-4" /> नवीन रिटर्न करा (Scan & Return)
+          <Barcode className="h-4 w-4" /> New Return (Scan & Return)
         </button>
         <button
           onClick={() => setActiveTab('history')}
@@ -439,7 +439,7 @@ export default function SalesReturn() {
               : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          <Calendar className="h-4 w-4" /> मागील रिटर्न्स इतिहास ({returnsHistory.length})
+          <Calendar className="h-4 w-4" /> Return History ({returnsHistory.length})
         </button>
       </div>
 
@@ -454,10 +454,10 @@ export default function SalesReturn() {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-emerald-800 dark:text-emerald-200">
-                    सेल्स रिटर्न यशस्वी! ₹{completedReturn.returnRecord.totalRefund.toFixed(2)} रिफंड केले.
+                    Sales Return Processed Successfully! ₹{completedReturn.returnRecord.totalRefund.toFixed(2)} Refunded.
                   </h3>
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mt-0.5">
-                    इन्व्हेंटरीमध्ये माल आपोआप पुन्हा जमा झाला: <strong>{completedReturn.restockedItems.join(', ') || 'Restocked'}</strong>
+                    Inventory successfully restocked: <strong>{completedReturn.restockedItems.join(', ') || 'Restocked'}</strong>
                   </p>
                 </div>
               </div>
@@ -466,14 +466,14 @@ export default function SalesReturn() {
                   onClick={() => handlePrintVoucher(completedReturn.returnRecord)}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-4 rounded-xl shadow-md"
                 >
-                  <Printer className="h-4 w-4 mr-1.5" /> रिटर्न स्लिप प्रिंट करा
+                  <Printer className="h-4 w-4 mr-1.5" /> Print Return Slip
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setCompletedReturn(null)}
                   className="h-10 px-4 rounded-xl font-bold"
                 >
-                  नवीन स्कॅन करा
+                  New Return
                 </Button>
               </div>
             </div>
@@ -485,10 +485,10 @@ export default function SalesReturn() {
               <div className="space-y-1">
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <Barcode className="h-5 w-5 text-amber-500" />
-                  १. बिलावरील बारकोड स्कॅन करा किंवा बिल नंबर टाका
+                  1. Scan Bill Barcode or Enter Invoice #
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  प्रिंट केलेल्या बिलाच्या तळाशी दिलेला बारकोड बारकोड गनने स्कॅन करा, किंवा इनव्हॉइस नंबर टाईप करून Enter दाबा.
+                  Scan the barcode printed at the bottom of the receipt, or type the invoice number and press Enter.
                 </p>
               </div>
 
@@ -497,7 +497,7 @@ export default function SalesReturn() {
                   <Barcode className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     ref={searchInputRef}
-                    placeholder="बारकोड स्कॅन करा किंवा बिल # टाका (उदा. #2DB7DB39 किंवा मोबाईल नंबर)..."
+                    placeholder="Scan barcode or enter Bill # (e.g. #2DB7DB39 or customer mobile)..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
@@ -521,14 +521,14 @@ export default function SalesReturn() {
                   onClick={() => handleSearchBill()}
                   className="h-13 px-6 font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-md shadow-amber-500/20 text-base"
                 >
-                  <Search className="h-5 w-5 mr-1.5" /> बिल शोधा (Enter)
+                  <Search className="h-5 w-5 mr-1.5" /> Search Bill (Enter)
                 </Button>
 
                 <Button
                   variant="outline"
                   onClick={() => setShowCameraScanner(true)}
                   className="h-13 px-4 font-bold border-dashed border-2 rounded-xl"
-                  title="कॅमेरा स्कॅनर उघडा"
+                  title="Open Camera Scanner"
                 >
                   <Camera className="h-5 w-5 text-muted-foreground" />
                 </Button>
@@ -537,9 +537,9 @@ export default function SalesReturn() {
               {/* RECENT BILLS TABLE QUICK-SELECT */}
               <div className="pt-4 border-t space-y-2">
                 <div className="flex justify-between items-center text-xs font-bold text-muted-foreground">
-                  <span>अलीकडील बिलांमधून निवडा (Recent Bills):</span>
+                  <span>Quick Select from Recent Bills:</span>
                   <button onClick={loadInitialData} className="hover:text-foreground flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3" /> रिफ्रेश
+                    <RefreshCw className="h-3 w-3" /> Refresh
                   </button>
                 </div>
 
@@ -590,14 +590,14 @@ export default function SalesReturn() {
                     size="icon"
                     onClick={() => { setSelectedTx(null); setReturnItems([]); }}
                     className="rounded-xl h-10 w-10"
-                    title="दुसरे बिल शोधा"
+                    title="Search another bill"
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </Button>
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-black text-lg text-foreground">
-                        बिल #{selectedTx.id?.slice(-8).toUpperCase()}
+                        Bill #{selectedTx.id?.slice(-8).toUpperCase()}
                       </span>
                       <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 text-xs font-bold rounded-md uppercase">
                         {selectedTx.paymentMethod || 'Cash'}
@@ -606,13 +606,13 @@ export default function SalesReturn() {
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 font-medium">
                       <span>{new Date(selectedTx.createdAt).toLocaleString('en-IN')}</span>
                       <span>•</span>
-                      <span>ग्राहक: {selectedTx.customerName || 'Walk-in'} {selectedTx.customerPhone ? `(+91 ${selectedTx.customerPhone})` : ''}</span>
+                      <span>Customer: {selectedTx.customerName || 'Walk-in'} {selectedTx.customerPhone ? `(+91 ${selectedTx.customerPhone})` : ''}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-xs text-muted-foreground block font-bold">मूळ बिलाची एकूण रक्कम</span>
+                  <span className="text-xs text-muted-foreground block font-bold">Original Bill Total</span>
                   <span className="text-2xl font-black text-foreground">
                     ₹{Number(selectedTx.totalAmount || selectedTx.total || 0).toFixed(2)}
                   </span>
@@ -624,14 +624,14 @@ export default function SalesReturn() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-base font-bold text-foreground">
-                      २. कोणते प्रॉडक्ट परत करायचे आहे ते निवडा (Select Items to Return)
+                      2. Select Products to Return
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      ग्राहकाने आणलेले प्रॉडक्ट सिलेक्ट करा आणि त्याची नग संख्या (Quantity) टाका.
+                      Select the items being returned and adjust the return quantity.
                     </p>
                   </div>
                   <span className="text-xs font-bold text-muted-foreground">
-                    {selectedCount} प्रॉडक्ट्स सिलेक्ट
+                    {selectedCount} items selected
                   </span>
                 </div>
 
@@ -654,9 +654,9 @@ export default function SalesReturn() {
                         <div className="min-w-0 flex-1">
                           <p className="font-bold text-sm text-foreground truncate">{item.name}</p>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                            <span>दर: <strong className="text-foreground">₹{item.sellingPrice.toFixed(2)}</strong></span>
+                            <span>Rate: <strong className="text-foreground">₹{item.sellingPrice.toFixed(2)}</strong></span>
                             <span>•</span>
-                            <span>खरेदी केलेले नग: <strong>{item.purchasedQty} {item.unit}</strong></span>
+                            <span>Purchased: <strong>{item.purchasedQty} {item.unit}</strong></span>
                           </div>
                         </div>
                       </div>
@@ -691,7 +691,7 @@ export default function SalesReturn() {
                                   : 'text-muted-foreground hover:text-foreground'
                               }`}
                             >
-                              ✅ विक्रीयोग्य (Restock)
+                              ✅ Resellable (Restock)
                             </button>
                             <button
                               onClick={() => handleUpdateCondition(idx, 'damaged')}
@@ -701,7 +701,7 @@ export default function SalesReturn() {
                                   : 'text-muted-foreground hover:text-foreground'
                               }`}
                             >
-                              ⚠️ खराब (Loss)
+                              ⚠️ Damaged (Write-off)
                             </button>
                           </div>
 
@@ -712,7 +712,7 @@ export default function SalesReturn() {
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground italic">
-                          परत घेण्यासाठी चेकबॉक्सवर क्लिक करा
+                          Click checkbox to return this item
                         </span>
                       )}
                     </div>
@@ -725,7 +725,7 @@ export default function SalesReturn() {
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-emerald-500/20 pb-4">
                       <div>
                         <span className="text-xs font-bold text-muted-foreground block uppercase">
-                          ग्राहकाला एकूण परत द्यायची रक्कम (Total Refund Amount)
+                          Total Refund Amount
                         </span>
                         <div className="text-3xl font-black text-emerald-600 tracking-tight">
                           ₹{totalRefundAmount.toFixed(2)}
@@ -734,7 +734,7 @@ export default function SalesReturn() {
 
                       {/* Refund Mode Buttons */}
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold text-muted-foreground mr-1">रिफंड पद्धत:</Label>
+                        <Label className="text-xs font-bold text-muted-foreground mr-1">Refund Method:</Label>
                         <button
                           onClick={() => setRefundMethod('cash')}
                           className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
@@ -743,7 +743,7 @@ export default function SalesReturn() {
                               : 'bg-card text-muted-foreground hover:text-foreground'
                           }`}
                         >
-                          💵 रोख परत (Cash)
+                          💵 Cash Refund
                         </button>
                         <button
                           onClick={() => setRefundMethod('udhar')}
@@ -753,7 +753,7 @@ export default function SalesReturn() {
                               : 'bg-card text-muted-foreground hover:text-foreground'
                           }`}
                         >
-                          💳 खात्यात जमा (Udhar)
+                          💳 Customer Udhar / Credit
                         </button>
                         <button
                           onClick={() => setRefundMethod('upi')}
@@ -771,24 +771,24 @@ export default function SalesReturn() {
                     {/* Reason Selection */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <Label className="text-xs font-bold text-muted-foreground">परत करण्याचे कारण (Reason)</Label>
+                        <Label className="text-xs font-bold text-muted-foreground">Return Reason</Label>
                         <select
                           value={returnReason}
                           onChange={(e) => setReturnReason(e.target.value)}
                           className="mt-1 w-full h-10 px-3 rounded-xl border bg-card text-sm font-semibold"
                         >
-                          <option value="चुकीचा माल (Wrong Item)">चुकीचा माल (Wrong Item)</option>
-                          <option value="एक्सपायरी जवळ (Near Expiry)">एक्सपायरी जवळ (Near Expiry)</option>
-                          <option value="ग्राहक नको म्हणत आहे (Customer Changed Mind)">ग्राहक नको म्हणत आहे (Customer Changed Mind)</option>
-                          <option value="खराब / पॅकिंग तुटलेली (Damaged Packaging)">खराब / पॅकिंग तुटलेली (Damaged Packaging)</option>
-                          <option value="इतर (Other)">इतर (Other)</option>
+                          <option value="Wrong Item Delivered">Wrong Item Delivered</option>
+                          <option value="Near Expiry Date">Near Expiry Date</option>
+                          <option value="Customer Changed Mind">Customer Changed Mind</option>
+                          <option value="Damaged / Broken Packaging">Damaged / Broken Packaging</option>
+                          <option value="Other Reason">Other Reason</option>
                         </select>
                       </div>
 
                       <div>
-                        <Label className="text-xs font-bold text-muted-foreground">टीप / तपशील (Optional Note)</Label>
+                        <Label className="text-xs font-bold text-muted-foreground">Optional Notes / Remarks</Label>
                         <Input
-                          placeholder="उदा. सील ओपन नाही, दुसऱ्या दिवशी परत आणला..."
+                          placeholder="e.g. Unopened packaging, returned next day..."
                           value={customReason}
                           onChange={(e) => setCustomReason(e.target.value)}
                           className="mt-1 h-10 bg-card rounded-xl"
@@ -803,7 +803,7 @@ export default function SalesReturn() {
                         onClick={() => setSelectedTx(null)}
                         className="h-12 px-5 font-bold rounded-xl"
                       >
-                        रद्द करा
+                        Cancel
                       </Button>
                       <Button
                         onClick={handleConfirmReturn}
@@ -815,7 +815,7 @@ export default function SalesReturn() {
                         ) : (
                           <ShieldCheck className="h-5 w-5 mr-2" />
                         )}
-                        परत स्वीकारा आणि ₹{totalRefundAmount.toFixed(2)} रिफंड द्या
+                        Confirm Return & Refund ₹{totalRefundAmount.toFixed(2)}
                       </Button>
                     </div>
                   </div>
@@ -831,19 +831,19 @@ export default function SalesReturn() {
         <div className="bg-card border rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in duration-200">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-lg font-bold text-foreground">मागील सेल्स रिटर्न इतिहास (Sales Return History)</h2>
-              <p className="text-xs text-muted-foreground">दुकानदाराने परत घेतलेल्या सर्व मालाची संपूर्ण नोंद.</p>
+              <h2 className="text-lg font-bold text-foreground">Sales Return History</h2>
+              <p className="text-xs text-muted-foreground">Comprehensive log of all customer returns and restocked items.</p>
             </div>
             <Button variant="outline" size="sm" onClick={loadInitialData} className="gap-1.5 rounded-xl font-bold">
-              <RefreshCw className="h-3.5 w-3.5" /> रिफ्रेश
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </Button>
           </div>
 
           {returnsHistory.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground space-y-2">
               <RotateCcw className="h-10 w-10 mx-auto opacity-30" />
-              <p className="font-bold text-sm">कोणतेही सेल्स रिटर्न सापडले नाहीत.</p>
-              <p className="text-xs">नवीन बिल स्कॅन करून माल परत घेतला की त्याची नोंद येथे दिसेल.</p>
+              <p className="font-bold text-sm">No sales return records found.</p>
+              <p className="text-xs">Scan a bill to process your first return.</p>
             </div>
           ) : (
             <div className="divide-y border rounded-xl overflow-hidden">
@@ -853,7 +853,7 @@ export default function SalesReturn() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-sm text-foreground">#{ret.id}</span>
                       <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
-                        मूळ बिल: #{ret.originalBillId?.slice(-8).toUpperCase()}
+                        Orig Bill: #{ret.originalBillId?.slice(-8).toUpperCase()}
                       </span>
                       <span className="text-xs bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded capitalize">
                         {ret.refundMethod}
@@ -861,8 +861,8 @@ export default function SalesReturn() {
                     </div>
                     <div className="text-xs text-muted-foreground font-medium">
                       <span>{new Date(ret.createdAt).toLocaleString('en-IN')}</span>
-                      <span> • ग्राहक: {ret.customerName || 'Walk-in'}</span>
-                      {ret.reason && <span> • कारण: {ret.reason}</span>}
+                      <span> • Customer: {ret.customerName || 'Walk-in'}</span>
+                      {ret.reason && <span> • Reason: {ret.reason}</span>}
                     </div>
                     {/* Items List */}
                     <div className="flex flex-wrap gap-1.5 pt-1">
@@ -876,7 +876,7 @@ export default function SalesReturn() {
 
                   <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                     <div className="text-right">
-                      <span className="text-[11px] text-muted-foreground font-bold block uppercase">रिफंड रक्कम</span>
+                      <span className="text-[11px] text-muted-foreground font-bold block uppercase">Refund Amount</span>
                       <span className="text-lg font-black text-emerald-600">₹{Number(ret.totalRefund || 0).toFixed(2)}</span>
                     </div>
                     <Button
@@ -885,7 +885,7 @@ export default function SalesReturn() {
                       onClick={() => handlePrintVoucher(ret)}
                       className="rounded-xl h-9 px-3 gap-1.5 font-bold"
                     >
-                      <Printer className="h-3.5 w-3.5" /> स्लिप
+                      <Printer className="h-3.5 w-3.5" /> Print Slip
                     </Button>
                   </div>
                 </div>

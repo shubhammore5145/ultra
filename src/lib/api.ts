@@ -171,9 +171,6 @@ export interface SuperAdminShopRecord {
   formattedExpiry?: string;
 }
 
-// Runtime export to guarantee backwards/Vite compatibility
-export const SuperAdminShopRecord = {};
-
 export const INITIAL_SHOPS: SuperAdminShopRecord[] = [
   { shopId: 'mg4q6ov7ym', shopName: 'SHIV SHAKATI ', ownerName: 'shubham', phone: '9226345875', email: 'shubhamvmore12@gmail.com', address: 'samta coloni shivaji nagara  waluj walyj.bk  aurangabad -431133', gstNumber: '27AABCS1429B1Z2', upiId: '9263458752@ibl', plan: 'ultra_pro', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 147, userCount: 2, transactionCount: 69, totalSalesVolume: 37257.63, subscriptionStatus: 'lifetime' },
   { shopId: 'd7n2r3emt9c', shopName: "Swapnil Jadhav's Shop", ownerName: 'Swapnil Jadhav', phone: '9421383010', email: 'sj136609@gmail.com', address: null, gstNumber: null, upiId: 'paytm.s2w4op8@pty', plan: 'free', planExpiry: null, createdAt: '2026-11-16T08:45:36+00:00', productCount: 109, userCount: 1, transactionCount: 17, totalSalesVolume: 2031, subscriptionStatus: 'free' },

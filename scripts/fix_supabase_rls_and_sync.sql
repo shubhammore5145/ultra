@@ -50,7 +50,7 @@ BEGIN
 END $$;
 
 -- 4. VERIFY TABLES ARE ACCESSIBLE
-SELECT table_name, row_security 
-FROM information_schema.tables 
-JOIN pg_tables ON information_schema.tables.table_name = pg_tables.tablename
-WHERE table_schema = 'public';
+SELECT tablename, rowsecurity 
+FROM pg_tables 
+WHERE schemaname = 'public'
+ORDER BY tablename;

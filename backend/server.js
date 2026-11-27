@@ -74,7 +74,7 @@ setInterval(() => {
 
 // Database Connection
 const pool = require('./db');
-pool.testConnection();
+pool.testConnection().catch(() => {});
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -234,10 +234,11 @@ app.post('/api/whatsapp/send-bill', async (req, res) => {
 // Nightly Business WhatsApp Summary Generator & Sender
 async function generateAndSendNightlySummary(shopId, targetPhone) {
   const pool = require('./db');
+  const db = await pool.getDb();
   let shop = { name: 'MartGPT Store', phone: targetPhone };
   try {
-    const [shops] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [shopId || 'default']);
-    if (shops && shops[0]) shop = shops[0];
+    const found = await db.collection('shops').findOne({ shopId: shopId || 'default' });
+    if (found) shop = found;
   } catch {}
 
   const recipientPhone = targetPhone || shop.phone;
@@ -250,44 +251,31 @@ async function generateAndSendNightlySummary(shopId, targetPhone) {
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
 
-  const startIso = todayStart.toISOString().slice(0, 19).replace('T', ' ');
-  const endIso = todayEnd.toISOString().slice(0, 19).replace('T', ' ');
+  const startIso = todayStart.toISOString();
+  const endIso = todayEnd.toISOString();
+  const resolvedShopId = shop.shopId || shopId || 'default';
 
   let transactions = [];
   let expenses = [];
   let lowStock = [];
 
   try {
-    const [txRows] = await pool.query(
-      'SELECT * FROM transactions WHERE shopId = ? AND createdAt >= ? AND createdAt <= ?',
-      [shop.shopId || shopId || 'default', startIso, endIso]
-    );
-    transactions = txRows || [];
-  } catch {
-    const [txRows] = await pool.query(
-      'SELECT * FROM transactions WHERE createdAt >= ? AND createdAt <= ?',
-      [startIso, endIso]
-    );
-    transactions = txRows || [];
-  }
+    transactions = await db.collection('transactions')
+      .find({ shopId: resolvedShopId, isDeleted: { $ne: 1 }, createdAt: { $gte: startIso, $lte: endIso } })
+      .toArray();
+  } catch {}
 
   try {
-    const [expRows] = await pool.query(
-      'SELECT * FROM expenses WHERE (shopId = ? OR shopId IS NULL) AND date >= ? AND date <= ?',
-      [shop.shopId || shopId || 'default', startIso, endIso]
-    );
-    expenses = expRows || [];
-  } catch {
-    const [expRows] = await pool.query('SELECT * FROM expenses ORDER BY date DESC LIMIT 20');
-    expenses = expRows || [];
-  }
+    expenses = await db.collection('expenses')
+      .find({ $or: [{ shopId: resolvedShopId }, { shopId: null }], date: { $gte: startIso.slice(0, 10), $lte: endIso.slice(0, 10) } })
+      .toArray();
+  } catch {}
 
   try {
-    const [stockRows] = await pool.query(
-      'SELECT name, stock, unit FROM products WHERE (shopId = ? OR shopId IS NULL) AND stock <= minStock LIMIT 5',
-      [shop.shopId || shopId || 'default']
-    );
-    lowStock = stockRows || [];
+    const prods = await db.collection('products')
+      .find({ $or: [{ shopId: resolvedShopId }, { shopId: null }], isDeleted: { $ne: 1 } })
+      .toArray();
+    lowStock = prods.filter((p) => Number(p.stock || 0) <= Number(p.minStock || 0)).slice(0, 5);
   } catch {}
 
   let grossSales = 0;
@@ -401,7 +389,8 @@ async function checkAndSendScheduledSummaries() {
 
   try {
     const pool = require('./db');
-    const [shops] = await pool.query('SELECT shopId, name, phone, settings FROM shops');
+    const db = await pool.getDb();
+    const shops = await db.collection('shops').find({}, { projection: { shopId: 1, name: 1, phone: 1, settings: 1 } }).toArray();
 
     for (const shop of shops) {
       let settings = {};

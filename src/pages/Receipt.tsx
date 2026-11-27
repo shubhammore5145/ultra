@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Printer, Download, Store, IndianRupee, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { supabase } from '../lib/supabase';
 import { getReceiptOffline } from '../lib/storage';
 
 export default function Receipt() {
@@ -31,7 +30,7 @@ export default function Receipt() {
         return { ...data, items };
       };
 
-      // 1. Try Backend API first
+      // 1. Try MongoDB Backend API first
       try {
         const API_URL = import.meta.env.VITE_API_URL || '/api';
         const res = await fetch(`${API_URL}/public/receipt/${cleanId}`);
@@ -44,61 +43,10 @@ export default function Receipt() {
           }
         }
       } catch (backendErr) {
-        console.warn('Backend receipt fetch failed, trying direct Supabase cloud...', backendErr);
+        console.warn('Backend receipt fetch failed, checking offline cache...', backendErr);
       }
 
-      // 2. Direct Supabase Cloud Fallback
-      try {
-        const { data: txList, error: sbErr } = await supabase
-          .from('transactions')
-          .select('*')
-          .or(`id.eq.${cleanId},id.ilike.%${cleanId}%`)
-          .order('createdAt', { ascending: false })
-          .limit(1);
-
-        if (txList && txList.length > 0) {
-          const t = txList[0];
-          // Also fetch shop details
-          let sh: any = {};
-          if (t.shopId) {
-            const { data: shopList } = await supabase
-              .from('shops')
-              .select('*')
-              .eq('shopId', t.shopId)
-              .limit(1);
-            sh = shopList?.[0] || {};
-          }
-
-          // Fetch customer details if exists
-          let cu: any = {};
-          if (t.customerId) {
-            const { data: custList } = await supabase
-              .from('customers')
-              .select('*')
-              .eq('id', t.customerId)
-              .limit(1);
-            cu = custList?.[0] || {};
-          }
-
-          const combined = {
-            ...t,
-            shopName: sh.name || sh.shopName || 'Nayashi Kirana',
-            shopPhone: sh.phone || '',
-            shopAddress: sh.address || '',
-            shopGstNumber: sh.gstNumber || '',
-            customerName: cu.name || '',
-            customerPhone: cu.phone || ''
-          };
-
-          setReceipt(normalizeData(combined));
-          setLoading(false);
-          return;
-        }
-      } catch (sbErr: any) {
-        console.warn('Direct Supabase receipt fetch error:', sbErr.message);
-      }
-
-      // 3. Offline Storage Fallback (IndexedDB + LocalStorage)
+      // 2. Offline Storage Fallback (IndexedDB + LocalStorage)
       try {
         const offlineData = await getReceiptOffline(cleanId);
         if (offlineData) {

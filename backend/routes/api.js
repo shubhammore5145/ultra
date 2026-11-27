@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const pool = require('../db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
@@ -15,33 +16,23 @@ const authMiddleware = (req, res, next) => {
     req.user = { uid: 'guest_user', shopId: fallbackShopId, role: 'admin' };
     return next();
   }
-  
+
   const token = authHeader.split(' ')[1];
   if (!token) {
     req.user = { uid: 'guest_user', shopId: fallbackShopId, role: 'admin' };
     return next();
   }
 
-  // 1. Support Supabase direct client token with expiration & structure validation
   if (token.startsWith('sb_')) {
     try {
-      const raw = token.slice(3);
-      const [payloadB64] = raw.split('.');
+      const [payloadB64] = token.slice(3).split('.');
       if (!payloadB64) {
         req.user = { uid: 'guest_user', shopId: fallbackShopId, role: 'admin' };
         return next();
       }
-
       const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
-      const resolvedShop = (payload.shopId && payload.shopId !== 'default') 
-        ? payload.shopId 
-        : fallbackShopId;
-
-      req.user = { 
-        uid: payload.uid || 'local_user', 
-        shopId: resolvedShop, 
-        role: payload.role || 'admin' 
-      };
+      const resolvedShop = payload.shopId && payload.shopId !== 'default' ? payload.shopId : fallbackShopId;
+      req.user = { uid: payload.uid || 'local_user', shopId: resolvedShop, role: payload.role || 'admin' };
       return next();
     } catch (e) {
       console.warn('Failed to parse sb_ token, using fallback session:', e.message);
@@ -50,92 +41,91 @@ const authMiddleware = (req, res, next) => {
     }
   }
 
-  // 2. Standard JWT token (verified or gracefully decoded)
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { uid, shopId, role }
+    req.user = decoded;
     if (!req.user.shopId || req.user.shopId === 'default') {
       req.user.shopId = fallbackShopId;
     }
     return next();
-  } catch (error) {
-    // Graceful fallback: decode payload even if expired or signed with different key
+  } catch {
     try {
       const decoded = jwt.decode(token);
       if (decoded && (decoded.uid || decoded.user_id || decoded.sub || decoded.email)) {
         req.user = {
           uid: decoded.uid || decoded.user_id || decoded.sub || 'user',
-          shopId: (decoded.shopId && decoded.shopId !== 'default') ? decoded.shopId : fallbackShopId,
+          shopId: decoded.shopId && decoded.shopId !== 'default' ? decoded.shopId : fallbackShopId,
           role: decoded.role || 'admin'
         };
         return next();
       }
-    } catch (_decErr) {}
+    } catch {}
 
-    // Resilient fallback using shop header for offline or cashier POS continuity
-    req.user = {
-      uid: 'staff_user',
-      shopId: fallbackShopId,
-      role: 'admin'
-    };
+    req.user = { uid: 'staff_user', shopId: fallbackShopId, role: 'admin' };
     return next();
   }
 };
 
+function toOptNum(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
+}
+
+function parseJsonSafe(val, fallback) {
+  if (val === undefined || val === null) return fallback;
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try {
+      return JSON.parse(val);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 // --- PUBLIC ROUTES (No Auth Required) ---
 router.get('/public/receipt/:id', async (req, res) => {
   try {
-    const rawId = req.params.id;
-    let [rows] = await pool.query(
-      `SELECT t.*, s.name as shopName, s.phone as shopPhone, s.address as shopAddress, s.gstNumber as shopGstNumber,
-              c.name as customerName, c.phone as customerPhone 
-       FROM transactions t 
-       LEFT JOIN shops s ON t.shopId = s.shopId 
-       LEFT JOIN customers c ON t.customerId = c.id 
-       WHERE t.id = ? OR t.id LIKE ?
-       ORDER BY t.createdAt DESC LIMIT 1`,
-      [rawId, `%${rawId}%`]
+    const db = await pool.getDb();
+    const rawId = String(req.params.id || '').trim();
+    if (!rawId) return res.status(404).json({ error: 'Receipt not found' });
+
+    const idRegex = new RegExp(pool.escapeRegex(rawId), 'i');
+    const txDoc = pool.stripMongoId(
+      await db.collection('transactions')
+        .find({ $or: [{ id: rawId }, { id: { $regex: idRegex } }] })
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .next()
     );
 
-    if (rows && rows.length > 0) {
-      return res.json(rows[0]);
+    if (!txDoc) {
+      return res.status(404).json({ error: 'Receipt not found' });
     }
 
-    // Fallback to Supabase cloud if not found in local SQLite/pool
-    try {
-      const supabase = require('../supabase');
-      const { data: txList } = await supabase
-        .from('transactions')
-        .select('*')
-        .or(`id.eq.${rawId},id.ilike.%${rawId}%`)
-        .order('createdAt', { ascending: false })
-        .limit(1);
+    const [shopDoc, custDoc] = await Promise.all([
+      txDoc.shopId ? db.collection('shops').findOne({ shopId: txDoc.shopId }, { projection: { _id: 0 } }) : null,
+      txDoc.customerId ? db.collection('customers').findOne({ id: txDoc.customerId }, { projection: { _id: 0 } }) : null
+    ]);
 
-      if (txList && txList.length > 0) {
-        const t = txList[0];
-        const { data: sh } = await supabase.from('shops').select('*').eq('shopId', t.shopId).limit(1);
-        const { data: cu } = t.customerId ? await supabase.from('customers').select('*').eq('id', t.customerId).limit(1) : { data: [] };
-        return res.json({
-          ...t,
-          shopName: sh?.[0]?.name || sh?.[0]?.shopName || 'MartGPT Kirana',
-          shopPhone: sh?.[0]?.phone || '',
-          shopAddress: sh?.[0]?.address || '',
-          shopGstNumber: sh?.[0]?.gstNumber || '',
-          customerName: cu?.[0]?.name || '',
-          customerPhone: cu?.[0]?.phone || ''
-        });
-      }
-    } catch (sbErr) {
-      console.warn('Supabase public receipt fallback query warning:', sbErr.message);
-    }
-
-    res.status(404).json({ error: 'Receipt not found' });
+    res.json({
+      ...txDoc,
+      items: Array.isArray(txDoc.items) ? txDoc.items : parseJsonSafe(txDoc.items, []),
+      shopName: shopDoc?.name || shopDoc?.shopName || 'MartGPT Kirana',
+      shopPhone: shopDoc?.phone || '',
+      shopAddress: shopDoc?.address || '',
+      shopGstNumber: shopDoc?.gstNumber || '',
+      customerName: custDoc?.name || txDoc.customerName || '',
+      customerPhone: custDoc?.phone || txDoc.customerPhone || ''
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Validate Promo Code (Public / Available at Checkout)
+// Validate Promo Code
 router.post('/coupons/validate', async (req, res) => {
   const { code, planName, price } = req.body;
   if (!code || !code.trim()) {
@@ -143,26 +133,23 @@ router.post('/coupons/validate', async (req, res) => {
   }
 
   try {
+    const db = await pool.getDb();
     const cleanCode = code.trim().toUpperCase();
-    const [rows] = await pool.query('SELECT * FROM promo_codes WHERE UPPER(code) = ?', [cleanCode]);
+    const codeRegex = new RegExp(`^${pool.escapeRegex(cleanCode)}$`, 'i');
+    const coupon = pool.stripMongoId(await db.collection('promo_codes').findOne({ code: { $regex: codeRegex } }));
 
-    if (rows.length === 0) {
+    if (!coupon) {
       return res.status(404).json({ error: 'Invalid coupon code. Please verify and try again.' });
     }
 
-    const coupon = rows[0];
-
-    // Check expiry
     if (coupon.validUntil && new Date(coupon.validUntil) < new Date()) {
       return res.status(400).json({ error: 'This coupon code has expired.' });
     }
 
-    // Check usage limits
-    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+    if (coupon.maxUses && Number(coupon.usedCount || 0) >= Number(coupon.maxUses)) {
       return res.status(400).json({ error: 'This coupon usage limit has been reached.' });
     }
 
-    // Check plan restriction
     if (coupon.planType && coupon.planType !== 'all') {
       const target = (planName || '').toLowerCase();
       if (!target.includes(coupon.planType.toLowerCase())) {
@@ -172,15 +159,13 @@ router.post('/coupons/validate', async (req, res) => {
 
     const originalPrice = Number(price || 0);
     let discountAmount = 0;
-
-    if (coupon.discountPercent > 0) {
-      discountAmount = Math.round((originalPrice * coupon.discountPercent) / 100);
-    } else if (coupon.flatDiscount > 0) {
-      discountAmount = Math.min(coupon.flatDiscount, originalPrice);
+    if (Number(coupon.discountPercent || 0) > 0) {
+      discountAmount = Math.round((originalPrice * Number(coupon.discountPercent)) / 100);
+    } else if (Number(coupon.flatDiscount || 0) > 0) {
+      discountAmount = Math.min(Number(coupon.flatDiscount), originalPrice);
     }
 
     const finalPrice = Math.max(1, originalPrice - discountAmount);
-
     res.json({
       success: true,
       code: coupon.code,
@@ -198,126 +183,40 @@ router.post('/coupons/validate', async (req, res) => {
 
 router.use(authMiddleware);
 
-// Helper to persist extended product pricing/warehouse metadata (pack/bulk tiers, wholesale rate, rack location)
-// inside shops.settings.productMeta in both SQLite and Supabase Cloud so it survives container rebuilds.
-async function getShopProductMetaMap(shopId) {
-  try {
-    const [shopRows] = await pool.query('SELECT settings FROM shops WHERE shopId = ?', [shopId]);
-    let settingsObj = shopRows?.[0]?.settings;
-    if (typeof settingsObj === 'string') {
-      try { settingsObj = JSON.parse(settingsObj); } catch { settingsObj = {}; }
-    }
-    if (settingsObj && typeof settingsObj === 'object' && settingsObj.productMeta && typeof settingsObj.productMeta === 'object') {
-      return settingsObj.productMeta;
-    }
-    const { supabase } = require('../supabase');
-    const { data: sbShop } = await supabase.from('shops').select('settings').eq('shopId', shopId).maybeSingle();
-    let sbSettings = sbShop?.settings;
-    if (typeof sbSettings === 'string') {
-      try { sbSettings = JSON.parse(sbSettings); } catch { sbSettings = {}; }
-    }
-    if (sbSettings && typeof sbSettings === 'object' && sbSettings.productMeta && typeof sbSettings.productMeta === 'object') {
-      return sbSettings.productMeta;
-    }
-  } catch (e) {}
-  return {};
-}
-
-async function syncProductMetaToShopSettings(shopId, productId, meta) {
-  if (!shopId || !productId) return;
-  try {
-    const cleanMeta = {};
-    for (const k of ['wholesalePrice', 'bulkMinQty', 'bulkPrice', 'rackLocation', 'reorderQty', 'maxStock']) {
-      if (meta[k] !== undefined && meta[k] !== null && meta[k] !== '') {
-        cleanMeta[k] = meta[k];
-      }
-    }
-
-    const [shopRows] = await pool.query('SELECT settings FROM shops WHERE shopId = ?', [shopId]);
-    let settingsObj = shopRows?.[0]?.settings;
-    if (typeof settingsObj === 'string') {
-      try { settingsObj = JSON.parse(settingsObj); } catch { settingsObj = {}; }
-    }
-    const { supabase } = require('../supabase');
-    if (!settingsObj || typeof settingsObj !== 'object' || Object.keys(settingsObj).length === 0) {
-      try {
-        const { data: sbShop } = await supabase.from('shops').select('settings').eq('shopId', shopId).maybeSingle();
-        let sbSettings = sbShop?.settings;
-        if (typeof sbSettings === 'string') {
-          try { sbSettings = JSON.parse(sbSettings); } catch { sbSettings = {}; }
-        }
-        if (sbSettings && typeof sbSettings === 'object') {
-          settingsObj = sbSettings;
-        }
-      } catch {}
-    }
-    if (!settingsObj || typeof settingsObj !== 'object') settingsObj = {};
-
-    const productMeta = { ...(settingsObj.productMeta || {}) };
-    if (Object.keys(cleanMeta).length > 0) {
-      productMeta[productId] = cleanMeta;
-    } else {
-      delete productMeta[productId];
-    }
-
-    const updatedSettings = { ...settingsObj, productMeta };
-    await pool.query('UPDATE shops SET settings = ? WHERE shopId = ?', [JSON.stringify(updatedSettings), shopId]).catch(() => {});
-
-    await supabase.from('shops').update({ settings: updatedSettings }).eq('shopId', shopId);
-  } catch (e) {
-    console.warn('Product meta shop settings sync notice:', e.message);
-  }
-}
-
 // --- PRODUCTS ---
 router.get('/products', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const rawShopId = req.headers['x-shop-id'] || req.user?.shopId;
     let targetShopId = rawShopId && rawShopId !== 'default' ? rawShopId : 'mg4q6ov7ym';
 
-    let [rows] = await pool.query('SELECT * FROM products WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', [targetShopId]);
+    let rows = pool.stripMongoIds(
+      await db.collection('products')
+        .find({ shopId: targetShopId, isDeleted: { $ne: 1 } })
+        .sort({ name: 1 })
+        .toArray()
+    );
 
-    // If no rows found for targetShopId, check if primary store mg4q6ov7ym has products
     if ((!rows || rows.length === 0) && targetShopId !== 'mg4q6ov7ym') {
-      const [fallbackRows] = await pool.query('SELECT * FROM products WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', ['mg4q6ov7ym']);
+      const fallbackRows = pool.stripMongoIds(
+        await db.collection('products')
+          .find({ shopId: 'mg4q6ov7ym', isDeleted: { $ne: 1 } })
+          .sort({ name: 1 })
+          .toArray()
+      );
       if (fallbackRows && fallbackRows.length > 0) {
         rows = fallbackRows;
         targetShopId = 'mg4q6ov7ym';
       }
     }
 
-    // Live Supabase fallback: if local SQLite cache is empty for this shop, pull from Supabase Cloud
-    if (!rows || rows.length === 0) {
-      try {
-        const { supabase } = require('../supabase');
-        const { data: sbProds } = await supabase
-          .from('products')
-          .select('*')
-          .eq('shopId', targetShopId)
-          .or('isDeleted.eq.0,isDeleted.is.null');
+    const shopDoc = await db.collection('shops').findOne({ shopId: targetShopId }, { projection: { _id: 0, settings: 1 } });
+    const shopSettings = parseJsonSafe(shopDoc?.settings, {});
+    const metaMap = (shopSettings && typeof shopSettings.productMeta === 'object') ? shopSettings.productMeta : {};
 
-        if (sbProds && sbProds.length > 0) {
-          const metaMap = await getShopProductMetaMap(targetShopId);
-          rows = sbProds.map(p => ({ ...p, ...(metaMap[p.id] || {}) }));
-          for (const p of rows) {
-            pool.query(
-              'INSERT OR REPLACE INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, shortCode, isLoose, expiryDate, imageUrl, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-              [p.id, p.shopId, p.name, p.category, p.brand, p.unit, p.purchasePrice || 0, p.sellingPrice || 0, p.mrp || 0, p.gst || 0, p.stock || 0, p.minStock || 0, p.sku, p.barcode, p.shortCode, p.isLoose ? 1 : 0, p.expiryDate || null, p.imageUrl || null, p.wholesalePrice ?? null, p.bulkMinQty ?? null, p.bulkPrice ?? null, p.rackLocation ?? null, p.reorderQty ?? null, p.maxStock ?? null]
-            ).catch(() => {});
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Supabase products fetch fallback notice:', sbErr.message);
-      }
-    }
-
-    const metaMap = await getShopProductMetaMap(targetShopId);
-    const formatted = (rows || []).map(p => {
-      let v = p.variants;
-      if (typeof v === 'string') {
-        try { v = JSON.parse(v); } catch { v = []; }
-      }
+    const formatted = rows.map((p) => {
       const m = metaMap[p.id] || {};
+      const parsedVariants = Array.isArray(p.variants) ? p.variants : parseJsonSafe(p.variants, []);
       return {
         ...p,
         wholesalePrice: p.wholesalePrice ?? m.wholesalePrice ?? undefined,
@@ -326,9 +225,10 @@ router.get('/products', async (req, res) => {
         rackLocation: p.rackLocation ?? m.rackLocation ?? undefined,
         reorderQty: p.reorderQty ?? m.reorderQty ?? undefined,
         maxStock: p.maxStock ?? m.maxStock ?? undefined,
-        variants: Array.isArray(v) ? v : []
+        variants: Array.isArray(parsedVariants) ? parsedVariants : []
       };
     });
+
     res.json(formatted);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -336,37 +236,19 @@ router.get('/products', async (req, res) => {
 });
 
 router.post('/products', async (req, res) => {
-  const { id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate, variants, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock } = req.body;
-  const variantsStr = variants ? (typeof variants === 'string' ? variants : JSON.stringify(variants)) : null;
-  const toOptNum = (val) => (val !== undefined && val !== null && val !== '' && !isNaN(Number(val)) ? Number(val) : null);
-
-  const wPrice = toOptNum(wholesalePrice);
-  const bMinQty = toOptNum(bulkMinQty);
-  const bPrice = toOptNum(bulkPrice);
-  const rLoc = rackLocation && String(rackLocation).trim() ? String(rackLocation).trim() : null;
-  const rQty = toOptNum(reorderQty);
-  const mStock = toOptNum(maxStock);
-
   try {
-    await pool.query(
-      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate, variants, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock, isDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, expiryDate || null, variantsStr, wPrice, bMinQty, bPrice, rLoc, rQty, mStock]
-    );
-  } catch (err) {
-    console.warn('Fallback product insert:', err.message);
-    await pool.query(
-      'INSERT INTO products (id, shopId, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, variants) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, name, category, brand, unit, purchasePrice || 0, sellingPrice || 0, mrp || 0, gst || 0, stock || 0, minStock || 0, sku, barcode || null, imageUrl || null, shortCode || null, isLoose ? 1 : 0, variantsStr]
-    );
-  }
+    const db = await pool.getDb();
+    const {
+      id, name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst,
+      stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate,
+      variants, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock
+    } = req.body;
 
-  // Explicit direct Cloud Supabase backup guarantee + extended pack/bulk metadata sync
-  try {
-    const { supabase } = require('../supabase');
-    await supabase.from('products').upsert({
-      id,
+    const productId = id || crypto.randomUUID();
+    const doc = {
+      id: productId,
       shopId: req.user.shopId,
-      name,
+      name: name || '',
       category: category || '',
       brand: brand || '',
       unit: unit || 'pcs',
@@ -380,143 +262,88 @@ router.post('/products', async (req, res) => {
       barcode: barcode || null,
       imageUrl: imageUrl || null,
       shortCode: shortCode || null,
-      isLoose: Boolean(isLoose),
+      isLoose: Boolean(isLoose) ? 1 : 0,
       expiryDate: expiryDate || null,
-      isDeleted: 0
-    });
-    await syncProductMetaToShopSettings(req.user.shopId, id, {
-      wholesalePrice: wPrice,
-      bulkMinQty: bMinQty,
-      bulkPrice: bPrice,
-      rackLocation: rLoc,
-      reorderQty: rQty,
-      maxStock: mStock
-    });
-  } catch (cloudErr) {
-    console.warn('Direct product Supabase upsert notice:', cloudErr.message);
-  }
+      variants: Array.isArray(variants) ? variants : parseJsonSafe(variants, []),
+      wholesalePrice: toOptNum(wholesalePrice),
+      bulkMinQty: toOptNum(bulkMinQty),
+      bulkPrice: toOptNum(bulkPrice),
+      rackLocation: rackLocation && String(rackLocation).trim() ? String(rackLocation).trim() : null,
+      reorderQty: toOptNum(reorderQty),
+      maxStock: toOptNum(maxStock),
+      isDeleted: 0,
+      deletedAt: null,
+      createdAt: req.body.createdAt || new Date().toISOString()
+    };
 
-  res.json({ success: true });
+    await db.collection('products').updateOne(
+      { id: productId },
+      { $set: doc },
+      { upsert: true }
+    );
+
+    res.json({ success: true, id: productId });
+  } catch (error) {
+    console.error('Create Product Error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.put('/products/:id', async (req, res) => {
   try {
-    const { name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst, stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate, variants, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock } = req.body;
-    
-    // Fetch existing product to fill missing fields
-    const [existingRows] = await pool.query('SELECT * FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
-    if (existingRows.length === 0) return res.status(404).json({ error: 'Product not found' });
-    
-    const p = existingRows[0];
-    const variantsStr = variants !== undefined 
-      ? (typeof variants === 'string' ? variants : JSON.stringify(variants)) 
-      : p.variants;
+    const db = await pool.getDb();
+    const existing = await db.collection('products').findOne({ id: req.params.id, shopId: req.user.shopId });
+    if (!existing) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
 
-    // Only update extended tier fields if caller actually included them in body (prevents stock-deduction PUTs from wiping bulk pricing)
-    const resolveOptNum = (incoming, existing) => {
-      if (incoming === undefined) return existing ?? null;
+    const {
+      name, category, brand, unit, purchasePrice, sellingPrice, mrp, gst,
+      stock, minStock, sku, barcode, imageUrl, shortCode, isLoose, expiryDate,
+      variants, wholesalePrice, bulkMinQty, bulkPrice, rackLocation, reorderQty, maxStock
+    } = req.body;
+
+    const resolveOptNum = (incoming, prev) => {
+      if (incoming === undefined) return prev ?? null;
       if (incoming === null || incoming === '') return null;
       const n = Number(incoming);
-      return isNaN(n) ? (existing ?? null) : n;
+      return isNaN(n) ? (prev ?? null) : n;
     };
-    const wPrice = resolveOptNum(wholesalePrice, p.wholesalePrice);
-    const bMinQty = resolveOptNum(bulkMinQty, p.bulkMinQty);
-    const bPrice = resolveOptNum(bulkPrice, p.bulkPrice);
-    const rLoc = rackLocation !== undefined ? (rackLocation && String(rackLocation).trim() ? String(rackLocation).trim() : null) : (p.rackLocation ?? null);
-    const rQty = resolveOptNum(reorderQty, p.reorderQty);
-    const mStock = resolveOptNum(maxStock, p.maxStock);
-    
-    try {
-      await pool.query(
-        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=?, expiryDate=?, variants=?, wholesalePrice=?, bulkMinQty=?, bulkPrice=?, rackLocation=?, reorderQty=?, maxStock=? WHERE id=? AND shopId=?',
-        [
-          name !== undefined ? name : p.name, 
-          category !== undefined ? category : p.category, 
-          brand !== undefined ? brand : p.brand, 
-          unit !== undefined ? unit : p.unit, 
-          purchasePrice !== undefined ? purchasePrice : p.purchasePrice, 
-          sellingPrice !== undefined ? sellingPrice : p.sellingPrice, 
-          mrp !== undefined ? mrp : p.mrp, 
-          gst !== undefined ? gst : p.gst, 
-          stock !== undefined ? stock : p.stock, 
-          minStock !== undefined ? minStock : p.minStock, 
-          sku !== undefined ? sku : p.sku, 
-          barcode !== undefined ? barcode : p.barcode, 
-          imageUrl !== undefined ? imageUrl : p.imageUrl, 
-          shortCode !== undefined ? shortCode : (p.shortCode || null),
-          isLoose !== undefined ? (isLoose ? 1 : 0) : (p.isLoose ? 1 : 0),
-          expiryDate !== undefined ? (expiryDate || null) : (p.expiryDate || null),
-          variantsStr,
-          wPrice,
-          bMinQty,
-          bPrice,
-          rLoc,
-          rQty,
-          mStock,
-          req.params.id, 
-          req.user.shopId
-        ]
-      );
-    } catch (err) {
-      console.warn('Fallback product update:', err.message);
-      await pool.query(
-        'UPDATE products SET name=?, category=?, brand=?, unit=?, purchasePrice=?, sellingPrice=?, mrp=?, gst=?, stock=?, minStock=?, sku=?, barcode=?, imageUrl=?, shortCode=?, isLoose=? WHERE id=? AND shopId=?',
-        [
-          name !== undefined ? name : p.name, 
-          category !== undefined ? category : p.category, 
-          brand !== undefined ? brand : p.brand, 
-          unit !== undefined ? unit : p.unit, 
-          purchasePrice !== undefined ? purchasePrice : p.purchasePrice, 
-          sellingPrice !== undefined ? sellingPrice : p.sellingPrice, 
-          mrp !== undefined ? mrp : p.mrp, 
-          gst !== undefined ? gst : p.gst, 
-          stock !== undefined ? stock : p.stock, 
-          minStock !== undefined ? minStock : p.minStock, 
-          sku !== undefined ? sku : p.sku, 
-          barcode !== undefined ? barcode : p.barcode, 
-          imageUrl !== undefined ? imageUrl : p.imageUrl, 
-          shortCode !== undefined ? shortCode : (p.shortCode || null),
-          isLoose !== undefined ? (isLoose ? 1 : 0) : (p.isLoose ? 1 : 0),
-          req.params.id, 
-          req.user.shopId
-        ]
-      );
-    }
 
-    // Explicit direct Cloud Supabase update guarantee
-    try {
-      const { supabase } = require('../supabase');
-      await supabase.from('products').upsert({
-        id: req.params.id,
-        shopId: req.user.shopId,
-        name: name !== undefined ? name : p.name,
-        category: category !== undefined ? category : p.category,
-        brand: brand !== undefined ? brand : p.brand,
-        unit: unit !== undefined ? unit : p.unit,
-        purchasePrice: Number(purchasePrice !== undefined ? purchasePrice : p.purchasePrice || 0),
-        sellingPrice: Number(sellingPrice !== undefined ? sellingPrice : p.sellingPrice || 0),
-        mrp: Number(mrp !== undefined ? mrp : p.mrp || 0),
-        gst: Number(gst !== undefined ? gst : p.gst || 0),
-        stock: Number(stock !== undefined ? stock : p.stock || 0),
-        minStock: Number(minStock !== undefined ? minStock : p.minStock || 0),
-        sku: sku !== undefined ? sku : p.sku,
-        barcode: barcode !== undefined ? barcode : p.barcode,
-        imageUrl: imageUrl !== undefined ? imageUrl : p.imageUrl,
-        shortCode: shortCode !== undefined ? shortCode : (p.shortCode || null),
-        isLoose: Boolean(isLoose !== undefined ? isLoose : p.isLoose),
-        expiryDate: expiryDate !== undefined ? (expiryDate || null) : (p.expiryDate || null)
-      });
-      await syncProductMetaToShopSettings(req.user.shopId, req.params.id, {
-        wholesalePrice: wPrice,
-        bulkMinQty: bMinQty,
-        bulkPrice: bPrice,
-        rackLocation: rLoc,
-        reorderQty: rQty,
-        maxStock: mStock
-      });
-    } catch (cloudErr) {
-      console.warn('Direct product Supabase update notice:', cloudErr.message);
-    }
+    const updates = {
+      name: name !== undefined ? name : existing.name,
+      category: category !== undefined ? category : existing.category,
+      brand: brand !== undefined ? brand : existing.brand,
+      unit: unit !== undefined ? unit : existing.unit,
+      purchasePrice: purchasePrice !== undefined ? Number(purchasePrice) : Number(existing.purchasePrice || 0),
+      sellingPrice: sellingPrice !== undefined ? Number(sellingPrice) : Number(existing.sellingPrice || 0),
+      mrp: mrp !== undefined ? Number(mrp) : Number(existing.mrp || 0),
+      gst: gst !== undefined ? Number(gst) : Number(existing.gst || 0),
+      stock: stock !== undefined ? Number(stock) : Number(existing.stock || 0),
+      minStock: minStock !== undefined ? Number(minStock) : Number(existing.minStock || 0),
+      sku: sku !== undefined ? sku : existing.sku,
+      barcode: barcode !== undefined ? barcode : existing.barcode,
+      imageUrl: imageUrl !== undefined ? imageUrl : existing.imageUrl,
+      shortCode: shortCode !== undefined ? (shortCode || null) : (existing.shortCode || null),
+      isLoose: isLoose !== undefined ? (Boolean(isLoose) ? 1 : 0) : (existing.isLoose ? 1 : 0),
+      expiryDate: expiryDate !== undefined ? (expiryDate || null) : (existing.expiryDate || null),
+      variants: variants !== undefined
+        ? (Array.isArray(variants) ? variants : parseJsonSafe(variants, []))
+        : (existing.variants || []),
+      wholesalePrice: resolveOptNum(wholesalePrice, existing.wholesalePrice),
+      bulkMinQty: resolveOptNum(bulkMinQty, existing.bulkMinQty),
+      bulkPrice: resolveOptNum(bulkPrice, existing.bulkPrice),
+      rackLocation: rackLocation !== undefined
+        ? (rackLocation && String(rackLocation).trim() ? String(rackLocation).trim() : null)
+        : (existing.rackLocation ?? null),
+      reorderQty: resolveOptNum(reorderQty, existing.reorderQty),
+      maxStock: resolveOptNum(maxStock, existing.maxStock)
+    };
+
+    await db.collection('products').updateOne(
+      { id: req.params.id, shopId: req.user.shopId },
+      { $set: updates }
+    );
 
     res.json({ success: true });
   } catch (error) {
@@ -526,33 +353,41 @@ router.put('/products/:id', async (req, res) => {
 });
 
 router.delete('/products/:id', async (req, res) => {
-  const { permanent } = req.query;
-  if (permanent === 'true') {
-    await pool.query('DELETE FROM products WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
-    try {
-      const { supabase } = require('../supabase');
-      await supabase.from('products').delete().eq('id', req.params.id);
-    } catch (e) {}
-  } else {
-    await pool.query('UPDATE products SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
-    try {
-      const { supabase } = require('../supabase');
-      await supabase.from('products').update({ isDeleted: 1, deletedAt: new Date().toISOString() }).eq('id', req.params.id);
-    } catch (e) {}
+  try {
+    const db = await pool.getDb();
+    const { permanent } = req.query;
+    if (permanent === 'true') {
+      await db.collection('products').deleteOne({ id: req.params.id, shopId: req.user.shopId });
+    } else {
+      await db.collection('products').updateOne(
+        { id: req.params.id, shopId: req.user.shopId },
+        { $set: { isDeleted: 1, deletedAt: new Date().toISOString() } }
+      );
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-  res.json({ success: true });
 });
 
 // --- CUSTOMERS ---
 router.get('/customers', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { phone } = req.query;
+    const filter = { shopId: req.user.shopId, isDeleted: { $ne: 1 } };
+
     if (phone) {
       const clean = String(phone).replace(/\D/g, '').slice(-10);
-      const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL) AND (phone = ? OR phone LIKE ?)', [req.user.shopId, clean, `%${clean}`]);
-      return res.json(rows);
+      filter.$or = [
+        { phone: clean },
+        { phone: { $regex: new RegExp(`${pool.escapeRegex(clean)}$`) } }
+      ];
     }
-    const [rows] = await pool.query('SELECT * FROM customers WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)', [req.user.shopId]);
+
+    const rows = pool.stripMongoIds(
+      await db.collection('customers').find(filter).sort({ name: 1 }).toArray()
+    );
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -560,51 +395,64 @@ router.get('/customers', async (req, res) => {
 });
 
 router.post('/customers', async (req, res) => {
-  const { id, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
   try {
-    await pool.query(
-      'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl, isDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-      [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null, aadharPhotoUrl || null]
+    const db = await pool.getDb();
+    const { id, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
+    const customerId = id || crypto.randomUUID();
+
+    await db.collection('customers').updateOne(
+      { id: customerId },
+      {
+        $set: {
+          id: customerId,
+          shopId: req.user.shopId,
+          name: name || '',
+          phone: phone || '',
+          address: address || '',
+          balance: Number(balance || 0),
+          aadharNumber: aadharNumber || null,
+          photoUrl: photoUrl || null,
+          aadharPhotoUrl: aadharPhotoUrl || null,
+          isDeleted: 0
+        },
+        $setOnInsert: {
+          visits: 0,
+          totalSpent: 0,
+          loyaltyPoints: 0,
+          createdAt: new Date().toISOString()
+        }
+      },
+      { upsert: true }
     );
-  } catch (err) {
-    // If aadharPhotoUrl column not present yet, attempt alter or fallback
-    try {
-      await pool.query('ALTER TABLE customers ADD COLUMN aadharPhotoUrl LONGTEXT');
-      await pool.query(
-        'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null, aadharPhotoUrl || null]
-      );
-    } catch {
-      await pool.query(
-        'INSERT INTO customers (id, shopId, name, phone, address, balance, aadharNumber, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, req.user.shopId, name, phone, address, balance || 0, aadharNumber || null, photoUrl || null]
-      );
-    }
+
+    res.json({ success: true, id: customerId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-  res.json({ success: true });
 });
 
 router.put('/customers/:id', async (req, res) => {
-  const { name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
   try {
-    const [existingRows] = await pool.query('SELECT * FROM customers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
-    if (existingRows.length === 0) return res.status(404).json({ error: 'Customer not found' });
-    const c = existingRows[0];
+    const db = await pool.getDb();
+    const existing = await db.collection('customers').findOne({ id: req.params.id, shopId: req.user.shopId });
+    if (!existing) return res.status(404).json({ error: 'Customer not found' });
 
-    await pool.query(
-      'UPDATE customers SET name=?, phone=?, address=?, balance=?, aadharNumber=?, photoUrl=?, aadharPhotoUrl=? WHERE id=? AND shopId=?',
-      [
-        name !== undefined ? name : c.name,
-        phone !== undefined ? phone : c.phone,
-        address !== undefined ? address : c.address,
-        balance !== undefined ? balance : c.balance,
-        aadharNumber !== undefined ? aadharNumber : c.aadharNumber,
-        photoUrl !== undefined ? photoUrl : c.photoUrl,
-        aadharPhotoUrl !== undefined ? aadharPhotoUrl : c.aadharPhotoUrl,
-        req.params.id,
-        req.user.shopId
-      ]
+    const { name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
+    await db.collection('customers').updateOne(
+      { id: req.params.id, shopId: req.user.shopId },
+      {
+        $set: {
+          name: name !== undefined ? name : existing.name,
+          phone: phone !== undefined ? phone : existing.phone,
+          address: address !== undefined ? address : existing.address,
+          balance: balance !== undefined ? Number(balance) : Number(existing.balance || 0),
+          aadharNumber: aadharNumber !== undefined ? aadharNumber : existing.aadharNumber,
+          photoUrl: photoUrl !== undefined ? photoUrl : existing.photoUrl,
+          aadharPhotoUrl: aadharPhotoUrl !== undefined ? aadharPhotoUrl : existing.aadharPhotoUrl
+        }
+      }
     );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -613,11 +461,15 @@ router.put('/customers/:id', async (req, res) => {
 
 router.delete('/customers/:id', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { permanent } = req.query;
     if (permanent === 'true') {
-      await pool.query('DELETE FROM customers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+      await db.collection('customers').deleteOne({ id: req.params.id, shopId: req.user.shopId });
     } else {
-      await pool.query('UPDATE customers SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+      await db.collection('customers').updateOne(
+        { id: req.params.id, shopId: req.user.shopId },
+        { $set: { isDeleted: 1, deletedAt: new Date().toISOString() } }
+      );
     }
     res.json({ success: true });
   } catch (error) {
@@ -628,54 +480,38 @@ router.delete('/customers/:id', async (req, res) => {
 // --- TRANSACTIONS (POS) ---
 router.get('/transactions', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { startDate, endDate, month, limit, all } = req.query;
-    let query = 'SELECT * FROM transactions WHERE shopId = ? AND (isDeleted = 0 OR isDeleted IS NULL)';
-    const params = [req.user.shopId];
+    const filter = { shopId: req.user.shopId, isDeleted: { $ne: 1 } };
 
     if (startDate && endDate) {
-      query += ' AND createdAt >= ? AND createdAt <= ?';
-      params.push(startDate, endDate);
+      filter.createdAt = { $gte: String(startDate), $lte: String(endDate) };
     } else if (month) {
-      query += ' AND createdAt LIKE ?';
-      params.push(`${month}%`);
+      filter.createdAt = { $regex: new RegExp(`^${pool.escapeRegex(String(month))}`) };
     } else if (all !== 'true') {
-      // 1-Month default limitation to keep app fast and lightweight
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      query += ' AND createdAt >= ?';
-      params.push(thirtyDaysAgo);
+      filter.createdAt = { $gte: thirtyDaysAgo };
     }
 
     const maxLimit = Math.min(parseInt(limit) || 500, 1000);
-    query += ` ORDER BY createdAt DESC LIMIT ${maxLimit}`;
+    const rows = pool.stripMongoIds(
+      await db.collection('transactions')
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .limit(maxLimit)
+        .toArray()
+    );
 
-    const [rows] = await pool.query(query, params);
-    const formatted = rows.map(r => {
+    const formatted = rows.map((r) => {
       let dt = r.createdAt;
-      if (dt instanceof Date) {
-        dt = dt.toISOString();
-      } else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
+      if (dt instanceof Date) dt = dt.toISOString();
+      else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
         dt = dt.replace(' ', 'T') + 'Z';
       }
-
-      let parsedItems = r.items;
-      if (typeof parsedItems === 'string') {
-        try {
-          parsedItems = JSON.parse(parsedItems);
-        } catch {
-          try {
-            parsedItems = Function('"use strict";return (' + parsedItems + ')')();
-          } catch {
-            parsedItems = [];
-          }
-        }
-      }
-
-      return { 
-        ...r, 
-        createdAt: dt,
-        items: Array.isArray(parsedItems) ? parsedItems : []
-      };
+      const parsedItems = Array.isArray(r.items) ? r.items : parseJsonSafe(r.items, []);
+      return { ...r, createdAt: dt, items: parsedItems };
     });
+
     res.json(formatted);
   } catch (err) {
     console.error('Failed to fetch transactions:', err.message);
@@ -685,12 +521,18 @@ router.get('/transactions', async (req, res) => {
 
 router.delete('/transactions/:id', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const shopId = req.user?.shopId || 'default';
     const { permanent } = req.query;
+    const filter = { id: req.params.id, $or: [{ shopId }, { shopId: null }] };
+
     if (permanent === 'true') {
-      await pool.query('DELETE FROM transactions WHERE id=? AND (shopId=? OR shopId IS NULL)', [req.params.id, shopId]);
+      await db.collection('transactions').deleteOne(filter);
     } else {
-      await pool.query('UPDATE transactions SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE id=? AND (shopId=? OR shopId IS NULL)', [req.params.id, shopId]);
+      await db.collection('transactions').updateOne(
+        filter,
+        { $set: { isDeleted: 1, deletedAt: new Date().toISOString() } }
+      );
     }
     res.json({ success: true });
   } catch (error) {
@@ -699,132 +541,216 @@ router.delete('/transactions/:id', async (req, res) => {
 });
 
 router.post('/transactions', async (req, res) => {
-  const { id, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt } = req.body;
-  
-  const connection = await pool.getConnection();
-  await connection.beginTransaction();
-  
+  const {
+    id, subtotal, taxAmount, discountAmount, totalAmount,
+    paymentMethod, customerId, items, createdAt, splitAmounts,
+    cashTendered, changeReturn
+  } = req.body;
+
   try {
-    const txCreatedAt = createdAt ? new Date(createdAt).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const txId = id || crypto.randomUUID();
+    const txCreatedAt = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString();
+    const parsedItems = Array.isArray(items) ? items : parseJsonSafe(items, []);
+    const numTotal = Number(totalAmount || 0);
 
-    // 1. Insert transaction
-    await connection.query(
-      'INSERT INTO transactions (id, shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId, items, createdAt, isDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-      [id, req.user.shopId, subtotal, taxAmount, discountAmount, totalAmount, paymentMethod, customerId || null, JSON.stringify(items), txCreatedAt]
-    );
-
-    // 2. Reduce stock for items
-    for (const item of items) {
-      await connection.query(
-        'UPDATE products SET stock = stock - ? WHERE id = ? AND shopId = ?',
-        [item.qty, item.id, req.user.shopId]
+    await pool.withTransaction(async (db, session) => {
+      await db.collection('transactions').insertOne(
+        {
+          id: txId,
+          shopId: req.user.shopId,
+          subtotal: Number(subtotal || 0),
+          taxAmount: Number(taxAmount || 0),
+          discountAmount: Number(discountAmount || 0),
+          totalAmount: numTotal,
+          paymentMethod: paymentMethod || 'cash',
+          ...(splitAmounts ? { splitAmounts } : {}),
+          ...(cashTendered !== undefined ? { cashTendered: Number(cashTendered) } : {}),
+          ...(changeReturn !== undefined ? { changeReturn: Number(changeReturn) } : {}),
+          customerId: customerId || null,
+          items: parsedItems,
+          createdAt: txCreatedAt,
+          isDeleted: 0,
+          deletedAt: null
+        },
+        { session }
       );
-    }
 
-    const loyaltyPointsEarned = Math.floor(totalAmount / 100);
+      for (const item of parsedItems) {
+        if (item.id && item.qty) {
+          await db.collection('products').updateOne(
+            { id: item.id, shopId: req.user.shopId },
+            { $inc: { stock: -Number(item.qty) } },
+            { session }
+          );
+        }
+      }
 
-    // 3. Update customer if Udhar
-    let udharAmountToAdd = 0;
-    if (paymentMethod === 'udhar') {
-      udharAmountToAdd = totalAmount;
-    } else if (paymentMethod === 'split' && req.body.splitAmounts?.udhar) {
-      udharAmountToAdd = req.body.splitAmounts.udhar;
-    }
+      const loyaltyPointsEarned = Math.floor(numTotal / 100);
+      let udharAmountToAdd = 0;
+      if (paymentMethod === 'udhar') {
+        udharAmountToAdd = numTotal;
+      } else if (paymentMethod === 'split' && splitAmounts?.udhar) {
+        udharAmountToAdd = Number(splitAmounts.udhar) || 0;
+      }
 
-    if (udharAmountToAdd > 0 && customerId) {
-      await connection.query(
-        'UPDATE customers SET balance = balance + ?, totalSpent = totalSpent + ?, visits = visits + 1, loyaltyPoints = loyaltyPoints + ? WHERE id = ? AND shopId = ?',
-        [udharAmountToAdd, totalAmount, loyaltyPointsEarned, customerId, req.user.shopId]
-      );
-      
-      // Add Udhar transaction log
-      const crypto = require('crypto');
-      await connection.query(
-        'INSERT INTO udhar_transactions (id, shopId, customerId, amount, type, notes) VALUES (?, ?, ?, ?, ?, ?)',
-        [crypto.randomUUID(), req.user.shopId, customerId, udharAmountToAdd, 'credit', `Split checkout #${id.slice(-6).toUpperCase()}`]
-      );
-    } else if (customerId) {
-      await connection.query(
-        'UPDATE customers SET totalSpent = totalSpent + ?, visits = visits + 1, loyaltyPoints = loyaltyPoints + ? WHERE id = ? AND shopId = ?',
-        [totalAmount, loyaltyPointsEarned, customerId, req.user.shopId]
-      );
-    }
-    
-    await connection.commit();
-    res.json({ success: true });
+      if (udharAmountToAdd > 0 && customerId) {
+        await db.collection('customers').updateOne(
+          { id: customerId, shopId: req.user.shopId },
+          {
+            $inc: {
+              balance: udharAmountToAdd,
+              totalSpent: numTotal,
+              visits: 1,
+              loyaltyPoints: loyaltyPointsEarned
+            }
+          },
+          { session }
+        );
+
+        await db.collection('udhar_transactions').insertOne(
+          {
+            id: crypto.randomUUID(),
+            shopId: req.user.shopId,
+            customerId,
+            amount: udharAmountToAdd,
+            type: 'credit',
+            notes: `Split checkout #${txId.slice(-6).toUpperCase()}`,
+            createdAt: txCreatedAt
+          },
+          { session }
+        );
+      } else if (customerId) {
+        await db.collection('customers').updateOne(
+          { id: customerId, shopId: req.user.shopId },
+          {
+            $inc: {
+              totalSpent: numTotal,
+              visits: 1,
+              loyaltyPoints: loyaltyPointsEarned
+            }
+          },
+          { session }
+        );
+      }
+    });
+
+    res.json({ success: true, id: txId });
   } catch (error) {
-    await connection.rollback();
+    console.error('Create Transaction Error:', error);
     res.status(500).json({ error: error.message });
-  } finally {
-    connection.release();
   }
 });
 
 // --- EXPENSES ---
 router.get('/expenses', async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM expenses WHERE shopId = ? ORDER BY date DESC', [req.user.shopId]);
-  res.json(rows);
+  try {
+    const db = await pool.getDb();
+    const rows = pool.stripMongoIds(
+      await db.collection('expenses').find({ shopId: req.user.shopId }).sort({ date: -1, createdAt: -1 }).toArray()
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/expenses', async (req, res) => {
-  const { id, category, amount, description, date } = req.body;
-  await pool.query(
-    'INSERT INTO expenses (id, shopId, category, amount, description, date, addedBy) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, req.user.shopId, category, amount, description, date, req.user.uid]
-  );
-  res.json({ success: true });
+  try {
+    const db = await pool.getDb();
+    const { id, title, category, amount, description, date, notes } = req.body;
+    const expId = id || crypto.randomUUID();
+    await db.collection('expenses').insertOne({
+      id: expId,
+      shopId: req.user.shopId,
+      title: title || category || 'Expense',
+      category: category || 'Other',
+      amount: Number(amount || 0),
+      description: description || '',
+      date: date || new Date().toISOString().slice(0, 10),
+      notes: notes || null,
+      addedBy: req.user.uid,
+      createdAt: new Date().toISOString()
+    });
+    res.json({ success: true, id: expId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/expenses/:id', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    await db.collection('expenses').deleteOne({ id: req.params.id, shopId: req.user.shopId });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- UDHAR TRANSACTIONS ---
 router.get('/udhar', async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM udhar_transactions WHERE shopId = ? ORDER BY createdAt DESC', [req.user.shopId]);
-  const formatted = rows.map(r => {
-    let dt = r.createdAt;
-    if (dt instanceof Date) {
-      dt = dt.toISOString();
-    } else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
-      dt = dt.replace(' ', 'T') + 'Z';
-    }
-    return { ...r, createdAt: dt };
-  });
-  res.json(formatted);
+  try {
+    const db = await pool.getDb();
+    const rows = pool.stripMongoIds(
+      await db.collection('udhar_transactions').find({ shopId: req.user.shopId }).sort({ createdAt: -1 }).toArray()
+    );
+    const formatted = rows.map((r) => {
+      let dt = r.createdAt;
+      if (dt instanceof Date) dt = dt.toISOString();
+      else if (typeof dt === 'string' && !dt.includes('Z') && !dt.includes('+')) {
+        dt = dt.replace(' ', 'T') + 'Z';
+      }
+      return { ...r, createdAt: dt };
+    });
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/udhar', async (req, res) => {
   const { id, customerId, amount, type, notes } = req.body;
-  
-  const connection = await pool.getConnection();
-  await connection.beginTransaction();
   try {
-    await connection.query(
-      'INSERT INTO udhar_transactions (id, shopId, customerId, amount, type, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, customerId, amount, type, notes]
-    );
+    const udharId = id || crypto.randomUUID();
+    const numAmt = Number(amount || 0);
+    const balanceDelta = type === 'payment' ? -numAmt : numAmt;
 
-    if (type === 'payment') {
-      await connection.query('UPDATE customers SET balance = balance - ? WHERE id = ? AND shopId = ?', [amount, customerId, req.user.shopId]);
-    } else {
-      await connection.query('UPDATE customers SET balance = balance + ? WHERE id = ? AND shopId = ?', [amount, customerId, req.user.shopId]);
-    }
-    
-    await connection.commit();
-    res.json({ success: true });
+    await pool.withTransaction(async (db, session) => {
+      await db.collection('udhar_transactions').insertOne(
+        {
+          id: udharId,
+          shopId: req.user.shopId,
+          customerId,
+          amount: numAmt,
+          type,
+          notes: notes || '',
+          createdAt: new Date().toISOString()
+        },
+        { session }
+      );
+
+      await db.collection('customers').updateOne(
+        { id: customerId, shopId: req.user.shopId },
+        { $inc: { balance: balanceDelta } },
+        { session }
+      );
+    });
+
+    res.json({ success: true, id: udharId });
   } catch (err) {
-    await connection.rollback();
     res.status(500).json({ error: err.message });
-  } finally {
-    connection.release();
   }
 });
 
 // --- SHOPS ---
 router.get('/shops', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [req.user.shopId]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Shop not found' });
-    const shop = rows[0];
+    const db = await pool.getDb();
+    const shop = pool.stripMongoId(await db.collection('shops').findOne({ shopId: req.user.shopId }));
+    if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
     if (typeof shop.settings === 'string') {
-      try { shop.settings = JSON.parse(shop.settings); } catch {}
+      shop.settings = parseJsonSafe(shop.settings, {});
     }
     res.json(shop);
   } catch (err) {
@@ -833,85 +759,88 @@ router.get('/shops', async (req, res) => {
 });
 
 router.put('/shops', async (req, res) => {
-  const { 
+  const {
     name, ownerName, phone, email, address, upiId, publicUrl, settings, gstNumber,
     receiptHeader, receiptFooter, receiptPaperSize, fssaiNumber, invoiceTerms
   } = req.body;
-  try {
-    const serializedSettings = typeof settings === 'object' && settings !== null 
-      ? JSON.stringify(settings) 
-      : (settings || null);
 
-    const [existing] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [req.user.shopId]);
-    if (existing.length === 0) {
-      await pool.query(
-        'INSERT INTO shops (shopId, name, ownerName, phone, email, address, gstNumber, upiId, publicUrl, settings, receiptHeader, receiptFooter, receiptPaperSize, fssaiNumber, invoiceTerms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          req.user.shopId,
-          name || 'My Kirana Store',
-          ownerName || '',
-          phone || null,
-          email || null,
-          address || null,
-          gstNumber || null,
-          upiId || null,
-          publicUrl || null,
-          serializedSettings,
-          receiptHeader || null,
-          receiptFooter || null,
-          receiptPaperSize || 'thermal',
-          fssaiNumber || null,
-          invoiceTerms || null
-        ]
-      );
+  try {
+    const db = await pool.getDb();
+    const existing = await db.collection('shops').findOne({ shopId: req.user.shopId });
+
+    const parsedSettings = typeof settings === 'string' ? parseJsonSafe(settings, {}) : settings;
+
+    if (!existing) {
+      await db.collection('shops').insertOne({
+        shopId: req.user.shopId,
+        name: name || 'My Kirana Store',
+        ownerName: ownerName || '',
+        phone: phone || null,
+        email: email || null,
+        address: address || null,
+        gstNumber: gstNumber || null,
+        upiId: upiId || null,
+        publicUrl: publicUrl || null,
+        plan: 'free',
+        settings: parsedSettings || { invoicePrefix: 'INV', currency: '₹', taxEnabled: true },
+        receiptHeader: receiptHeader || null,
+        receiptFooter: receiptFooter || null,
+        receiptPaperSize: receiptPaperSize || 'thermal',
+        fssaiNumber: fssaiNumber || null,
+        invoiceTerms: invoiceTerms || null,
+        createdAt: new Date().toISOString()
+      });
     } else {
-      const sh = existing[0];
-      await pool.query(
-        'UPDATE shops SET name=?, ownerName=?, phone=?, email=?, address=?, gstNumber=?, upiId=?, publicUrl=?, settings=?, receiptHeader=?, receiptFooter=?, receiptPaperSize=?, fssaiNumber=?, invoiceTerms=? WHERE shopId=?',
-        [
-          name !== undefined ? name : sh.name,
-          ownerName !== undefined ? ownerName : sh.ownerName,
-          phone !== undefined ? phone : sh.phone,
-          email !== undefined ? email : sh.email,
-          address !== undefined ? address : sh.address,
-          gstNumber !== undefined ? (gstNumber || null) : sh.gstNumber,
-          upiId !== undefined ? upiId : sh.upiId,
-          publicUrl !== undefined ? (publicUrl || null) : sh.publicUrl,
-          serializedSettings !== undefined ? serializedSettings : sh.settings,
-          receiptHeader !== undefined ? receiptHeader : sh.receiptHeader,
-          receiptFooter !== undefined ? receiptFooter : sh.receiptFooter,
-          receiptPaperSize !== undefined ? receiptPaperSize : sh.receiptPaperSize,
-          fssaiNumber !== undefined ? fssaiNumber : sh.fssaiNumber,
-          invoiceTerms !== undefined ? invoiceTerms : sh.invoiceTerms,
-          req.user.shopId
-        ]
+      await db.collection('shops').updateOne(
+        { shopId: req.user.shopId },
+        {
+          $set: {
+            name: name !== undefined ? name : existing.name,
+            ownerName: ownerName !== undefined ? ownerName : existing.ownerName,
+            phone: phone !== undefined ? phone : existing.phone,
+            email: email !== undefined ? email : existing.email,
+            address: address !== undefined ? address : existing.address,
+            gstNumber: gstNumber !== undefined ? (gstNumber || null) : existing.gstNumber,
+            upiId: upiId !== undefined ? upiId : existing.upiId,
+            publicUrl: publicUrl !== undefined ? (publicUrl || null) : existing.publicUrl,
+            settings: parsedSettings !== undefined ? parsedSettings : existing.settings,
+            receiptHeader: receiptHeader !== undefined ? receiptHeader : existing.receiptHeader,
+            receiptFooter: receiptFooter !== undefined ? receiptFooter : existing.receiptFooter,
+            receiptPaperSize: receiptPaperSize !== undefined ? receiptPaperSize : existing.receiptPaperSize,
+            fssaiNumber: fssaiNumber !== undefined ? fssaiNumber : existing.fssaiNumber,
+            invoiceTerms: invoiceTerms !== undefined ? invoiceTerms : existing.invoiceTerms
+          }
+        }
       );
     }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-
 router.put('/shops/plan', async (req, res) => {
   const { plan, planExpiry, couponCode } = req.body;
   try {
+    const db = await pool.getDb();
     const p = (plan || 'free').toLowerCase();
     let normalizedPlan = 'free';
     if (p.includes('ultra')) normalizedPlan = 'ultra_pro';
     else if (p.includes('pro')) normalizedPlan = 'pro';
     else if (p.includes('plus') || p.includes('growth')) normalizedPlan = 'plus';
-    else normalizedPlan = 'free';
 
-    await pool.query(
-      'UPDATE shops SET plan=?, planExpiry=? WHERE shopId=?',
-      [normalizedPlan, planExpiry ? new Date(planExpiry) : null, req.user.shopId]
+    await db.collection('shops').updateOne(
+      { shopId: req.user.shopId },
+      { $set: { plan: normalizedPlan, planExpiry: planExpiry ? new Date(planExpiry).toISOString() : null } }
     );
 
-    // Increment coupon usage if provided
     if (couponCode) {
-      await pool.query('UPDATE promo_codes SET usedCount = usedCount + 1 WHERE UPPER(code) = ?', [couponCode.toUpperCase()]).catch(() => {});
+      const codeRegex = new RegExp(`^${pool.escapeRegex(String(couponCode).trim().toUpperCase())}$`, 'i');
+      await db.collection('promo_codes').updateOne(
+        { code: { $regex: codeRegex } },
+        { $inc: { usedCount: 1 } }
+      ).catch(() => {});
     }
 
     res.json({ success: true, plan: normalizedPlan });
@@ -920,18 +849,20 @@ router.put('/shops/plan', async (req, res) => {
   }
 });
 
-// --- STAFF MANAGEMENT ---
+// --- STAFF USERS (LOGIN ACCOUNTS & PERMISSIONS) ---
 router.get('/staff', async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      'SELECT uid, email, displayName, role, permissions FROM users WHERE shopId = ? ORDER BY role ASC, displayName ASC',
-      [req.user.shopId]
-    );
-    const parsed = (rows || []).map(r => {
+    const db = await pool.getDb();
+    const rows = await db.collection('users')
+      .find({ shopId: req.user.shopId }, { projection: { _id: 0, uid: 1, email: 1, displayName: 1, role: 1, permissions: 1 } })
+      .sort({ role: 1, displayName: 1 })
+      .toArray();
+
+    const parsed = rows.map((r) => {
       let perms = [];
       if (Array.isArray(r.permissions)) perms = r.permissions;
       else if (typeof r.permissions === 'string' && r.permissions.trim()) {
-        try { perms = JSON.parse(r.permissions); } catch(e) {}
+        perms = parseJsonSafe(r.permissions, []);
       }
       return { ...r, permissions: perms };
     });
@@ -948,19 +879,13 @@ router.put('/staff/:uid/permissions', async (req, res) => {
 
   const targetUid = req.params.uid;
   const permissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
-  const permString = JSON.stringify(permissions);
 
   try {
-    await pool.query(
-      'UPDATE users SET permissions = ? WHERE uid = ? AND shopId = ?',
-      [permString, targetUid, req.user.shopId]
+    const db = await pool.getDb();
+    await db.collection('users').updateOne(
+      { uid: targetUid, shopId: req.user.shopId },
+      { $set: { permissions } }
     );
-
-    try {
-      const supabase = require('../supabase');
-      await supabase.from('users').update({ permissions }).eq('uid', targetUid);
-    } catch (_sbErr) {}
-
     res.json({ success: true, permissions });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -976,7 +901,8 @@ router.delete('/staff/:uid', async (req, res) => {
   }
 
   try {
-    await pool.query('DELETE FROM users WHERE uid = ? AND shopId = ?', [req.params.uid, req.user.shopId]);
+    const db = await pool.getDb();
+    await db.collection('users').deleteOne({ uid: req.params.uid, shopId: req.user.shopId });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -986,17 +912,39 @@ router.delete('/staff/:uid', async (req, res) => {
 // Customer full passbook/ledger statement
 router.get('/customers/:id/ledger', async (req, res) => {
   try {
-    const [sales] = await pool.query(
-      "SELECT id, totalAmount as amount, paymentMethod, items, createdAt, 'sale' as entryType FROM transactions WHERE customerId = ? AND shopId = ? ORDER BY createdAt DESC",
-      [req.params.id, req.user.shopId]
+    const db = await pool.getDb();
+    const [salesDocs, udharDocs] = await Promise.all([
+      db.collection('transactions')
+        .find({ customerId: req.params.id, shopId: req.user.shopId, isDeleted: { $ne: 1 } })
+        .sort({ createdAt: -1 })
+        .toArray(),
+      db.collection('udhar_transactions')
+        .find({ customerId: req.params.id, shopId: req.user.shopId })
+        .sort({ createdAt: -1 })
+        .toArray()
+    ]);
+
+    const sales = salesDocs.map((t) => ({
+      id: t.id,
+      amount: Number(t.totalAmount || 0),
+      paymentMethod: t.paymentMethod,
+      items: Array.isArray(t.items) ? t.items : parseJsonSafe(t.items, []),
+      createdAt: t.createdAt,
+      entryType: 'sale'
+    }));
+
+    const udhars = udharDocs.map((u) => ({
+      id: u.id,
+      amount: Number(u.amount || 0),
+      type: u.type,
+      notes: u.notes,
+      createdAt: u.createdAt,
+      entryType: 'udhar'
+    }));
+
+    const combined = [...sales, ...udhars].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-    const [udhars] = await pool.query(
-      "SELECT id, amount, type, notes, createdAt, 'udhar' as entryType FROM udhar_transactions WHERE customerId = ? AND shopId = ? ORDER BY createdAt DESC",
-      [req.params.id, req.user.shopId]
-    );
-    
-    // Combine and sort by date descending
-    const combined = [...sales, ...udhars].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     res.json(combined);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1006,7 +954,10 @@ router.get('/customers/:id/ledger', async (req, res) => {
 // --- SUPPLIERS ---
 router.get('/suppliers', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM suppliers WHERE shopId = ? ORDER BY name ASC', [req.user.shopId]);
+    const db = await pool.getDb();
+    const rows = pool.stripMongoIds(
+      await db.collection('suppliers').find({ shopId: req.user.shopId }).sort({ name: 1 }).toArray()
+    );
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1014,13 +965,23 @@ router.get('/suppliers', async (req, res) => {
 });
 
 router.post('/suppliers', async (req, res) => {
-  const { id, name, phone, address, gstNumber, balance } = req.body;
+  const { id, name, phone, address, gstNumber, balance, contactPerson, email, paymentTerms } = req.body;
   try {
-    const supplierId = id || require('crypto').randomUUID();
-    await pool.query(
-      'INSERT INTO suppliers (id, shopId, name, phone, address, gstNumber, balance) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [supplierId, req.user.shopId, name, phone || null, address || null, gstNumber || null, balance || 0]
-    );
+    const db = await pool.getDb();
+    const supplierId = id || crypto.randomUUID();
+    await db.collection('suppliers').insertOne({
+      id: supplierId,
+      shopId: req.user.shopId,
+      name: name || '',
+      contactPerson: contactPerson || null,
+      phone: phone || null,
+      email: email || null,
+      address: address || null,
+      gstNumber: gstNumber || null,
+      paymentTerms: paymentTerms || null,
+      balance: Number(balance || 0),
+      createdAt: new Date().toISOString()
+    });
     res.json({ success: true, id: supplierId });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1030,9 +991,10 @@ router.post('/suppliers', async (req, res) => {
 router.put('/suppliers/:id', async (req, res) => {
   const { name, phone, address, gstNumber, balance } = req.body;
   try {
-    await pool.query(
-      'UPDATE suppliers SET name=?, phone=?, address=?, gstNumber=?, balance=? WHERE id=? AND shopId=?',
-      [name, phone, address, gstNumber, balance, req.params.id, req.user.shopId]
+    const db = await pool.getDb();
+    await db.collection('suppliers').updateOne(
+      { id: req.params.id, shopId: req.user.shopId },
+      { $set: { name, phone, address, gstNumber, balance: Number(balance || 0) } }
     );
     res.json({ success: true });
   } catch (error) {
@@ -1042,7 +1004,8 @@ router.put('/suppliers/:id', async (req, res) => {
 
 router.delete('/suppliers/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM suppliers WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
+    const db = await pool.getDb();
+    await db.collection('suppliers').deleteOne({ id: req.params.id, shopId: req.user.shopId });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1052,15 +1015,23 @@ router.delete('/suppliers/:id', async (req, res) => {
 // --- PURCHASES (STOCK-IN) ---
 router.get('/purchases', async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT p.*, s.name as supplierName, s.phone as supplierPhone 
-       FROM purchases p 
-       LEFT JOIN suppliers s ON p.supplierId = s.id 
-       WHERE p.shopId = ? 
-       ORDER BY p.date DESC 
-       LIMIT 100`,
-      [req.user.shopId]
-    );
+    const db = await pool.getDb();
+    const [purchases, suppliers] = await Promise.all([
+      db.collection('purchases').find({ shopId: req.user.shopId }).sort({ date: -1, createdAt: -1 }).limit(100).toArray(),
+      db.collection('suppliers').find({ shopId: req.user.shopId }, { projection: { _id: 0, id: 1, name: 1, phone: 1 } }).toArray()
+    ]);
+
+    const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
+    const rows = purchases.map((p) => {
+      const clean = pool.stripMongoId(p);
+      const sup = clean.supplierId ? supplierMap.get(clean.supplierId) : null;
+      return {
+        ...clean,
+        items: Array.isArray(clean.items) ? clean.items : parseJsonSafe(clean.items, []),
+        supplierName: sup?.name || null,
+        supplierPhone: sup?.phone || null
+      };
+    });
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1068,73 +1039,69 @@ router.get('/purchases', async (req, res) => {
 });
 
 router.post('/purchases', async (req, res) => {
-  const { id, supplierId, invoiceNumber, date, totalAmount, paidAmount, paymentStatus, items, notes } = req.body;
-  
-  const connection = await pool.getConnection();
-  await connection.beginTransaction();
-
+  const { id, supplierId, invoiceNumber, date, totalAmount, paidAmount, paymentStatus, paymentMethod, items, notes } = req.body;
   try {
-    const purchaseId = id || require('crypto').randomUUID();
+    const purchaseId = id || crypto.randomUUID();
+    const parsedItems = Array.isArray(items) ? items : parseJsonSafe(items, []);
+    const purchaseDate = date ? new Date(date).toISOString() : new Date().toISOString();
 
-    // 1. Insert Purchase
-    await connection.query(
-      'INSERT INTO purchases (id, shopId, supplierId, invoiceNumber, date, totalAmount, paidAmount, paymentStatus, items, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        purchaseId, 
-        req.user.shopId, 
-        supplierId || null, 
-        invoiceNumber || '', 
-        date || new Date(), 
-        totalAmount || 0, 
-        paidAmount || 0, 
-        paymentStatus || 'paid', 
-        JSON.stringify(items || []), 
-        notes || ''
-      ]
-    );
+    await pool.withTransaction(async (db, session) => {
+      await db.collection('purchases').insertOne(
+        {
+          id: purchaseId,
+          shopId: req.user.shopId,
+          supplierId: supplierId || null,
+          invoiceNumber: invoiceNumber || '',
+          date: purchaseDate,
+          purchaseDate: purchaseDate,
+          totalAmount: Number(totalAmount || 0),
+          paidAmount: Number(paidAmount || 0),
+          paymentStatus: paymentStatus || 'paid',
+          paymentMethod: paymentMethod || null,
+          items: parsedItems,
+          notes: notes || '',
+          createdAt: new Date().toISOString()
+        },
+        { session }
+      );
 
-    // 2. Increment stock in products and update purchase price
-    if (Array.isArray(items)) {
-      for (const item of items) {
+      for (const item of parsedItems) {
         if (item.productId && item.qty) {
+          const updateOps = { $inc: { stock: Number(item.qty) } };
           if (item.purchasePrice) {
-            await connection.query(
-              'UPDATE products SET stock = stock + ?, purchasePrice = ? WHERE id = ? AND shopId = ?',
-              [Number(item.qty), Number(item.purchasePrice), item.productId, req.user.shopId]
-            );
-          } else {
-            await connection.query(
-              'UPDATE products SET stock = stock + ? WHERE id = ? AND shopId = ?',
-              [Number(item.qty), item.productId, req.user.shopId]
-            );
+            updateOps.$set = { purchasePrice: Number(item.purchasePrice) };
           }
+          await db.collection('products').updateOne(
+            { id: item.productId, shopId: req.user.shopId },
+            updateOps,
+            { session }
+          );
         }
       }
-    }
 
-    // 3. Update supplier balance if there is unpaid amount
-    const unpaid = (Number(totalAmount) || 0) - (Number(paidAmount) || 0);
-    if (supplierId && unpaid > 0) {
-      await connection.query(
-        'UPDATE suppliers SET balance = balance + ? WHERE id = ? AND shopId = ?',
-        [unpaid, supplierId, req.user.shopId]
-      );
-    }
+      const unpaid = Number(totalAmount || 0) - Number(paidAmount || 0);
+      if (supplierId && unpaid > 0) {
+        await db.collection('suppliers').updateOne(
+          { id: supplierId, shopId: req.user.shopId },
+          { $inc: { balance: unpaid } },
+          { session }
+        );
+      }
+    });
 
-    await connection.commit();
     res.json({ success: true, id: purchaseId });
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ error: error.message });
-  } finally {
-    connection.release();
   }
 });
 
 // --- STAFF MANAGEMENT ---
 router.get('/staff-members', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM staff WHERE shopId = ? ORDER BY createdAt DESC', [req.user.shopId]);
+    const db = await pool.getDb();
+    const rows = pool.stripMongoIds(
+      await db.collection('staff').find({ shopId: req.user.shopId }).sort({ createdAt: -1 }).toArray()
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1143,13 +1110,22 @@ router.get('/staff-members', async (req, res) => {
 
 router.post('/staff-members', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { id, name, phone, role, salaryType, salary, joinDate, address, status } = req.body;
-    const crypto = require('crypto');
     const staffId = id || crypto.randomUUID();
-    await pool.query(
-      'INSERT INTO staff (id, shopId, name, phone, role, salaryType, salary, joinDate, address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [staffId, req.user.shopId, name, phone || null, role || 'Helper', salaryType || 'monthly', salary || 0, joinDate || null, address || null, status || 'active']
-    );
+    await db.collection('staff').insertOne({
+      id: staffId,
+      shopId: req.user.shopId,
+      name: name || '',
+      phone: phone || null,
+      role: role || 'Helper',
+      salaryType: salaryType || 'monthly',
+      salary: Number(salary || 0),
+      joinDate: joinDate || null,
+      address: address || null,
+      status: status || 'active',
+      createdAt: new Date().toISOString()
+    });
     res.json({ success: true, id: staffId });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1158,10 +1134,22 @@ router.post('/staff-members', async (req, res) => {
 
 router.put('/staff-members/:id', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { name, phone, role, salaryType, salary, joinDate, address, status } = req.body;
-    await pool.query(
-      'UPDATE staff SET name=?, phone=?, role=?, salaryType=?, salary=?, joinDate=?, address=?, status=? WHERE id=? AND shopId=?',
-      [name, phone || null, role || 'Helper', salaryType || 'monthly', salary || 0, joinDate || null, address || null, status || 'active', req.params.id, req.user.shopId]
+    await db.collection('staff').updateOne(
+      { id: req.params.id, shopId: req.user.shopId },
+      {
+        $set: {
+          name,
+          phone: phone || null,
+          role: role || 'Helper',
+          salaryType: salaryType || 'monthly',
+          salary: Number(salary || 0),
+          joinDate: joinDate || null,
+          address: address || null,
+          status: status || 'active'
+        }
+      }
     );
     res.json({ success: true });
   } catch (err) {
@@ -1171,9 +1159,12 @@ router.put('/staff-members/:id', async (req, res) => {
 
 router.delete('/staff-members/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM staff WHERE id=? AND shopId=?', [req.params.id, req.user.shopId]);
-    await pool.query('DELETE FROM staff_attendance WHERE staffId=? AND shopId=?', [req.params.id, req.user.shopId]);
-    await pool.query('DELETE FROM staff_salary_payments WHERE staffId=? AND shopId=?', [req.params.id, req.user.shopId]);
+    const db = await pool.getDb();
+    await Promise.all([
+      db.collection('staff').deleteOne({ id: req.params.id, shopId: req.user.shopId }),
+      db.collection('staff_attendance').deleteMany({ staffId: req.params.id, shopId: req.user.shopId }),
+      db.collection('staff_salary_payments').deleteMany({ staffId: req.params.id, shopId: req.user.shopId })
+    ]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1183,25 +1174,22 @@ router.delete('/staff-members/:id', async (req, res) => {
 // --- STAFF ATTENDANCE ---
 router.get('/staff-attendance', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { month, date, staffId } = req.query;
-    let query = 'SELECT * FROM staff_attendance WHERE shopId = ?';
-    const params = [req.user.shopId];
+    const filter = { shopId: req.user.shopId };
 
     if (date) {
-      query += ' AND date = ?';
-      params.push(date);
+      filter.date = String(date);
     } else if (month) {
-      query += ' AND date LIKE ?';
-      params.push(`${month}%`);
+      filter.date = { $regex: new RegExp(`^${pool.escapeRegex(String(month))}`) };
     }
-
     if (staffId) {
-      query += ' AND staffId = ?';
-      params.push(staffId);
+      filter.staffId = String(staffId);
     }
 
-    query += ' ORDER BY date DESC, createdAt DESC';
-    const [rows] = await pool.query(query, params);
+    const rows = pool.stripMongoIds(
+      await db.collection('staff_attendance').find(filter).sort({ date: -1, createdAt: -1 }).toArray()
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1210,27 +1198,33 @@ router.get('/staff-attendance', async (req, res) => {
 
 router.post('/staff-attendance', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { records } = req.body;
-    const crypto = require('crypto');
     const items = Array.isArray(records) ? records : [req.body];
 
     for (const item of items) {
       if (!item.staffId || !item.date) continue;
-      const [existing] = await pool.query(
-        'SELECT id FROM staff_attendance WHERE shopId = ? AND staffId = ? AND date = ?',
-        [req.user.shopId, item.staffId, item.date]
-      );
+      const existing = await db.collection('staff_attendance').findOne({
+        shopId: req.user.shopId,
+        staffId: item.staffId,
+        date: item.date
+      });
 
-      if (existing.length > 0) {
-        await pool.query(
-          'UPDATE staff_attendance SET status = ?, notes = ? WHERE id = ?',
-          [item.status || 'present', item.notes || null, existing[0].id]
+      if (existing) {
+        await db.collection('staff_attendance').updateOne(
+          { id: existing.id },
+          { $set: { status: item.status || 'present', notes: item.notes || null } }
         );
       } else {
-        await pool.query(
-          'INSERT INTO staff_attendance (id, shopId, staffId, date, status, notes) VALUES (?, ?, ?, ?, ?, ?)',
-          [crypto.randomUUID(), req.user.shopId, item.staffId, item.date, item.status || 'present', item.notes || null]
-        );
+        await db.collection('staff_attendance').insertOne({
+          id: crypto.randomUUID(),
+          shopId: req.user.shopId,
+          staffId: item.staffId,
+          date: item.date,
+          status: item.status || 'present',
+          notes: item.notes || null,
+          createdAt: new Date().toISOString()
+        });
       }
     }
 
@@ -1243,21 +1237,15 @@ router.post('/staff-attendance', async (req, res) => {
 // --- STAFF SALARY & ADVANCE PAYMENTS ---
 router.get('/staff-salary-payments', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { staffId, monthYear } = req.query;
-    let query = 'SELECT * FROM staff_salary_payments WHERE shopId = ?';
-    const params = [req.user.shopId];
+    const filter = { shopId: req.user.shopId };
+    if (staffId) filter.staffId = String(staffId);
+    if (monthYear) filter.monthYear = String(monthYear);
 
-    if (staffId) {
-      query += ' AND staffId = ?';
-      params.push(staffId);
-    }
-    if (monthYear) {
-      query += ' AND monthYear = ?';
-      params.push(monthYear);
-    }
-
-    query += ' ORDER BY paymentDate DESC, createdAt DESC';
-    const [rows] = await pool.query(query, params);
+    const rows = pool.stripMongoIds(
+      await db.collection('staff_salary_payments').find(filter).sort({ paymentDate: -1, createdAt: -1 }).toArray()
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1266,25 +1254,39 @@ router.get('/staff-salary-payments', async (req, res) => {
 
 router.post('/staff-salary-payments', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const { staffId, amount, type, monthYear, paymentDate, paymentMethod, notes } = req.body;
-    const crypto = require('crypto');
     const id = crypto.randomUUID();
     const cleanDate = paymentDate || new Date().toISOString().slice(0, 10);
 
-    await pool.query(
-      'INSERT INTO staff_salary_payments (id, shopId, staffId, amount, type, monthYear, paymentDate, paymentMethod, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, req.user.shopId, staffId, amount || 0, type || 'salary', monthYear || cleanDate.slice(0, 7), cleanDate, paymentMethod || 'Cash', notes || null]
-    );
+    await db.collection('staff_salary_payments').insertOne({
+      id,
+      shopId: req.user.shopId,
+      staffId,
+      amount: Number(amount || 0),
+      type: type || 'salary',
+      monthYear: monthYear || cleanDate.slice(0, 7),
+      paymentDate: cleanDate,
+      paymentMethod: paymentMethod || 'Cash',
+      notes: notes || null,
+      createdAt: new Date().toISOString()
+    });
 
-    // Auto-record under Expenses as well
     if (type === 'salary' || type === 'advance') {
       try {
-        const [staffRows] = await pool.query('SELECT name FROM staff WHERE id = ?', [staffId]);
-        const staffName = staffRows[0]?.name || 'Staff';
-        await pool.query(
-          'INSERT INTO expenses (id, shopId, title, category, amount, description, date, addedBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [crypto.randomUUID(), req.user.shopId, `${type === 'advance' ? 'Advance Payout' : 'Salary Payout'} - ${staffName}`, 'Salary', amount || 0, notes || `${staffName} ${type} payout`, cleanDate, req.user.uid]
-        );
+        const staffDoc = await db.collection('staff').findOne({ id: staffId });
+        const staffName = staffDoc?.name || 'Staff';
+        await db.collection('expenses').insertOne({
+          id: crypto.randomUUID(),
+          shopId: req.user.shopId,
+          title: `${type === 'advance' ? 'Advance Payout' : 'Salary Payout'} - ${staffName}`,
+          category: 'Salary',
+          amount: Number(amount || 0),
+          description: notes || `${staffName} ${type} payout`,
+          date: cleanDate,
+          addedBy: req.user.uid,
+          createdAt: new Date().toISOString()
+        });
       } catch (expErr) {
         console.warn('Expense auto-log warning:', expErr.message);
       }
@@ -1298,7 +1300,8 @@ router.post('/staff-salary-payments', async (req, res) => {
 
 router.delete('/staff-salary-payments/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM staff_salary_payments WHERE id = ? AND shopId = ?', [req.params.id, req.user.shopId]);
+    const db = await pool.getDb();
+    await db.collection('staff_salary_payments').deleteOne({ id: req.params.id, shopId: req.user.shopId });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1308,25 +1311,26 @@ router.delete('/staff-salary-payments/:id', async (req, res) => {
 // --- RECYCLE BIN ---
 router.get('/recycle-bin', async (req, res) => {
   try {
+    const db = await pool.getDb();
     const shopId = req.user?.shopId || 'default';
-    const [deletedProducts] = await pool.query('SELECT * FROM products WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1 ORDER BY COALESCE(deletedAt, createdAt, "") DESC', [shopId]);
-    const [deletedTransactions] = await pool.query('SELECT * FROM transactions WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1 ORDER BY COALESCE(deletedAt, createdAt, "") DESC LIMIT 200', [shopId]);
-    const [deletedCustomers] = await pool.query('SELECT * FROM customers WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1 ORDER BY COALESCE(deletedAt, createdAt, "") DESC', [shopId]);
+    const filter = { $or: [{ shopId }, { shopId: null }], isDeleted: 1 };
+
+    const [deletedProducts, deletedTransactions, deletedCustomers] = await Promise.all([
+      db.collection('products').find(filter, { projection: { _id: 0 } }).sort({ deletedAt: -1, createdAt: -1 }).toArray(),
+      db.collection('transactions').find(filter, { projection: { _id: 0 } }).sort({ deletedAt: -1, createdAt: -1 }).limit(200).toArray(),
+      db.collection('customers').find(filter, { projection: { _id: 0 } }).sort({ deletedAt: -1, createdAt: -1 }).toArray()
+    ]);
 
     res.json({
-      products: (deletedProducts || []).map(p => {
-        if (typeof p.variants === 'string') {
-          try { p.variants = JSON.parse(p.variants); } catch {}
-        }
-        return p;
-      }),
-      transactions: (deletedTransactions || []).map(t => {
-        if (typeof t.items === 'string') {
-          try { t.items = JSON.parse(t.items); } catch {}
-        }
-        return t;
-      }),
-      customers: deletedCustomers || []
+      products: deletedProducts.map((p) => ({
+        ...p,
+        variants: Array.isArray(p.variants) ? p.variants : parseJsonSafe(p.variants, [])
+      })),
+      transactions: deletedTransactions.map((t) => ({
+        ...t,
+        items: Array.isArray(t.items) ? t.items : parseJsonSafe(t.items, [])
+      })),
+      customers: deletedCustomers
     });
   } catch (err) {
     console.error('Recycle Bin list error:', err);
@@ -1337,16 +1341,20 @@ router.get('/recycle-bin', async (req, res) => {
 router.post('/recycle-bin/restore', async (req, res) => {
   const { type, id } = req.body;
   const shopId = req.user?.shopId || 'default';
+  const collectionMap = {
+    product: 'products',
+    transaction: 'transactions',
+    customer: 'customers'
+  };
+  const col = collectionMap[type];
+  if (!col) return res.status(400).json({ error: 'Invalid restore type' });
+
   try {
-    if (type === 'product') {
-      await pool.query('UPDATE products SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND (shopId = ? OR shopId IS NULL)', [id, shopId]);
-    } else if (type === 'transaction') {
-      await pool.query('UPDATE transactions SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND (shopId = ? OR shopId IS NULL)', [id, shopId]);
-    } else if (type === 'customer') {
-      await pool.query('UPDATE customers SET isDeleted = 0, deletedAt = NULL WHERE id = ? AND (shopId = ? OR shopId IS NULL)', [id, shopId]);
-    } else {
-      return res.status(400).json({ error: 'Invalid restore type' });
-    }
+    const db = await pool.getDb();
+    await db.collection(col).updateOne(
+      { id, $or: [{ shopId }, { shopId: null }] },
+      { $set: { isDeleted: 0, deletedAt: null } }
+    );
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1356,16 +1364,17 @@ router.post('/recycle-bin/restore', async (req, res) => {
 router.post('/recycle-bin/purge', async (req, res) => {
   const { type, id } = req.body;
   const shopId = req.user?.shopId || 'default';
+  const collectionMap = {
+    product: 'products',
+    transaction: 'transactions',
+    customer: 'customers'
+  };
+  const col = collectionMap[type];
+  if (!col) return res.status(400).json({ error: 'Invalid purge type' });
+
   try {
-    if (type === 'product') {
-      await pool.query('DELETE FROM products WHERE id = ? AND (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [id, shopId]);
-    } else if (type === 'transaction') {
-      await pool.query('DELETE FROM transactions WHERE id = ? AND (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [id, shopId]);
-    } else if (type === 'customer') {
-      await pool.query('DELETE FROM customers WHERE id = ? AND (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [id, shopId]);
-    } else {
-      return res.status(400).json({ error: 'Invalid purge type' });
-    }
+    const db = await pool.getDb();
+    await db.collection(col).deleteOne({ id, $or: [{ shopId }, { shopId: null }], isDeleted: 1 });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1374,10 +1383,14 @@ router.post('/recycle-bin/purge', async (req, res) => {
 
 router.post('/recycle-bin/empty', async (req, res) => {
   const shopId = req.user?.shopId || 'default';
+  const filter = { $or: [{ shopId }, { shopId: null }], isDeleted: 1 };
   try {
-    await pool.query('DELETE FROM products WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [shopId]);
-    await pool.query('DELETE FROM transactions WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [shopId]);
-    await pool.query('DELETE FROM customers WHERE (shopId = ? OR shopId IS NULL) AND isDeleted = 1', [shopId]);
+    const db = await pool.getDb();
+    await Promise.all([
+      db.collection('products').deleteMany(filter),
+      db.collection('transactions').deleteMany(filter),
+      db.collection('customers').deleteMany(filter)
+    ]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1385,4 +1398,3 @@ router.post('/recycle-bin/empty', async (req, res) => {
 });
 
 module.exports = router;
-

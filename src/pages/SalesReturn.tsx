@@ -232,7 +232,7 @@ export default function SalesReturn() {
             const currentStock = Number(targetProd.stock || 0);
             const newStock = currentStock + Number(item.returnQty);
 
-            // Update product in DB & Supabase
+            // Update product stock in MongoDB backend
             await api.products.update(targetProd.id, {
               ...targetProd,
               stock: newStock

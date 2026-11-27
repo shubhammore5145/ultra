@@ -14,7 +14,16 @@ app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-pool.testConnection().catch(e => console.warn('Vercel DB init notice:', e.message));
+// Ensure MongoDB Atlas pool is connected before handling API requests on serverless cold starts
+app.use(async (req, res, next) => {
+  try {
+    await pool.ensureConnected();
+    next();
+  } catch (e) {
+    console.warn('Vercel MongoDB init notice:', e.message);
+    next();
+  }
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superAdminRoutes);

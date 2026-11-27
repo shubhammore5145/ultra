@@ -6,48 +6,43 @@ const pool = require('../db');
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
 const MASTER_KEY = process.env.SUPERADMIN_KEY || '5145';
 
-// Whitelist of verified Super Admin email addresses
 const SUPERADMIN_IDENTIFIERS = [
   'shubham45mgm@gmail.com',
   'shubhamnmore16@gmail.com',
   'shubhamvmore12@gmail.com'
 ];
 
-// Super Admin Authorization Middleware
 const superAdminMiddleware = async (req, res, next) => {
   try {
-    // 1. Check Master Key Header or Query Param
     const rawKey = req.headers['x-superadmin-key'] || req.query.key || req.headers['x-master-key'];
-    if (rawKey) {
-      const keyStr = String(rawKey).trim();
-      if (keyStr === MASTER_KEY) {
-        req.isSuperAdmin = true;
-        return next();
-      }
+    if (rawKey && String(rawKey).trim() === MASTER_KEY) {
+      req.isSuperAdmin = true;
+      return next();
     }
 
-    // 2. Check JWT Auth Token
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        // Look up user in database
-        const [users] = await pool.query('SELECT uid, email, displayName, role FROM users WHERE uid = ?', [decoded.uid]).catch(() => [[]]);
-        const user = users?.[0] || decoded;
-        const isAuthorized = 
-          user.role === 'super_admin' ||
-          (user.email && SUPERADMIN_IDENTIFIERS.includes(user.email.toLowerCase()));
+        const db = await pool.getDb();
+        const user = await db.collection('users').findOne(
+          { uid: decoded.uid },
+          { projection: { _id: 0, uid: 1, email: 1, displayName: 1, role: 1 } }
+        );
+        const target = user || decoded;
+        const isAuthorized =
+          target.role === 'super_admin' ||
+          (target.email && SUPERADMIN_IDENTIFIERS.includes(target.email.toLowerCase()));
 
         if (isAuthorized) {
-          req.user = user;
+          req.user = target;
           req.isSuperAdmin = true;
           return next();
         }
-      } catch (e) {}
+      } catch {}
     }
 
-    // If no valid auth provided
     return res.status(401).json({ error: 'Super Admin: Unauthorized access. Valid master key or admin privileges required.' });
   } catch (err) {
     console.error('Super Admin Auth Error:', err.message);
@@ -60,75 +55,62 @@ router.use(superAdminMiddleware);
 // ── 1. GET /api/superadmin/stats ──────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
   try {
-    // Total shops
-    const [[{ totalShops }]] = await pool.query('SELECT COUNT(*) as totalShops FROM shops');
+    const db = await pool.getDb();
 
-    // Total users
-    const [[{ totalUsers }]] = await pool.query('SELECT COUNT(*) as totalUsers FROM users');
+    const [totalShops, totalUsers, totalProducts, txAgg, shopPlans] = await Promise.all([
+      db.collection('shops').countDocuments(),
+      db.collection('users').countDocuments(),
+      db.collection('products').countDocuments({ isDeleted: { $ne: 1 } }),
+      db.collection('transactions').aggregate([
+        { $match: { isDeleted: { $ne: 1 } } },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            totalSales: { $sum: { $convert: { input: '$totalAmount', to: 'double', onError: 0, onNull: 0 } } }
+          }
+        }
+      ]).toArray(),
+      db.collection('shops').find({}, { projection: { _id: 0, plan: 1, planExpiry: 1 } }).toArray()
+    ]);
 
-    // Total products
-    const [[{ totalProducts }]] = await pool.query('SELECT COUNT(*) as totalProducts FROM products');
+    const totalTransactions = Number(txAgg[0]?.count || 0);
+    const totalSalesVolume = Number(txAgg[0]?.totalSales || 0);
 
-    // Total transactions & total sales
-    let totalTransactions = 0;
-    let totalSalesVolume = 0;
-    try {
-      const [[txRes]] = await pool.query('SELECT COUNT(*) as count, COALESCE(SUM(totalAmount), 0) as totalSales FROM transactions');
-      totalTransactions = txRes?.count || 0;
-      totalSalesVolume = Number(txRes?.totalSales || 0);
-    } catch {}
+    const planCounts = { free: 0, plus: 0, pro: 0, ultra_pro: 0 };
+    const now = Date.now();
+    const in7Days = now + 7 * 86400000;
+    let expiringSoon = 0;
 
-    // Plan counts
-    const [planRows] = await pool.query(`
-      SELECT 
-        LOWER(COALESCE(plan, 'free')) as plan, 
-        COUNT(*) as count 
-      FROM shops 
-      GROUP BY LOWER(COALESCE(plan, 'free'))
-    `);
+    for (const s of shopPlans) {
+      const p = String(s.plan || 'free').toLowerCase();
+      if (p.includes('ultra')) planCounts.ultra_pro++;
+      else if (p.includes('pro')) planCounts.pro++;
+      else if (p.includes('plus')) planCounts.plus++;
+      else planCounts.free++;
 
-    const planCounts = {
-      free: 0,
-      plus: 0,
-      pro: 0,
-      ultra_pro: 0
-    };
-
-    planRows.forEach(r => {
-      const p = r.plan || 'free';
-      if (p.includes('ultra')) planCounts.ultra_pro += Number(r.count);
-      else if (p.includes('pro')) planCounts.pro += Number(r.count);
-      else if (p.includes('plus')) planCounts.plus += Number(r.count);
-      else planCounts.free += Number(r.count);
-    });
+      if (s.planExpiry) {
+        const expMs = new Date(s.planExpiry).getTime();
+        if (!isNaN(expMs) && expMs > now && expMs <= in7Days) {
+          expiringSoon++;
+        }
+      }
+    }
 
     const activeSubscriptions = planCounts.plus + planCounts.pro + planCounts.ultra_pro;
-
-    // Estimated Annualized / Monthly Revenue
-    // Plus: ₹299/mo, Pro: ₹499/mo, Ultra: ₹4,999/yr
-    const estimatedMonthlyRevenue = (planCounts.plus * 299) + (planCounts.pro * 499) + Math.round((planCounts.ultra_pro * 4999) / 12);
-    const estimatedAnnualRevenue = (planCounts.plus * 299 * 12) + (planCounts.pro * 499 * 12) + (planCounts.ultra_pro * 4999);
-
-    // Expiring within 7 days
-    const nowIso = new Date().toISOString();
-    const in7DaysIso = new Date(Date.now() + 7 * 86400000).toISOString();
-    let expiringSoon = 0;
-    try {
-      const [expiringSoonRows] = await pool.query(
-        'SELECT COUNT(*) as count FROM shops WHERE planExpiry IS NOT NULL AND planExpiry > ? AND planExpiry <= ?',
-        [nowIso, in7DaysIso]
-      );
-      expiringSoon = expiringSoonRows[0]?.count || 0;
-    } catch {}
+    const estimatedMonthlyRevenue =
+      (planCounts.plus * 299) + (planCounts.pro * 499) + Math.round((planCounts.ultra_pro * 4999) / 12);
+    const estimatedAnnualRevenue =
+      (planCounts.plus * 299 * 12) + (planCounts.pro * 499 * 12) + (planCounts.ultra_pro * 4999);
 
     res.json({
       success: true,
       stats: {
-        totalShops: Number(totalShops),
-        totalUsers: Number(totalUsers),
-        totalProducts: Number(totalProducts),
-        totalTransactions: Number(totalTransactions),
-        totalSalesVolume: Number(totalSalesVolume),
+        totalShops,
+        totalUsers,
+        totalProducts,
+        totalTransactions,
+        totalSalesVolume,
         planCounts,
         activeSubscriptions,
         estimatedMonthlyRevenue,
@@ -145,72 +127,46 @@ router.get('/stats', async (req, res) => {
 // ── 2. GET /api/superadmin/shops ──────────────────────────────────────────────
 router.get('/shops', async (req, res) => {
   try {
-    const query = `
-      SELECT 
-        s.shopId,
-        s.name as shopName,
-        s.ownerName,
-        s.phone,
-        s.email,
-        s.address,
-        s.gstNumber,
-        s.upiId,
-        s.plan,
-        s.planExpiry,
-        s.createdAt,
-        (SELECT COUNT(*) FROM products p WHERE p.shopId = s.shopId) as productCount,
-        (SELECT COUNT(*) FROM users u WHERE u.shopId = s.shopId) as userCount,
-        (SELECT COUNT(*) FROM transactions t WHERE t.shopId = s.shopId) as transactionCount,
-        (SELECT COALESCE(SUM(totalAmount), 0) FROM transactions t WHERE t.shopId = s.shopId) as totalSalesVolume
-      FROM shops s
-      ORDER BY productCount DESC, totalSalesVolume DESC, s.createdAt DESC
-    `;
+    const db = await pool.getDb();
 
-    let [shops] = await pool.query(query).catch(e => {
-      console.warn('Shops SQL query warning:', e.message);
-      return [[]];
-    });
-
-    // Supabase fallback: if local DB has 0 shops or missed shops, fetch directly from Supabase
-    if (!shops || shops.length === 0) {
-      try {
-        const { supabase } = require('../supabase');
-        const { data: sbShops } = await supabase.from('shops').select('*').order('createdAt', { ascending: false });
-        if (sbShops && sbShops.length > 0) {
-          shops = sbShops.map(s => ({
-            shopId: s.shopId,
-            shopName: s.name,
-            ownerName: s.ownerName,
-            phone: s.phone,
-            email: s.email,
-            address: s.address,
-            gstNumber: s.gstNumber,
-            upiId: s.upiId,
-            plan: s.plan,
-            planExpiry: s.planExpiry,
-            createdAt: s.createdAt,
-            productCount: 0,
-            userCount: 1,
-            transactionCount: 0,
-            totalSalesVolume: 0
-          }));
+    const [shops, prodCounts, userCounts, txCounts] = await Promise.all([
+      db.collection('shops').find({}, { projection: { _id: 0 } }).toArray(),
+      db.collection('products').aggregate([
+        { $match: { isDeleted: { $ne: 1 } } },
+        { $group: { _id: '$shopId', count: { $sum: 1 } } }
+      ]).toArray(),
+      db.collection('users').aggregate([
+        { $group: { _id: '$shopId', count: { $sum: 1 } } }
+      ]).toArray(),
+      db.collection('transactions').aggregate([
+        { $match: { isDeleted: { $ne: 1 } } },
+        {
+          $group: {
+            _id: '$shopId',
+            count: { $sum: 1 },
+            volume: { $sum: { $convert: { input: '$totalAmount', to: 'double', onError: 0, onNull: 0 } } }
+          }
         }
-      } catch (sbErr) {
-        console.warn('Super Admin Supabase direct fallback notice:', sbErr.message);
-      }
-    }
+      ]).toArray()
+    ]);
 
-    // Format expiry and status
-    const formattedShops = (shops || []).map(shop => {
-      const now = new Date();
-      const expiry = shop.planExpiry ? new Date(shop.planExpiry) : null;
+    const prodMap = new Map(prodCounts.map((r) => [r._id, Number(r.count || 0)]));
+    const userMap = new Map(userCounts.map((r) => [r._id, Number(r.count || 0)]));
+    const txMap = new Map(txCounts.map((r) => [r._id, { count: Number(r.count || 0), volume: Number(r.volume || 0) }]));
+
+    const now = new Date();
+    const formattedShops = shops.map((s) => {
+      const txStats = txMap.get(s.shopId) || { count: 0, volume: 0 };
+      const productCount = prodMap.get(s.shopId) || 0;
+      const userCount = userMap.get(s.shopId) || 0;
+
+      const expiry = s.planExpiry ? new Date(s.planExpiry) : null;
       let status = 'free';
-
-      const planName = (shop.plan || 'free').toLowerCase();
+      const planName = (s.plan || 'free').toLowerCase();
       const isPaid = planName === 'pro' || planName === 'ultra_pro' || planName === 'plus';
 
       if (isPaid) {
-        if (!expiry) {
+        if (!expiry || isNaN(expiry.getTime())) {
           status = 'lifetime';
         } else if (expiry > now) {
           const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -221,13 +177,29 @@ router.get('/shops', async (req, res) => {
       }
 
       return {
-        ...shop,
-        productCount: Number(shop.productCount || 0),
-        userCount: Number(shop.userCount || 0),
-        transactionCount: Number(shop.transactionCount || 0),
-        totalSalesVolume: Number(shop.totalSalesVolume || 0),
+        shopId: s.shopId,
+        shopName: s.name || s.shopName,
+        ownerName: s.ownerName,
+        phone: s.phone,
+        email: s.email,
+        address: s.address,
+        gstNumber: s.gstNumber,
+        upiId: s.upiId,
+        plan: s.plan || 'free',
+        planExpiry: s.planExpiry || null,
+        createdAt: s.createdAt,
+        productCount,
+        userCount,
+        transactionCount: txStats.count,
+        totalSalesVolume: txStats.volume,
         subscriptionStatus: status
       };
+    });
+
+    formattedShops.sort((a, b) => {
+      if (b.productCount !== a.productCount) return b.productCount - a.productCount;
+      if (b.totalSalesVolume !== a.totalSalesVolume) return b.totalSalesVolume - a.totalSalesVolume;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
 
     res.json({ success: true, shops: formattedShops });
@@ -243,6 +215,7 @@ router.put('/shops/:shopId/plan', async (req, res) => {
   const { plan, durationDays, customExpiryDate } = req.body;
 
   try {
+    const db = await pool.getDb();
     let newExpiry = null;
 
     if (customExpiryDate) {
@@ -254,47 +227,47 @@ router.put('/shops/:shopId/plan', async (req, res) => {
       newExpiry = null;
     }
 
-    const normalizedPlan = (plan || 'free').toLowerCase().includes('ultra') 
-      ? 'ultra_pro' 
-      : (plan || 'free').toLowerCase().includes('pro') 
-      ? 'pro' 
-      : (plan || 'free').toLowerCase().includes('plus')
+    const rawPlan = (plan || 'free').toLowerCase();
+    const normalizedPlan = rawPlan.includes('ultra')
+      ? 'ultra_pro'
+      : rawPlan.includes('pro')
+      ? 'pro'
+      : rawPlan.includes('plus')
       ? 'plus'
       : 'free';
 
     const expiryIso = newExpiry ? newExpiry.toISOString() : null;
-    await pool.query(
-      'UPDATE shops SET plan = ?, planExpiry = ? WHERE shopId = ?',
-      [normalizedPlan, expiryIso, shopId]
-    ).catch(() => {});
+    await db.collection('shops').updateOne(
+      { shopId },
+      { $set: { plan: normalizedPlan, planExpiry: expiryIso } }
+    );
 
-    // Sync to Supabase cloud
     try {
-      const { supabase } = require('../supabase');
-      await supabase.from('shops').update({ 
-        plan: normalizedPlan, 
-        planExpiry: newExpiry ? newExpiry.toISOString() : null 
-      }).eq('shopId', shopId);
-    } catch (sbSyncErr) {
-      console.warn('Supabase plan update sync notice:', sbSyncErr.message);
-    }
+      const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+      const expiryStr = newExpiry
+        ? new Date(newExpiry).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'Lifetime';
+      const planBadge =
+        normalizedPlan === 'ultra_pro'
+          ? '👑 Ultra Pro'
+          : normalizedPlan === 'pro'
+          ? '⚡ Pro'
+          : normalizedPlan === 'plus'
+          ? '🌟 Plus'
+          : 'Free';
 
-    // Auto-create in-app notification for the shopkeeper
-    try {
-      const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-      const expiryStr = newExpiry ? new Date(newExpiry).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Lifetime';
-      const planBadge = normalizedPlan === 'ultra_pro' ? '👑 Ultra Pro' : normalizedPlan === 'pro' ? '⚡ Pro' : normalizedPlan === 'plus' ? '🌟 Plus' : 'Free';
-      await pool.query(
-        `INSERT INTO notifications (id, shopId, title, message, type, channel, actionUrl, isRead, readBy, createdAt)
-         VALUES (?, ?, ?, ?, 'plan_upgrade', 'superadmin', '/upgrade', 0, '[]', ?)`,
-        [
-          notifId, 
-          shopId, 
-          `🎉 Subscription Upgraded: ${planBadge}!`,
-          `Congratulations! Your store plan has been updated to *${planBadge}* by Super Admin. All premium features are now activated (Validity: ${expiryStr}).`,
-          new Date().toISOString()
-        ]
-      ).catch(() => {});
+      await db.collection('notifications').insertOne({
+        id: notifId,
+        shopId,
+        title: `🎉 Subscription Upgraded: ${planBadge}!`,
+        message: `Congratulations! Your store plan has been updated to *${planBadge}* by Super Admin. All premium features are now activated (Validity: ${expiryStr}).`,
+        type: 'plan_upgrade',
+        channel: 'superadmin',
+        actionUrl: '/upgrade',
+        isRead: 0,
+        readBy: [],
+        createdAt: new Date().toISOString()
+      });
     } catch (notifErr) {
       console.warn('Could not insert notification for plan update:', notifErr.message);
     }
@@ -315,16 +288,16 @@ router.put('/shops/:shopId/plan', async (req, res) => {
 router.delete('/shops/:shopId', async (req, res) => {
   const { shopId } = req.params;
   try {
-    // Delete transactions, products, users, shop
-    await pool.query('DELETE FROM transactions WHERE shopId = ?', [shopId]).catch(() => {});
-    await pool.query('DELETE FROM products WHERE shopId = ?', [shopId]).catch(() => {});
-    await pool.query('DELETE FROM users WHERE shopId = ?', [shopId]).catch(() => {});
-    await pool.query('DELETE FROM shops WHERE shopId = ?', [shopId]).catch(() => {});
-
-    try {
-      const { supabase } = require('../supabase');
-      await supabase.from('shops').delete().eq('shopId', shopId);
-    } catch (e) {}
+    const db = await pool.getDb();
+    await Promise.all([
+      db.collection('transactions').deleteMany({ shopId }),
+      db.collection('products').deleteMany({ shopId }),
+      db.collection('users').deleteMany({ shopId }),
+      db.collection('customers').deleteMany({ shopId }),
+      db.collection('expenses').deleteMany({ shopId }),
+      db.collection('udhar_transactions').deleteMany({ shopId }),
+      db.collection('shops').deleteOne({ shopId })
+    ]);
 
     res.json({ success: true, message: `Shop ${shopId} deleted successfully` });
   } catch (err) {
@@ -333,49 +306,40 @@ router.delete('/shops/:shopId', async (req, res) => {
   }
 });
 
-// ── 5. POST /api/superadmin/impersonate/:shopId (1-Click Store Access) ──────────
+// ── 5. POST /api/superadmin/impersonate/:shopId ────────────────────────────────
 router.post('/impersonate/:shopId', async (req, res) => {
   const { shopId } = req.params;
   try {
-    // 1. Find shop in database
-    let [shopRows] = await pool.query('SELECT * FROM shops WHERE shopId = ?', [shopId]).catch(() => [[]]);
-    let targetShop = shopRows?.[0];
-
-    if (!targetShop) {
-      try {
-        const { supabase } = require('../supabase');
-        const { data: sbShop } = await supabase.from('shops').select('*').eq('shopId', shopId).single();
-        if (sbShop) targetShop = sbShop;
-      } catch (e) {}
-    }
-
+    const db = await pool.getDb();
+    const targetShop = pool.stripMongoId(await db.collection('shops').findOne({ shopId }));
     if (!targetShop) {
       return res.status(404).json({ error: 'Shop not found' });
     }
 
-    // 2. Find admin user for this shop
-    let [userRows] = await pool.query('SELECT * FROM users WHERE shopId = ? AND role = "admin" LIMIT 1', [shopId]).catch(() => [[]]);
-    const targetUser = userRows?.[0] || {
-      uid: 'admin_' + shopId,
-      email: targetShop.email || `admin@${shopId}.com`,
-      displayName: targetShop.ownerName || targetShop.name || 'Store Owner',
-      role: 'admin',
-      shopId: targetShop.shopId
-    };
+    let targetUser = pool.stripMongoId(
+      await db.collection('users').findOne(
+        { shopId, role: 'admin' },
+        { projection: { _id: 0, password: 0 } }
+      )
+    );
 
-    // 3. Generate token
+    if (!targetUser) {
+      targetUser = {
+        uid: 'admin_' + shopId,
+        email: targetShop.email || `admin@${shopId}.com`,
+        displayName: targetShop.ownerName || targetShop.name || 'Store Owner',
+        role: 'admin',
+        shopId: targetShop.shopId
+      };
+    }
+
     const token = jwt.sign(
       { uid: targetUser.uid, shopId: targetShop.shopId, role: 'admin', isImpersonated: true },
       JWT_SECRET,
       { expiresIn: '3d' }
     );
 
-    res.json({
-      success: true,
-      token,
-      user: targetUser,
-      shop: targetShop
-    });
+    res.json({ success: true, token, user: targetUser, shop: targetShop });
   } catch (err) {
     console.error('Super Admin Impersonate Error:', err);
     res.status(500).json({ error: err.message });

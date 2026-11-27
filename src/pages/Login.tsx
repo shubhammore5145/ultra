@@ -15,8 +15,6 @@ import {
   signInWithPopup,
   updateProfile 
 } from '../lib/firebase';
-import { supabase } from '../lib/supabase';
-import { createSecureClientToken } from '../lib/tokenSecurity';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
@@ -120,7 +118,7 @@ export default function Login() {
           fbFailureReason = fbErr;
         }
 
-        // 2. If Firebase login failed, fallback to direct database login
+        // 2. If Firebase login failed, use direct MongoDB backend login
         if (!authToken) {
           try {
             const dbRes = await api.auth.login({
@@ -131,47 +129,10 @@ export default function Login() {
             authUser = dbRes.user;
             authShop = dbRes.shop;
           } catch (dbErr: any) {
-            console.warn('Backend server login error, trying direct Supabase Cloud login:', dbErr?.message);
-
-            // Direct Supabase Fallback (Zero Backend Required)
-            try {
-              const { data: sbUsers, error: sbUserErr } = await supabase
-                .from('users')
-                .select('*')
-                .ilike('email', cleanEmail)
-                .limit(1);
-
-              if (!sbUserErr && sbUsers && sbUsers.length > 0) {
-                const u = sbUsers[0];
-                const { data: sbShops } = await supabase
-                  .from('shops')
-                  .select('*')
-                  .eq('shopId', u.shopId)
-                  .limit(1);
-
-                const shop = sbShops?.[0] || {
-                  shopId: u.shopId || 'default',
-                  name: u.displayName ? `${u.displayName} Store` : 'MartGPT Kirana',
-                  plan: 'free'
-                };
-
-                delete u.password;
-                authToken = await createSecureClientToken(u.uid, u.shopId, u.role || 'admin');
-                authUser = u;
-                authShop = shop;
-              } else {
-                // If DB returned a specific error (e.g. wrong password)
-                if (dbErr.message && !dbErr.message.includes('Server error') && !dbErr.message.includes('Failed to fetch') && !dbErr.message.includes('not reachable')) {
-                  throw dbErr;
-                }
-                throw fbFailureReason || dbErr;
-              }
-            } catch (sbLoginErr: any) {
-              if (sbLoginErr === dbErr || (dbErr.message && !dbErr.message.includes('Failed to fetch') && !dbErr.message.includes('not reachable'))) {
-                throw dbErr;
-              }
-              throw fbFailureReason || sbLoginErr;
+            if (dbErr.message && !dbErr.message.includes('Failed to fetch') && !dbErr.message.includes('Unable to reach')) {
+              throw dbErr;
             }
+            throw fbFailureReason || dbErr;
           }
         }
 

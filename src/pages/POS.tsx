@@ -2332,7 +2332,7 @@ export default function POS() {
                 {/* Customer Name */}
                 <div className="relative">
                   <Input 
-                    placeholder="Customer Name (e.g. Rahul)"
+                    placeholder="Name (e.g. Rahul)"
                     type="text"
                     value={customerName}
                     onChange={(e) => {
@@ -2346,7 +2346,7 @@ export default function POS() {
 
                 {/* Customer Mobile */}
                 <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 select-none">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 select-none">
                     +91
                   </span>
                   <Input 
@@ -2360,47 +2360,59 @@ export default function POS() {
                       setShowCustomerSuggestions(true);
                     }}
                     onFocus={() => setShowCustomerSuggestions(true)}
-                    className="h-10 pl-8 text-xs sm:text-sm bg-white text-zinc-950 font-bold border-2 border-zinc-300 dark:border-zinc-400 focus:border-primary shadow-xs rounded-xl font-mono tracking-wider placeholder:text-zinc-400"
+                    className="h-10 pl-10 text-xs sm:text-sm bg-white text-zinc-950 font-bold border-2 border-zinc-300 dark:border-zinc-400 focus:border-primary shadow-xs rounded-xl font-mono tracking-wider placeholder:text-zinc-400"
                   />
                 </div>
               </div>
 
-              {/* Suggestions Dropdown */}
+              {/* Suggestions Dropdown - 100% Opaque Solid Surface */}
               {showCustomerSuggestions && customerSuggestions.length > 0 && (
-                <div className="absolute bottom-full left-0 right-0 z-50 mb-1.5 bg-card text-card-foreground border-2 border-primary/40 rounded-2xl shadow-2xl overflow-hidden divide-y divide-border max-h-56 overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
-                  <div className="px-3 py-1.5 bg-primary/10 text-[10px] font-black text-primary uppercase tracking-wider flex justify-between items-center">
+                <div className="absolute bottom-full left-0 right-0 z-[70] mb-2 bg-white dark:bg-zinc-900 text-zinc-950 dark:text-zinc-50 border-2 border-indigo-400/70 rounded-2xl shadow-[0_14px_38px_-6px_rgba(15,23,42,0.28)] overflow-hidden">
+                  <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950 border-b border-indigo-200/80 dark:border-indigo-800 text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider flex justify-between items-center">
                     <span>Registered Customers ({customerSuggestions.length})</span>
-                    <span className="text-[9px] lowercase font-semibold">Click to select</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-semibold normal-case text-indigo-600/80 dark:text-indigo-300/80">Click to select</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomerSuggestions(false)}
+                        className="p-0.5 rounded-md hover:bg-indigo-200/60 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-300 cursor-pointer"
+                        title="Close suggestions"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  {customerSuggestions.map((cust) => (
-                    <button
-                      key={cust.id}
-                      type="button"
-                      onClick={() => handleSelectCustomer(cust)}
-                      className="w-full px-3 py-2 text-left hover:bg-primary/5 flex items-center justify-between transition-colors group cursor-pointer"
-                    >
-                      <div>
-                        <p className="font-bold text-xs text-foreground group-hover:text-primary flex items-center gap-1.5">
-                          <User className="h-3.5 w-3.5 text-primary" />
-                          {cust.name}
-                        </p>
-                        <p className="text-[11px] font-mono text-muted-foreground">
-                          +91 {cleanPhone(cust.phone)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        {Number(cust.balance || 0) > 0 ? (
-                          <span className="text-[10px] font-black text-rose-700 bg-rose-100 dark:bg-rose-950 px-2 py-0.5 rounded-md border border-rose-300">
-                            Udhar: ₹{Number(cust.balance).toFixed(0)}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">
-                            Clear (₹0)
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                  <div className="divide-y divide-zinc-100 dark:divide-zinc-800 max-h-52 overflow-y-auto bg-white dark:bg-zinc-900">
+                    {customerSuggestions.map((cust) => (
+                      <button
+                        key={cust.id}
+                        type="button"
+                        onClick={() => handleSelectCustomer(cust)}
+                        className="w-full px-3 py-2.5 text-left bg-white dark:bg-zinc-900 hover:bg-indigo-50/70 dark:hover:bg-zinc-800 flex items-center justify-between transition-colors group cursor-pointer"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-700 dark:group-hover:text-indigo-400 flex items-center gap-1.5 truncate">
+                            <User className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                            <span className="truncate">{cust.name}</span>
+                          </p>
+                          <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 mt-0.5 pl-5">
+                            +91 {cleanPhone(cust.phone)}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {Number(cust.balance || 0) > 0 ? (
+                            <span className="text-[10px] font-black text-rose-700 bg-rose-100 dark:bg-rose-950 px-2 py-0.5 rounded-md border border-rose-300">
+                              Udhar: ₹{Number(cust.balance).toFixed(0)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200">
+                              Clear (₹0)
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -2729,7 +2741,7 @@ export default function POS() {
                   <div className="grid grid-cols-2 gap-2">
                     <Input 
                       type="text" 
-                      placeholder="Customer Name (e.g. Rahul)"
+                      placeholder="Name (e.g. Rahul)"
                       value={customerName} 
                       onChange={(e) => {
                         setCustomerName(e.target.value);
@@ -2740,7 +2752,7 @@ export default function POS() {
                     />
 
                     <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 select-none">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 select-none">
                         +91
                       </span>
                       <Input 
@@ -2754,42 +2766,55 @@ export default function POS() {
                           setShowCustomerSuggestions(true);
                         }}
                         onFocus={() => setShowCustomerSuggestions(true)}
-                        className={`h-10 pl-8.5 font-mono text-xs sm:text-sm bg-white text-zinc-950 font-bold border-2 border-zinc-300 dark:border-zinc-400 rounded-xl placeholder:text-zinc-400 ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
+                        className={`h-10 pl-10 font-mono text-xs sm:text-sm bg-white text-zinc-950 font-bold border-2 border-zinc-300 dark:border-zinc-400 rounded-xl placeholder:text-zinc-400 ${splitAmounts.udhar > 0 && !customerPhone ? 'border-red-500 ring-2 ring-red-500/20' : ''}`}
                       />
                     </div>
                   </div>
 
                   {/* Modal suggestions dropdown */}
                   {showCustomerSuggestions && customerSuggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover text-popover-foreground border border-border rounded-xl shadow-2xl overflow-hidden divide-y divide-border/60 max-h-48 overflow-y-auto animate-in fade-in duration-150">
-                      {customerSuggestions.map((cust) => (
+                    <div className="absolute top-full left-0 right-0 z-[70] mt-1.5 bg-white dark:bg-zinc-900 text-zinc-950 dark:text-zinc-50 border-2 border-indigo-400/70 rounded-xl shadow-[0_14px_38px_-6px_rgba(15,23,42,0.28)] overflow-hidden">
+                      <div className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950 border-b border-indigo-200/80 dark:border-indigo-800 text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider flex justify-between items-center">
+                        <span>Registered Customers ({customerSuggestions.length})</span>
                         <button
-                          key={cust.id}
                           type="button"
-                          onClick={() => handleSelectCustomer(cust)}
-                          className="w-full px-3 py-2 text-left hover:bg-muted/80 flex items-center justify-between transition-colors group cursor-pointer"
+                          onClick={() => setShowCustomerSuggestions(false)}
+                          className="p-0.5 rounded hover:bg-indigo-200/60 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-300 cursor-pointer"
+                          title="Close suggestions"
                         >
-                          <div>
-                            <p className="font-bold text-xs text-foreground group-hover:text-primary">
-                              {cust.name}
-                            </p>
-                            <p className="text-[11px] font-mono text-muted-foreground">
-                              +91 {cleanPhone(cust.phone)}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            {Number(cust.balance || 0) > 0 ? (
-                              <span className="text-[10px] font-bold text-rose-600">
-                                Udhar: ₹{Number(cust.balance).toFixed(2)}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-emerald-600">
-                                Clear
-                              </span>
-                            )}
-                          </div>
+                          <X className="h-3.5 w-3.5" />
                         </button>
-                      ))}
+                      </div>
+                      <div className="divide-y divide-zinc-100 dark:divide-zinc-800 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900">
+                        {customerSuggestions.map((cust) => (
+                          <button
+                            key={cust.id}
+                            type="button"
+                            onClick={() => handleSelectCustomer(cust)}
+                            className="w-full px-3 py-2 text-left bg-white dark:bg-zinc-900 hover:bg-indigo-50/70 dark:hover:bg-zinc-800 flex items-center justify-between transition-colors group cursor-pointer"
+                          >
+                            <div className="min-w-0 pr-2">
+                              <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-700 dark:group-hover:text-indigo-400 truncate">
+                                {cust.name}
+                              </p>
+                              <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                                +91 {cleanPhone(cust.phone)}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              {Number(cust.balance || 0) > 0 ? (
+                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                  Udhar: ₹{Number(cust.balance).toFixed(2)}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                  Clear
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -29,9 +29,31 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { api, INITIAL_SHOPS, type SuperAdminShopRecord as ShopRecord } from '../lib/api';
+import { api, INITIAL_SHOPS } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+
+interface ShopRecord {
+  shopId: string;
+  shopName: string;
+  ownerName: string;
+  phone: string;
+  email: string;
+  address?: string | null;
+  gstNumber?: string | null;
+  upiId?: string | null;
+  plan: string;
+  planExpiry: string | null;
+  createdAt: string;
+  productCount: number;
+  userCount: number;
+  transactionCount: number;
+  totalSalesVolume: number;
+  status?: string;
+  subscriptionStatus?: string;
+  daysRemaining?: number | null;
+  formattedExpiry?: string;
+}
 
 interface SuperAdminStats {
   totalShops: number;

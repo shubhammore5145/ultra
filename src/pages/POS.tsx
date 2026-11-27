@@ -10,7 +10,6 @@ import {
   RotateCcw, BadgePercent, Calculator, Receipt, ShieldAlert,
   Coins, Wallet
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { CameraScanner } from '../components/CameraScanner';
 import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
@@ -126,7 +125,6 @@ export default function POS() {
   const [quickAddPrice, setQuickAddPrice] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'barcoded' | 'loose'>('all');
   const [isQuickAdding, setIsQuickAdding] = useState(false);
-  const [paymentVerified, setPaymentVerified] = useState(false);
 
   // Parchi Scanner State
   const [showParchiModal, setShowParchiModal] = useState(false);
@@ -1141,7 +1139,6 @@ export default function POS() {
       try {
         localStorage.setItem('pos_last_bill', JSON.stringify(billDataToSave));
       } catch (e) {}
-      setPaymentVerified(false);
       if (canAccess('audio_soundbox')) {
         playSoundboxAlert(total, paymentMethod);
       }
@@ -1502,53 +1499,6 @@ export default function POS() {
                     )}
                   </div>
                 </div>
-
-                {/* UPI QR Code Block */}
-                {shopData?.upiId ? (
-                  <div className={`flex flex-col items-center justify-center space-y-3 p-3.5 rounded-xl border transition-all duration-300 ${
-                    paymentVerified 
-                      ? 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900' 
-                      : 'bg-muted/30 border-muted relative overflow-hidden'
-                  }`}>
-                    {!paymentVerified && (
-                      <div className="absolute inset-0 pointer-events-none opacity-20">
-                        <div className="w-full h-[2px] bg-primary animate-[scan_2s_ease-in-out_infinite] shadow-[0_0_8px_rgba(var(--primary),0.8)]"></div>
-                      </div>
-                    )}
-
-                    <div className={`flex items-center gap-2 font-medium text-xs transition-colors ${paymentVerified ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                      {paymentVerified ? (
-                        <><CheckCircle2 className="h-4 w-4" /> Payment Verified Successfully</>
-                      ) : (
-                        <><Loader2 className="h-4 w-4 animate-spin" /> UPI QR (Scan & Pay)</>
-                      )}
-                    </div>
-                    
-                    <div className={`bg-white p-2.5 rounded-xl shadow-sm border transition-all duration-500 ${paymentVerified ? 'scale-90 opacity-50 blur-[2px]' : 'scale-100 opacity-100'}`}>
-                      <QRCodeSVG 
-                        value={`upi://pay?pa=${shopData.upiId}&pn=${encodeURIComponent(shopData.shopName || shopData.name || 'Store')}&am=${checkoutResult.total.toFixed(2)}&cu=INR`} 
-                        size={140} 
-                        level="H"
-                      />
-                    </div>
-                    
-                    {!paymentVerified ? (
-                      <Button 
-                        variant="default" 
-                        className="w-full h-9 text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 shadow-none"
-                        onClick={() => setPaymentVerified(true)}
-                      >
-                        Verify Manually
-                      </Button>
-                    ) : (
-                      <p className="text-[11px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wider">Transaction Complete</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center text-xs text-muted-foreground bg-orange-50 dark:bg-orange-950/40 p-2.5 rounded-lg border border-orange-200 dark:border-orange-900">
-                    Add your UPI ID in Settings to generate payment QR codes automatically!
-                  </div>
-                )}
 
                 {/* Action Buttons */}
                 <div className="grid grid-cols-3 gap-2 no-print pt-1">
@@ -3447,19 +3397,6 @@ export default function POS() {
                 borderBottom: '1px dashed #000'
               }}>
                 ✨ You Saved: ₹{grandTotalSavings.toFixed(2)} ({savingsPercentage}% savings)
-              </div>
-            )}
-
-            {/* UPI SCAN & PAY ON THERMAL RECEIPT */}
-            {shopData?.upiId && (
-              <div style={{ textAlign: 'center', margin: '6px 0 4px 0', padding: '4px', border: '1px dashed #000' }}>
-                <p style={{ margin: '0 0 3px 0', fontSize: '10px', fontWeight: 'bold' }}>Scan & Pay via UPI</p>
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`upi://pay?pa=${shopData.upiId}&pn=${encodeURIComponent(shopData.shopName || shopData.name || 'Store')}&am=${checkoutResult.total}&cu=INR`)}`}
-                  alt="UPI QR"
-                  style={{ width: '70px', height: '70px', margin: '0 auto', display: 'block' }}
-                />
-                <p style={{ margin: '3px 0 0 0', fontSize: '9px', fontWeight: 'bold' }}>UPI: {shopData.upiId}</p>
               </div>
             )}
 

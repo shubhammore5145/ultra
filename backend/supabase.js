@@ -5,7 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
 require('dotenv').config();
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dyuimjageamopkodfplk.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ww5ZWKvl_uH-fzQKylCGeA_TlRDI52V';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ww5ZWKvl_uH-fzQKylCGeA_TlRDI52V';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

@@ -233,16 +233,22 @@ export default function Settings() {
         checkGreenApiStatus(initialGreen).then(st => setGreenStatus(st)).catch(() => {});
       }
 
-      // Load Hardware Settings
+      // Load Hardware Settings with LocalStorage Cache Support
+      let localHardware: any = {};
+      try {
+        const savedRaw = localStorage.getItem('hardware_settings');
+        if (savedRaw) localHardware = JSON.parse(savedRaw);
+      } catch {}
+
       setHardwareSettings({
-        paperSize: settings.paperSize || (shopData as any).receiptPaperSize || '80mm',
-        printerType: settings.printerType || 'usb',
-        autoPrintReceipt: settings.autoPrintReceipt !== false,
-        receiptHeader: settings.receiptHeader || (shopData as any).receiptHeader || '',
-        receiptFooter: settings.receiptFooter || (shopData as any).receiptFooter || '',
-        bluetoothDeviceName: settings.bluetoothDeviceName || '',
-        scannerBeep: settings.scannerBeep !== false,
-        scannerAutoAdd: settings.scannerAutoAdd !== false
+        paperSize: localHardware.paperSize || settings.paperSize || (shopData as any).receiptPaperSize || '80mm',
+        printerType: localHardware.printerType || settings.printerType || 'usb',
+        autoPrintReceipt: localHardware.autoPrintReceipt !== undefined ? localHardware.autoPrintReceipt : (settings.autoPrintReceipt !== false),
+        receiptHeader: localHardware.receiptHeader !== undefined ? localHardware.receiptHeader : (settings.receiptHeader || (shopData as any).receiptHeader || ''),
+        receiptFooter: localHardware.receiptFooter !== undefined ? localHardware.receiptFooter : (settings.receiptFooter || (shopData as any).receiptFooter || ''),
+        bluetoothDeviceName: localHardware.bluetoothDeviceName || settings.bluetoothDeviceName || '',
+        scannerBeep: localHardware.scannerBeep !== undefined ? localHardware.scannerBeep : (settings.scannerBeep !== false),
+        scannerAutoAdd: localHardware.scannerAutoAdd !== undefined ? localHardware.scannerAutoAdd : (settings.scannerAutoAdd !== false)
       });
 
       // Fetch all products for scanner testing
@@ -343,6 +349,17 @@ export default function Settings() {
   const handleSaveHardware = async () => {
     setSavingHardware(true);
     try {
+      try {
+        localStorage.setItem('hardware_settings', JSON.stringify(hardwareSettings));
+        const rawShop = localStorage.getItem('auth_shop');
+        if (rawShop) {
+          const parsedShop = JSON.parse(rawShop);
+          parsedShop.settings = { ...(parsedShop.settings || {}), ...hardwareSettings };
+          parsedShop.receiptPaperSize = hardwareSettings.paperSize;
+          localStorage.setItem('auth_shop', JSON.stringify(parsedShop));
+        }
+      } catch {}
+
       await api.shops.update({
         name: formData.shopName,
         ownerName: formData.ownerName,

@@ -1143,14 +1143,6 @@ export default function POS() {
         playSoundboxAlert(total, paymentMethod);
       }
 
-      // Auto-print thermal receipt if enabled in hardware settings
-      const shouldAutoPrint = (shopData as any)?.settings?.autoPrintReceipt !== false;
-      if (shouldAutoPrint) {
-        setTimeout(() => {
-          window.print();
-        }, 500);
-      }
-
       // Auto-send WhatsApp bill after configured delay if plan allows and customer phone is provided (10 digits)
       const billDelay = ((shopData as any)?.settings?.billDelaySeconds ?? 5);
       if (canAccess('whatsapp_bills') && phoneToSend.length === 10) {
@@ -1257,6 +1249,50 @@ export default function POS() {
   const handlePrintReceipt = () => {
     window.print();
   };
+
+  // Robust Auto-print thermal receipt upon checkout completion
+  useEffect(() => {
+    if (!checkoutResult) return;
+    let shouldAutoPrint = true;
+    try {
+      const savedHw = localStorage.getItem('hardware_settings');
+      if (savedHw) {
+        const parsed = JSON.parse(savedHw);
+        if (parsed.autoPrintReceipt === false) shouldAutoPrint = false;
+      } else if ((shopData as any)?.settings?.autoPrintReceipt === false) {
+        shouldAutoPrint = false;
+      }
+    } catch {}
+
+    if (shouldAutoPrint) {
+      // Small timeout to guarantee DOM is rendered with latest checkoutResult
+      const timer = setTimeout(() => {
+        window.print();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [checkoutResult, shopData]);
+
+  // Keyboard shortcut listener when Checkout Result Modal is open (Enter -> Print, Esc -> Close)
+  useEffect(() => {
+    if (!checkoutResult) return;
+    const handleModalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCheckoutResult(null);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        window.print();
+      } else if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        window.print();
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setCheckoutResult(null);
+      }
+    };
+    window.addEventListener('keydown', handleModalKeyDown);
+    return () => window.removeEventListener('keydown', handleModalKeyDown);
+  }, [checkoutResult]);
 
   const handleVoiceSearch = () => {
     if (!requireFeature('voice_billing')) return;
@@ -1514,11 +1550,20 @@ export default function POS() {
                       </span>
                     )}
                   </Button>
-                  <Button variant="outline" className="h-11 w-full flex gap-1 font-medium px-2 text-xs" onClick={handlePrintReceipt}>
-                    <Printer className="h-4 w-4 text-blue-500 shrink-0" /> Print Bill
+                  <Button 
+                    variant="default" 
+                    className="h-11 w-full flex gap-1 font-bold px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-2 ring-blue-400/50 cursor-pointer" 
+                    onClick={handlePrintReceipt}
+                    autoFocus
+                  >
+                    <Printer className="h-4 w-4 shrink-0" /> Print (Enter ↵)
                   </Button>
-                  <Button className="h-11 w-full font-bold px-2 text-xs" onClick={() => setCheckoutResult(null)}>
-                    New Bill
+                  <Button 
+                    variant="outline" 
+                    className="h-11 w-full font-bold px-2 text-xs hover:bg-muted cursor-pointer" 
+                    onClick={() => setCheckoutResult(null)}
+                  >
+                    New Bill (Esc)
                   </Button>
                 </div>
               </div>
@@ -3407,7 +3452,7 @@ export default function POS() {
               )}
               <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Thank You For Shopping!</p>
               <p style={{ margin: '1px 0' }}>Please Visit Again 🙏</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#777' }}>Software by Nayashi Kirana POS</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: '9px', color: '#777' }}>Software by  Varuag Labs</p>
             </div>
           </div>
         );

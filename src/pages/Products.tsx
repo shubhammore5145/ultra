@@ -30,6 +30,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Product } from '../types';
 import { CameraScanner } from '../components/CameraScanner';
+import { cacheProductsOffline, getCachedProductsOffline } from '../lib/storage';
 
 export default function Products() {
   const { shopData } = useAuth();
@@ -154,21 +155,14 @@ export default function Products() {
       const data = await api.products.list();
       if (Array.isArray(data) && data.length > 0) {
         setProducts(data);
-        try {
-          localStorage.setItem('pos_products_cache', JSON.stringify(data));
-        } catch {}
+        cacheProductsOffline(data).catch(() => {});
       } else {
-        // Fallback to local cache if API returns empty
-        try {
-          const cached = localStorage.getItem('pos_products_cache');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setProducts(parsed);
-              return;
-            }
-          }
-        } catch {}
+        // Fallback to IndexedDB / local cache if API returns empty
+        const cached = await getCachedProductsOffline();
+        if (Array.isArray(cached) && cached.length > 0) {
+          setProducts(cached);
+          return;
+        }
         if (Array.isArray(data)) {
           setProducts(data);
         }
@@ -176,13 +170,10 @@ export default function Products() {
     } catch (err) {
       console.error('Failed to load products', err);
       try {
-        const cached = localStorage.getItem('pos_products_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setProducts(parsed);
-            return;
-          }
+        const cached = await getCachedProductsOffline();
+        if (Array.isArray(cached) && cached.length > 0) {
+          setProducts(cached);
+          return;
         }
       } catch {}
     } finally {

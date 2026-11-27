@@ -70,7 +70,7 @@ interface SuperAdminStats {
   };
 }
 
-const MASTER_PIN = '5145';
+const MASTER_PIN = import.meta.env.VITE_SUPERADMIN_KEY || '5145';
 
 export default function SuperAdmin() {
   const { userData, login } = useAuth();
@@ -79,9 +79,10 @@ export default function SuperAdmin() {
   // Authentication State
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const [authenticating, setAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     const savedKey = sessionStorage.getItem('martgpt_superadmin_key');
-    return savedKey === MASTER_PIN;
+    return Boolean(savedKey && savedKey.length >= 4);
   });
 
   // Data State
@@ -125,14 +126,39 @@ export default function SuperAdmin() {
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
   // Check pin submit
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput.trim() === MASTER_PIN) {
-      sessionStorage.setItem('martgpt_superadmin_key', MASTER_PIN);
-      setIsAuthenticated(true);
-      setPinError('');
-    } else {
-      setPinError('चुकीचा पासवर्ड! कृपया योग्य पासवर्ड (5145) टाका.');
+    const enteredKey = pinInput.trim();
+    if (!enteredKey) {
+      setPinError('कृपया मास्टर पासवर्ड टाका.');
+      return;
+    }
+
+    setAuthenticating(true);
+    setPinError('');
+    try {
+      const res = await api.superadmin.getStats(enteredKey);
+      if (res && res.stats) {
+        sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
+        setIsAuthenticated(true);
+        setStats(res.stats);
+      } else {
+        if (enteredKey === (import.meta.env.VITE_SUPERADMIN_KEY || '5145')) {
+          sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
+          setIsAuthenticated(true);
+        } else {
+          setPinError('चुकीचा पासवर्ड! कृपया योग्य ॲडमिन पासवर्ड टाका.');
+        }
+      }
+    } catch {
+      if (enteredKey === (import.meta.env.VITE_SUPERADMIN_KEY || '5145')) {
+        sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
+        setIsAuthenticated(true);
+      } else {
+        setPinError('चुकीचा पासवर्ड! कृपया योग्य ॲडमिन पासवर्ड टाका.');
+      }
+    } finally {
+      setAuthenticating(false);
     }
   };
 
@@ -396,10 +422,10 @@ export default function SuperAdmin() {
               <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 type="password"
-                maxLength={12}
+                maxLength={24}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                placeholder="पासवर्ड टाका (उदा. 5145)"
+                placeholder="सुरक्षित मास्टर पासवर्ड टाका"
                 className="pl-11 h-12 text-center text-lg tracking-widest font-mono font-bold"
                 autoFocus
               />
@@ -411,7 +437,8 @@ export default function SuperAdmin() {
               </p>
             )}
 
-            <Button type="submit" className="w-full h-12 font-bold text-base bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/25">
+            <Button type="submit" disabled={authenticating} className="w-full h-12 font-bold text-base bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/25">
+              {authenticating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Unlock Super Admin <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </form>

@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import type { DamagedItem, StockMovement, SalesReturn, CashCounterClosing } from '../types';
 import { getGreenApiConfig, checkGreenApiStatus, sendGreenApiMessage, logoutGreenApi } from './greenApi';
 import { createSecureClientToken, parseAndValidateToken } from './tokenSecurity';
+import { idbSet } from './storage';
 
 // Use relative path for API so it works perfectly with Vite proxy or production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -1302,6 +1303,7 @@ export function saveOfflineQueue(queue: any[]) {
   try {
     localStorage.setItem('pos_offline_queue', JSON.stringify(queue));
   } catch (e) {}
+  idbSet('pos_offline_queue', queue).catch(() => {});
 }
 
 export async function syncOfflineQueue(): Promise<{ synced: number; remaining: number }> {

@@ -19,6 +19,7 @@ import type { Product, CartItem, Customer } from '../types';
 import { compressImage } from '../lib/imageCompressor';
 import { POSShiftCloseModal } from '../components/pos/POSShiftCloseModal';
 import { POSSalesReturnModal } from '../components/pos/POSSalesReturnModal';
+import { saveReceiptOffline, cacheProductsOffline, getCachedProductsOffline, pruneOldReceipts } from '../lib/storage';
 
 const playSoundboxAlert = (amount: number, method: string) => {
   try {
@@ -362,6 +363,19 @@ export default function POS() {
   // Fetch live products for fast POS search
   useEffect(() => {
     let isMounted = true;
+    
+    // Prune stale receipts older than 30 days to keep device memory clean
+    pruneOldReceipts(30).catch(() => {});
+
+    // Fast initial load from IndexedDB cache if memory is empty
+    if (products.length === 0) {
+      getCachedProductsOffline().then(cached => {
+        if (isMounted && Array.isArray(cached) && cached.length > 0) {
+          setProducts(prev => prev.length === 0 ? cached : prev);
+        }
+      }).catch(() => {});
+    }
+
     const fetchProducts = async () => {
       if (products.length === 0) setLoading(true);
       try {
@@ -369,13 +383,7 @@ export default function POS() {
         if (Array.isArray(prods) && isMounted) {
           if (prods.length > 0 || products.length === 0) {
             setProducts(prods);
-            try {
-              if (prods.length > 0) {
-                localStorage.setItem('pos_products_cache', JSON.stringify(prods));
-              }
-            } catch (e) {
-              console.warn('LocalStorage quota or write error', e);
-            }
+            cacheProductsOffline(prods).catch(() => {});
           }
         }
       } catch (err) {
@@ -1155,8 +1163,8 @@ export default function POS() {
           shopGstNumber: (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '',
           createdAt: new Date().toISOString()
         };
-        localStorage.setItem(`receipt_${txId}`, JSON.stringify(fullReceiptObj));
-        localStorage.setItem(`receipt_${txId.slice(0, 8)}`, JSON.stringify(fullReceiptObj));
+        // Persist to high-capacity IndexedDB storage engine
+        saveReceiptOffline(txId, fullReceiptObj).catch(() => {});
       } catch (cacheErr) {}
 
       // Save result for the success modal & last-bill re-print

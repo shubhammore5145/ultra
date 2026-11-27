@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Printer, Download, Store, IndianRupee, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { supabase } from '../lib/supabase';
+import { getReceiptOffline } from '../lib/storage';
 
 export default function Receipt() {
   const { id } = useParams();
@@ -97,16 +98,17 @@ export default function Receipt() {
         console.warn('Direct Supabase receipt fetch error:', sbErr.message);
       }
 
-      // 3. LocalStorage Fallback (if cached on same device)
+      // 3. Offline Storage Fallback (IndexedDB + LocalStorage)
       try {
-        const localCached = localStorage.getItem(`receipt_${cleanId}`);
-        if (localCached) {
-          const parsed = JSON.parse(localCached);
-          setReceipt(normalizeData(parsed));
+        const offlineData = await getReceiptOffline(cleanId);
+        if (offlineData) {
+          setReceipt(normalizeData(offlineData));
           setLoading(false);
           return;
         }
-      } catch (localErr) {}
+      } catch (offlineErr) {
+        console.warn('Offline storage fetch error:', offlineErr);
+      }
 
       setError('Receipt not found');
       setLoading(false);

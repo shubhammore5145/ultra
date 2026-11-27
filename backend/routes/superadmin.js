@@ -6,23 +6,21 @@ const pool = require('../db');
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
 const MASTER_KEY = process.env.SUPERADMIN_KEY || '5145';
 
-// List of authorized Super Admin emails and phones
+// Whitelist of verified Super Admin email addresses
 const SUPERADMIN_IDENTIFIERS = [
   'shubham45mgm@gmail.com',
   'shubhamnmore16@gmail.com',
-  'shubhamvmore12@gmail.com',
-  'shubham@example.com',
-  '9226345875'
+  'shubhamvmore12@gmail.com'
 ];
 
 // Super Admin Authorization Middleware
 const superAdminMiddleware = async (req, res, next) => {
   try {
-    // 1. Check Master Key Header or Query Param (5145 or configured key)
+    // 1. Check Master Key Header or Query Param
     const rawKey = req.headers['x-superadmin-key'] || req.query.key || req.headers['x-master-key'];
     if (rawKey) {
       const keyStr = String(rawKey).trim();
-      if (keyStr === '5145' || keyStr === MASTER_KEY || keyStr === '9226') {
+      if (keyStr === MASTER_KEY) {
         req.isSuperAdmin = true;
         return next();
       }
@@ -39,11 +37,7 @@ const superAdminMiddleware = async (req, res, next) => {
         const user = users?.[0] || decoded;
         const isAuthorized = 
           user.role === 'super_admin' ||
-          user.role === 'admin' ||
-          user.isSuperAdmin ||
-          SUPERADMIN_IDENTIFIERS.includes(user.email?.toLowerCase()) ||
-          (user.email && user.email.toLowerCase().includes('shubham')) ||
-          (user.displayName && user.displayName.toLowerCase().includes('shubham'));
+          (user.email && SUPERADMIN_IDENTIFIERS.includes(user.email.toLowerCase()));
 
         if (isAuthorized) {
           req.user = user;
@@ -54,7 +48,7 @@ const superAdminMiddleware = async (req, res, next) => {
     }
 
     // If no valid auth provided
-    return res.status(401).json({ error: 'Super Admin: Invalid or missing master key (5145)' });
+    return res.status(401).json({ error: 'Super Admin: Unauthorized access. Valid master key or admin privileges required.' });
   } catch (err) {
     console.error('Super Admin Auth Error:', err.message);
     res.status(401).json({ error: 'Super Admin authentication failed: ' + err.message });

@@ -1,4 +1,4 @@
-import { RotateCcw, Search, Loader2, CheckCircle2, X, Lock } from 'lucide-react';
+import { RotateCcw, Search, Loader2, CheckCircle2, X, Lock, Printer } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -35,6 +35,9 @@ interface POSSalesReturnModalProps {
   returnReason: string;
   setReturnReason: (r: string) => void;
   handleProcessSalesReturn: () => void;
+  lastProcessedReturn: SalesReturn | null;
+  setLastProcessedReturn: (r: SalesReturn | null) => void;
+  onPrintReturnSlip: (r: SalesReturn) => void;
 }
 
 export function POSSalesReturnModal({
@@ -57,7 +60,10 @@ export function POSSalesReturnModal({
   setReturnRefundMethod,
   returnReason,
   setReturnReason,
-  handleProcessSalesReturn
+  handleProcessSalesReturn,
+  lastProcessedReturn,
+  setLastProcessedReturn,
+  onPrintReturnSlip
 }: POSSalesReturnModalProps) {
   if (!isOpen) return null;
 
@@ -84,7 +90,7 @@ export function POSSalesReturnModal({
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={() => { onClose(); setSelectedReturnTx(null); setSelectedReturnItem(null); }} 
+            onClick={() => { onClose(); setSelectedReturnTx(null); setSelectedReturnItem(null); setLastProcessedReturn(null); }} 
             className="rounded-full"
           >
             <X className="h-4 w-4" />
@@ -92,6 +98,40 @@ export function POSSalesReturnModal({
         </div>
 
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+          {lastProcessedReturn && (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-black text-emerald-800 dark:text-emerald-200">
+                    Return Processed! ₹{Number(lastProcessedReturn.totalRefund || 0).toFixed(2)} Refunded
+                  </p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                    Voucher #{lastProcessedReturn.id} • Bill #{String(lastProcessedReturn.originalBillId || '').slice(-8).toUpperCase()}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onPrintReturnSlip(lastProcessedReturn)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl"
+                >
+                  <Printer className="h-4 w-4 mr-1.5" /> Print Return Slip
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setLastProcessedReturn(null)}
+                  className="rounded-xl font-bold"
+                >
+                  Continue
+                </Button>
+              </div>
+            </div>
+          )}
           {!selectedReturnTx ? (
             <div className="space-y-3">
               <div className="relative">

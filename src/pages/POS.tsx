@@ -18,6 +18,7 @@ import { usePlan } from '../contexts/PlanContext';
 import type { Product, CartItem, Customer, SalesReturn } from '../types';
 import { compressImage } from '../lib/imageCompressor';
 import { getBillItemsReturnStatus, roundQty } from '../lib/salesReturnUtils';
+import { printReceiptElementThermal, getConfiguredPaperSize, printReturnVoucherThermal } from '../lib/printThermalHtml';
 import { POSShiftCloseModal } from '../components/pos/POSShiftCloseModal';
 import { POSSalesReturnModal } from '../components/pos/POSSalesReturnModal';
 import { saveReceiptOffline, cacheProductsOffline, getCachedProductsOffline, pruneOldReceipts } from '../lib/storage';
@@ -177,8 +178,8 @@ export default function POS() {
   // Non-blocking toast notification on bill complete
   const [checkoutToast, setCheckoutToast] = useState<{ id: string; total: number; paymentMethod: string } | null>(null);
 
-  // Track last printed transaction to prevent double printing
-  const lastPrintedTxRef = useRef<string>('');
+  // Track pending print transaction ID so React commits DOM + SVG barcode before printing
+  const pendingPrintTxRef = useRef<string | null>(null);
 
   const [lastBill, setLastBill] = useState<any>(() => {
     try {
@@ -225,6 +226,7 @@ export default function POS() {
   const [returnCondition, setReturnCondition] = useState<'resellable' | 'damaged'>('resellable');
   const [returnRefundMethod, setReturnRefundMethod] = useState<'cash' | 'udhar'>('cash');
   const [returnLoading, setReturnLoading] = useState(false);
+  const [lastProcessedReturn, setLastProcessedReturn] = useState<SalesReturn | null>(null);
 
   // D-Mart Cash Counter Shift Closing (Z-Report) State
   const [showShiftCloseModal, setShowShiftCloseModal] = useState(false);
@@ -907,6 +909,7 @@ export default function POS() {
   // Open Sales Return Modal
   const openReturnModal = async () => {
     setShowReturnModal(true);
+    setLastProcessedReturn(null);
     setReturnLoading(true);
     try {
       const [txs, retList] = await Promise.all([
@@ -981,6 +984,30 @@ export default function POS() {
         createdAt: new Date().toISOString()
       } as any);
 
+      const savedReturnRecord: SalesReturn = (createRes as any)?.items
+        ? (createRes as SalesReturn)
+        : {
+            id: `RET-${Date.now().toString().slice(-8)}`,
+            originalBillId: selectedReturnTx.id || 'TX-RET',
+            customerId: selectedReturnTx.customerId,
+            customerName: selectedReturnTx.customerName || 'Walk-in Customer',
+            customerPhone: selectedReturnTx.customerPhone || '',
+            items: [{
+              itemIndex: selectedReturnItem.itemIndex,
+              productId: targetProd?.id || selectedReturnItem.id,
+              productName: selectedReturnItem.name,
+              qty: qtyToReturn,
+              purchasedQty: selectedReturnItem.purchasedQty,
+              sellingPrice: selectedReturnItem.price || 0,
+              refundAmount: refundTotal,
+              condition: returnCondition
+            }],
+            totalRefund: refundTotal,
+            refundMethod: returnRefundMethod === 'udhar' ? 'credit_note' : 'cash',
+            reason: returnReason,
+            createdAt: new Date().toISOString()
+          };
+
       const serverStockRestocked = Boolean((createRes as any)?.stockRestocked);
       const su = Array.isArray((createRes as any)?.stockUpdates) ? (createRes as any).stockUpdates[0] : null;
 
@@ -1024,9 +1051,7 @@ export default function POS() {
       setProducts(Array.isArray(updatedProds) ? updatedProds : []);
       setReturnsHistory(Array.isArray(updatedReturns) ? updatedReturns : []);
 
-      alert(`✅ Sales Return processed successfully! Refund amount: ₹${refundTotal.toFixed(2)} (${returnRefundMethod === 'cash' ? 'Cash Refund' : 'Credited to Customer Udhar'})`);
-      setShowReturnModal(false);
-      setSelectedReturnTx(null);
+      setLastProcessedReturn(savedReturnRecord);
       setSelectedReturnItem(null);
       setReturnQty('1');
     } catch (err: any) {
@@ -1241,20 +1266,12 @@ export default function POS() {
         loyaltyPointsEarned: Math.floor(total / 100),
         createdAt: new Date().toISOString()
       };
-      setCheckoutResult(billDataToSave);
-      setCheckoutToast({
-        id: txId,
-        total,
-        paymentMethod: paymentMethod === 'split' ? 'Split Pay' : paymentMethod.toUpperCase()
-      });
-      setTimeout(() => setCheckoutToast(null), 4500);
       setLastBill(billDataToSave);
       try {
         localStorage.setItem('pos_last_bill', JSON.stringify(billDataToSave));
       } catch (e) {}
 
-      // Instant Auto-Print thermal receipt
-      lastPrintedTxRef.current = txId;
+      // Queue instant thermal auto-print once React commits #receipt-template + barcode SVG
       let shouldAutoPrint = true;
       try {
         const savedHw = localStorage.getItem('hardware_settings');
@@ -1266,15 +1283,14 @@ export default function POS() {
         }
       } catch {}
 
-      if (shouldAutoPrint) {
-        setTimeout(() => {
-          try {
-            window.print();
-          } catch (printErr) {
-            console.error('Auto-print error:', printErr);
-          }
-        }, 120);
-      }
+      pendingPrintTxRef.current = shouldAutoPrint ? txId : null;
+      setCheckoutResult(billDataToSave);
+      setCheckoutToast({
+        id: txId,
+        total,
+        paymentMethod: paymentMethod === 'split' ? 'Split Pay' : paymentMethod.toUpperCase()
+      });
+      setTimeout(() => setCheckoutToast(null), 4500);
 
       if (canAccess('audio_soundbox')) {
         playSoundboxAlert(total, paymentMethod);
@@ -1383,57 +1399,57 @@ export default function POS() {
     dispatchWhatsAppBill(targetPhone, text, checkoutResult.id);
   };
 
-  const handlePrintReceipt = () => {
-    window.print();
-  };
+  const handlePrintReceipt = useCallback(() => {
+    const paperSpec = getConfiguredPaperSize(shopData);
+    const el = document.getElementById('receipt-template');
+    const title = checkoutResult?.id ? `Bill #${checkoutResult.id.slice(-8).toUpperCase()}` : 'POS Receipt';
+    printReceiptElementThermal(el, paperSpec, title);
+  }, [shopData, checkoutResult?.id]);
 
-  // Fallback Auto-print thermal receipt upon checkout completion
+  const handleOpenLastBillForPrint = useCallback(() => {
+    if (!lastBill) return;
+    pendingPrintTxRef.current = lastBill.id || '__last__';
+    setCheckoutResult(lastBill);
+  }, [lastBill]);
+
+  // Execute queued auto-print once #receipt-template and barcode SVG are painted in DOM
   useEffect(() => {
     if (!checkoutResult) return;
-    if (lastPrintedTxRef.current === checkoutResult.id) return;
+    if (pendingPrintTxRef.current !== checkoutResult.id && pendingPrintTxRef.current !== '__last__') return;
 
-    let shouldAutoPrint = true;
-    try {
-      const savedHw = localStorage.getItem('hardware_settings');
-      if (savedHw) {
-        const parsed = JSON.parse(savedHw);
-        if (parsed.autoPrintReceipt === false) shouldAutoPrint = false;
-      } else if ((shopData as any)?.settings?.autoPrintReceipt === false) {
-        shouldAutoPrint = false;
-      }
-    } catch {}
+    pendingPrintTxRef.current = null;
+    let rafId = 0;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    rafId = requestAnimationFrame(() => {
+      timerId = setTimeout(() => {
+        handlePrintReceipt();
+      }, 90);
+    });
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [checkoutResult, handlePrintReceipt]);
 
-    if (shouldAutoPrint) {
-      lastPrintedTxRef.current = checkoutResult.id;
-      const timer = setTimeout(() => {
-        try {
-          window.print();
-        } catch (e) {}
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [checkoutResult?.id]);
-
-  // Keyboard shortcut listener when Checkout Result Modal is open (Enter -> Print, Esc -> Close)
+  // Keyboard shortcut listener when Checkout Result Card is open (Enter/P -> Print, Esc -> Close)
   useEffect(() => {
     if (!checkoutResult) return;
     const handleModalKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toUpperCase();
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if (e.key === 'Escape') {
         setCheckoutResult(null);
-      } else if (e.key === 'Enter') {
+      } else if (!isTyping && (e.key === 'Enter' || e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
-        window.print();
-      } else if (e.key === 'p' || e.key === 'P') {
-        e.preventDefault();
-        window.print();
-      } else if (e.key === 'n' || e.key === 'N') {
+        handlePrintReceipt();
+      } else if (!isTyping && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
         setCheckoutResult(null);
       }
     };
     window.addEventListener('keydown', handleModalKeyDown);
     return () => window.removeEventListener('keydown', handleModalKeyDown);
-  }, [checkoutResult]);
+  }, [checkoutResult, handlePrintReceipt]);
 
   const handleVoiceSearch = () => {
     if (!requireFeature('voice_billing')) return;
@@ -1502,7 +1518,7 @@ export default function POS() {
         </div>
       )}
 
-      {/* Checkout Success Modal with UPI & Bill Breakdown */}
+      {/* Checkout Success Print Bar (Always Prominent Above Modals & Drawers) */}
       {checkoutResult && (() => {
         const modalItems = checkoutResult.items || [];
         const modalTotalMrp = modalItems.reduce((sum, it) => {
@@ -1517,35 +1533,80 @@ export default function POS() {
         }, 0);
         const modalBillDiscount = Number(checkoutResult.discountAmount || 0);
         const modalTotalSavings = modalProductSavings + modalBillDiscount;
-        const modalSavingsPercent = modalTotalMrp > 0 ? Math.round((modalTotalSavings / modalTotalMrp) * 100) : 0;
-        const shopGst = (isGstActive && shopData?.gstNumber) ? shopData.gstNumber : '';
 
         return (
-          <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 animate-in fade-in slide-in-from-top-4 duration-200 border border-emerald-400/40 no-print print:hidden" id="receipt-modal">
-            <div className="p-2 rounded-xl bg-white/20 backdrop-blur-md">
-              <CheckCircle2 className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <div className="font-extrabold text-sm tracking-wide">Bill Generated! #{checkoutResult.id.slice(-8).toUpperCase()}</div>
-              <div className="text-xs text-white/90 font-medium">Amount: ₹{checkoutResult.total.toFixed(2)} ({checkoutResult.paymentMethod || 'Cash'}) | Auto-printing receipt...</div>
-            </div>
-            <div className="flex items-center gap-1.5 ml-2">
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="h-8 px-3 bg-white/20 hover:bg-white/30 text-white border-white/30 text-xs rounded-xl font-bold"
-                onClick={handlePrintReceipt}
-              >
-                <Printer className="h-3.5 w-3.5 mr-1" /> Reprint
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-white hover:bg-white/20 rounded-xl"
-                onClick={() => setCheckoutResult(null)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+          <div
+            id="receipt-modal"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[165] w-[95%] max-w-xl bg-card text-foreground px-4 py-3.5 rounded-2xl shadow-2xl border-2 border-emerald-500 animate-in fade-in slide-in-from-top-4 duration-200 no-print print:hidden"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-xl bg-emerald-500 text-white shrink-0 shadow-sm">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-black text-sm text-foreground">
+                      Bill #{checkoutResult.id.slice(-8).toUpperCase()} Ready
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-black">
+                      ₹{checkoutResult.total.toFixed(2)} ({(checkoutResult.paymentMethod || 'Cash').toUpperCase()})
+                    </span>
+                    {Number(checkoutResult.changeReturn || 0) > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-black">
+                        Change: ₹{Number(checkoutResult.changeReturn).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                    {modalTotalSavings > 0
+                      ? `Customer saved ₹${modalTotalSavings.toFixed(2)} (${modalTotalMrp > 0 ? Math.round((modalTotalSavings / modalTotalMrp) * 100) : 0}%) • `
+                      : ''}
+                    Click Print Bill or press Enter to open thermal print dialog
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handlePrintReceipt}
+                  className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded-xl font-black shadow-md cursor-pointer"
+                >
+                  <Printer className="h-4 w-4 mr-1.5" /> Print Bill (Enter)
+                </Button>
+                <Link
+                  to={`/receipt/${checkoutResult.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center h-9 px-3 rounded-xl border border-border bg-muted/50 hover:bg-muted text-xs font-bold text-foreground transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5 mr-1" /> Receipt
+                </Link>
+                {canAccess('whatsapp_bills') && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleWhatsAppBill}
+                    className="h-9 px-2.5 text-xs rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+                    title="Send on WhatsApp"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground rounded-xl"
+                  onClick={() => setCheckoutResult(null)}
+                  title="Close (Esc)"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         );
@@ -2075,11 +2136,11 @@ export default function POS() {
             <ShoppingCart className="h-6 w-6 text-primary" /> Current Bill ({cart.reduce((s, i) => s + i.qty, 0)})
           </h2>
           <div className="flex items-center gap-2">
-            {lastBill && cart.length === 0 && (
+            {lastBill && (
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setCheckoutResult(lastBill)}
+                onClick={handleOpenLastBillForPrint}
                 className="text-xs h-8 border-primary/40 text-primary hover:bg-primary/10 flex items-center gap-1 font-semibold"
               >
                 <Printer className="h-3.5 w-3.5" /> Last Bill
@@ -2097,15 +2158,15 @@ export default function POS() {
             <ShoppingCart className="h-5 w-5" /> Current Bill
           </h2>
           <div className="flex items-center gap-2">
-            {lastBill && cart.length === 0 && (
+            {lastBill && (
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setCheckoutResult(lastBill)}
+                onClick={handleOpenLastBillForPrint}
                 className="text-xs h-8 border-primary/40 text-primary hover:bg-primary/10 flex items-center gap-1.5 font-semibold"
                 title="Reprint previous bill"
               >
-                <Printer className="h-3.5 w-3.5" /> Reprint Last Bill
+                <Printer className="h-3.5 w-3.5" /> Print Last Bill
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={() => setCart([])} disabled={cart.length === 0}>
@@ -2124,10 +2185,10 @@ export default function POS() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => setCheckoutResult(lastBill)}
+                  onClick={handleOpenLastBillForPrint}
                   className="mt-2 text-xs font-semibold text-primary border-primary/40 hover:bg-primary/10 flex items-center gap-1.5 shadow-xs"
                 >
-                  <Printer className="h-3.5 w-3.5" /> Reprint Last Bill (#{String(lastBill.id || '').slice(-6).toUpperCase()})
+                  <Printer className="h-3.5 w-3.5" /> Print Last Bill (#{String(lastBill.id || '').slice(-6).toUpperCase()})
                 </Button>
               )}
               <Button variant="outline" className="mt-4 md:hidden" onClick={() => setShowMobileCart(false)}>
@@ -3170,9 +3231,9 @@ export default function POS() {
                   const cashNeeded = Math.max(0, total - splitAmounts.upi - splitAmounts.udhar);
                   const changeDue = tenderedNum - cashNeeded;
                   if (changeDue > 0) {
-                    return `Complete Bill • Return ₹${changeDue.toFixed(0)} Change ↵`;
+                    return `Complete & Print • Return ₹${changeDue.toFixed(0)} Change ↵`;
                   }
-                  return `Complete Bill (₹${total.toFixed(2)})`;
+                  return `Complete & Print Bill (₹${total.toFixed(2)})`;
                 })()}
               </Button>
             </div>
@@ -3549,6 +3610,9 @@ export default function POS() {
         returnReason={returnReason}
         setReturnReason={setReturnReason}
         handleProcessSalesReturn={handleProcessSalesReturn}
+        lastProcessedReturn={lastProcessedReturn}
+        setLastProcessedReturn={setLastProcessedReturn}
+        onPrintReturnSlip={(rec) => printReturnVoucherThermal(rec, shopData)}
       />
 
       {/* D-MART CASH COUNTER SHIFT CLOSE MODAL (Z-REPORT) */}

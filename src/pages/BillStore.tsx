@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { getBillItemsReturnStatus, getBillReturnSummary } from '../lib/salesReturnUtils';
+import { printHtmlThermal } from '../lib/printThermalHtml';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -321,9 +322,6 @@ export default function BillStore() {
       }
     } catch {}
 
-    const printWindow = window.open('', '', 'width=380,height=640');
-    if (!printWindow) return;
-
     const billItems = bill.items || [];
     const totalQtyCount = billItems.reduce((sum, it) => sum + Number(it.qty || 1), 0);
     const totalMrpValue = billItems.reduce((sum, it) => {
@@ -367,7 +365,7 @@ export default function BillStore() {
       `;
     }).join('');
 
-    printWindow.document.write(`
+    printHtmlThermal(`
       <!DOCTYPE html>
       <html>
         <head>
@@ -375,7 +373,7 @@ export default function BillStore() {
           <title>Receipt #${billShortId}</title>
           <style>
             @page { margin: 0mm; size: ${paperSpec} auto; }
-            * { box-sizing: border-box; }
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             body { 
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
               width: 100%;
@@ -440,15 +438,9 @@ export default function BillStore() {
           </div>
           <p class="center" style="margin:5px 0 1px;font-size:11px;font-weight:900;">Thank You For Shopping! Please Visit Again</p>
           <p class="center" style="margin:3px 0 2mm;font-size:12.5px;font-weight:900;color:#000;letter-spacing:0.3px;">Software by Varuag Labs</p>
-          <script>
-            window.onload = function() {
-              setTimeout(function() { window.print(); }, 80);
-            };
-          </script>
         </body>
       </html>
     `);
-    printWindow.document.close();
   };
 
   // WhatsApp Sender

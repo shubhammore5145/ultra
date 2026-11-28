@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { printReceiptElementThermal } from '../lib/printThermalHtml';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -337,9 +338,9 @@ export default function Settings() {
   };
 
   const handlePrintTestReceipt = () => {
-    setTimeout(() => {
-      window.print();
-    }, 250);
+    const paperSpec = hardwareSettings.paperSize === '58mm' ? '58mm' : '80mm';
+    const el = document.getElementById('test-receipt-print');
+    printReceiptElementThermal(el, paperSpec, 'Hardware Test Receipt');
   };
 
   const handleScannerTest = (e?: React.FormEvent) => {

@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone: s?.phone || '',
       email: s?.email || u?.email || '',
       address: s?.address || '',
-      plan: s?.plan || 'ultra_pro',
+      plan: s?.plan || 'free',
       createdAt: s?.createdAt || new Date().toISOString()
     } as any;
   };

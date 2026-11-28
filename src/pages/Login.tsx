@@ -102,11 +102,11 @@ export default function Login() {
         try {
           const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
           const fbUser = userCredential.user;
+          const idToken = await fbUser.getIdToken();
 
-          // Sync with Database
+          // Sync with Database using verified Firebase ID Token
           const res = await api.auth.firebaseSync({
-            uid: fbUser.uid,
-            email: fbUser.email,
+            idToken,
             displayName: fbUser.displayName || name || cleanEmail.split('@')[0]
           });
 
@@ -154,10 +154,11 @@ export default function Login() {
           } catch (_e) {}
         }
 
-        // 2. Sync & Store in MySQL Database
+        const idToken = await fbUser.getIdToken();
+
+        // 2. Sync & Store in MongoDB Database
         const res = await api.auth.firebaseSync({
-          uid: fbUser.uid,
-          email: fbUser.email,
+          idToken,
           displayName: name || cleanEmail.split('@')[0],
           role: roleChoice,
           shopId: roleChoice === 'cashier' ? joinShopId.trim() : undefined,
@@ -182,10 +183,10 @@ export default function Login() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
+      const idToken = await fbUser.getIdToken();
 
       const res = await api.auth.firebaseSync({
-        uid: fbUser.uid,
-        email: fbUser.email,
+        idToken,
         displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
         shopName: `${fbUser.displayName || 'My'}'s Shop`,
         ownerName: fbUser.displayName || 'Owner'

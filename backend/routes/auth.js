@@ -3,8 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
+const { JWT_SECRET, verifyFirebaseIdToken } = require('../middleware/auth');
 
 // Helper to generate unique ID
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -172,39 +171,57 @@ router.get('/me', async (req, res) => {
   try {
     const db = await pool.getDb();
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-
-    const token = authHeader.split(' ')[1];
-    let uid, shopId;
-    if (token.startsWith('sb_')) {
-      const [payloadB64] = token.slice(3).split('.');
-      const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
-      uid = payload.uid;
-      shopId = payload.shopId;
-    } else {
-      let decoded;
-      try {
-        decoded = jwt.verify(token, JWT_SECRET);
-      } catch {
-        decoded = jwt.decode(token);
-      }
-      if (decoded) {
-        uid = decoded.uid || decoded.user_id || decoded.sub;
-        shopId = decoded.shopId || req.headers['x-shop-id'];
-      } else {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
     }
 
-    const userDoc = await db.collection('users').findOne(
+    const token = authHeader.slice(7).trim();
+    if (!token || token.startsWith('sb_')) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    const uid = decoded?.uid || decoded?.user_id || decoded?.sub;
+    const tokenShopId = decoded?.shopId ? String(decoded.shopId).trim() : '';
+    if (!uid) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    let userDoc = await db.collection('users').findOne(
       { uid },
       { projection: { _id: 0, password: 0 } }
     );
-    if (!userDoc) return res.status(404).json({ error: 'User not found' });
+
+    if (!userDoc && decoded.isImpersonated && tokenShopId) {
+      const targetShop = pool.stripMongoId(await db.collection('shops').findOne({ shopId: tokenShopId }));
+      if (targetShop) {
+        return res.json({
+          user: {
+            uid,
+            email: targetShop.email || `admin@${tokenShopId}.com`,
+            displayName: targetShop.ownerName || targetShop.name || 'Store Owner',
+            role: 'admin',
+            shopId: targetShop.shopId,
+            permissions: []
+          },
+          shop: targetShop
+        });
+      }
+    }
+
+    if (!userDoc) return res.status(401).json({ error: 'User not found' });
 
     userDoc.permissions = normalizePermissions(userDoc.permissions);
-    const targetShopId = userDoc.shopId || shopId;
-    const shop = pool.stripMongoId(await db.collection('shops').findOne({ shopId: targetShopId }));
+    const targetShopId = userDoc.shopId || tokenShopId;
+    const shop = targetShopId
+      ? pool.stripMongoId(await db.collection('shops').findOne({ shopId: targetShopId }))
+      : null;
 
     res.json({ user: userDoc, shop: shop || null });
   } catch (error) {
@@ -213,26 +230,40 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// 4. Firebase Auth Sync
+// 4. Firebase Auth Sync (Cryptographically verifies Google Firebase ID token)
 router.post('/firebase-sync', async (req, res) => {
   try {
     const db = await pool.getDb();
-    const { uid, email, displayName, role, shopId: joinShopId, shopName, ownerName, phone } = req.body;
-    if (!uid || !email) {
-      return res.status(400).json({ error: 'Firebase UID and email are required' });
+    const { idToken, displayName, role, shopId: joinShopId, shopName, ownerName, phone } = req.body;
+
+    let verified;
+    try {
+      verified = await verifyFirebaseIdToken(idToken);
+    } catch (verifyErr) {
+      return res.status(401).json({ error: verifyErr.message || 'Valid Firebase ID token is required' });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanDisplayName = displayName || cleanEmail.split('@')[0];
+    const uid = verified.uid;
+    const cleanEmail = verified.email;
+    if (!uid || !cleanEmail) {
+      return res.status(400).json({ error: 'Verified Firebase UID and email are required' });
+    }
+
+    const cleanDisplayName = displayName || verified.name || cleanEmail.split('@')[0];
     const emailRegex = new RegExp(`^${pool.escapeRegex(cleanEmail)}$`, 'i');
 
-    // 1. Check by UID first
+    // 1. Check by verified UID first
     let userDoc = await db.collection('users').findOne({ uid });
 
-    // 2. Check by normalized email if not found by UID
+    // 2. Link by email ONLY if Firebase email ownership is verified (prevents unverified-email takeover)
     if (!userDoc) {
       const byEmail = await db.collection('users').findOne({ email: { $regex: emailRegex } });
       if (byEmail) {
+        if (!verified.emailVerified) {
+          return res.status(403).json({
+            error: 'Account already exists with this email. Please verify your email or log in with your password.'
+          });
+        }
         userDoc = byEmail;
         try {
           await db.collection('users').updateOne({ _id: byEmail._id }, { $set: { uid } });

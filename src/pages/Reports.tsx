@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
 import { api } from '../lib/api';
+import { formatWhatsAppBillText } from '../lib/whatsappBillText';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
 import { Button } from '../components/ui/button';
@@ -633,7 +634,21 @@ export default function Reports() {
                                 </a>
                                 {phone && (
                                   <a
-                                    href={`https://wa.me/91${phone}?text=${encodeURIComponent(`Hello! Here is your invoice receipt from ${shopData?.name || 'our store'}: ${window.location.origin}/receipt/${s.id}`)}`}
+                                    href={`https://wa.me/91${phone}?text=${encodeURIComponent(
+                                      formatWhatsAppBillText({
+                                        shopName: shopData?.name,
+                                        shopAddress: shopData?.address,
+                                        shopPhone: shopData?.phone,
+                                        billId: s.id,
+                                        createdAt: s.createdAt,
+                                        customerPhone: phone,
+                                        items: itemsArr,
+                                        subtotal: Number(s.subtotal || s.totalAmount || (s as any).total || 0),
+                                        discountAmount: Number(s.discountAmount || 0),
+                                        totalAmount: Number(s.totalAmount || (s as any).total || 0),
+                                        paymentMethod: s.paymentMethod || 'CASH'
+                                      })
+                                    )}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"

@@ -1393,15 +1393,16 @@ export default function Dashboard() {
                     Cancel
                   </Button>
                   <Button
-                    onClick={() => {
+                    onClick={async () => {
                       const floatNum = Number(openingFloat) || 0;
                       const countedVal = Number(countedCash) || 0;
                       const expectedCash = floatNum + cashInDrawer;
                       const diff = countedVal - expectedCash;
+                      const nowIso = new Date().toISOString();
 
                       const record = {
                         id: 'settle_' + Date.now().toString(36),
-                        date: new Date().toISOString(),
+                        date: nowIso,
                         shopName: shopData?.name || 'Kirana Store',
                         openingFloat: floatNum,
                         todaysSales,
@@ -1414,6 +1415,24 @@ export default function Dashboard() {
                         difference: diff,
                         notes: settlementNotes
                       };
+
+                      try {
+                        await api.cashCounter.closeShift({
+                          id: record.id,
+                          cashierName: shopData?.ownerName || shopData?.name || 'Admin',
+                          openingCash: floatNum,
+                          cashSales: todaysCash,
+                          cashReturns: 0,
+                          cashExpenses: todaysExpenses,
+                          expectedCash,
+                          actualCountedCash: countedVal,
+                          discrepancy: diff,
+                          notes: settlementNotes || 'Daily Register Close',
+                          closedAt: nowIso
+                        });
+                      } catch (syncErr) {
+                        console.warn('Cloud settlement sync fallback:', syncErr);
+                      }
 
                       try {
                         const history = JSON.parse(localStorage.getItem('pos_day_settlements') || '[]');

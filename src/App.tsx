@@ -81,8 +81,6 @@ function App() {
                   <Route path="/staff" element={<ProtectedRoute requiredPermission="staff"><StaffManagement /></ProtectedRoute>} />
                   <Route path="/recycle-bin" element={<ProtectedRoute requiredPermission="recycle_bin"><RecycleBin /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute requiredPermission="settings"><Settings /></ProtectedRoute>} />
-                  <Route path="/admin" element={<SuperAdmin />} />
-                  <Route path="/superadmin" element={<SuperAdmin />} />
                   <Route path="/upgrade" element={<Navigate to="/pos" replace />} />
 
                   {/* Common Utilities */}

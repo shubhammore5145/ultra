@@ -31,7 +31,7 @@ const getShopId = () => {
     const { valid, payload } = parseAndValidateToken(token);
     if (valid && payload?.shopId && payload.shopId !== 'default') return payload.shopId;
   }
-  return 'mg4q6ov7ym';
+  return null;
 };
 
 // ── LOCAL RECYCLE BIN STORAGE (OFFLINE & CLOUD BACKUP) ─────────
@@ -171,24 +171,7 @@ export interface SuperAdminShopRecord {
   formattedExpiry?: string;
 }
 
-export const INITIAL_SHOPS: SuperAdminShopRecord[] = [
-  { shopId: 'mg4q6ov7ym', shopName: 'SHIV SHAKATI ', ownerName: 'shubham', phone: '9226345875', email: 'shubhamvmore12@gmail.com', address: 'samta coloni shivaji nagara  waluj walyj.bk  aurangabad -431133', gstNumber: '27AABCS1429B1Z2', upiId: '9263458752@ibl', plan: 'ultra_pro', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 147, userCount: 2, transactionCount: 69, totalSalesVolume: 37257.63, subscriptionStatus: 'lifetime' },
-  { shopId: 'd7n2r3emt9c', shopName: "Swapnil Jadhav's Shop", ownerName: 'Swapnil Jadhav', phone: '9421383010', email: 'sj136609@gmail.com', address: null, gstNumber: null, upiId: 'paytm.s2w4op8@pty', plan: 'free', planExpiry: null, createdAt: '2026-11-16T08:45:36+00:00', productCount: 109, userCount: 1, transactionCount: 17, totalSalesVolume: 2031, subscriptionStatus: 'free' },
-  { shopId: '6mfqcog6g5', shopName: 'balaji ', ownerName: 'Shubham Namdev More', phone: '9226345875', email: 'shubham45mgm@gmail.com', address: 'samta colni shiva shi nagar walkov', gstNumber: null, upiId: '9226345875@ibl', plan: 'ultra_pro', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 5, userCount: 2, transactionCount: 12, totalSalesVolume: 12557, subscriptionStatus: 'lifetime' },
-  { shopId: 'gob9j37p2vi', shopName: "TS Fitness's Shop", ownerName: 'TS Fitness', phone: '', email: 'tsfitness.waluj@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 1, userCount: 1, transactionCount: 1, totalSalesVolume: 525, subscriptionStatus: 'free' },
-  { shopId: '8c7mq66vr6r', shopName: 'KiranaPro Store', ownerName: 'Shubham More', phone: '', email: 'shubham@example.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 1, userCount: 1, transactionCount: 1, totalSalesVolume: 8, subscriptionStatus: 'free' },
-  { shopId: 'z693aemqc1', shopName: 'Nayashi Kirana', ownerName: 'Ramesh Kirana', phone: '', email: 'testuser2026@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 2, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: 'gc03m926jr4', shopName: 'Supermarket Store', ownerName: 'Test Owner', phone: '', email: 'admin@supermarket.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 1, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: 'qaiardtl1u', shopName: 'Shubham Namdev More Kirana', ownerName: 'Shubham Namdev More', phone: '', email: 'shubham45mgm@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'ultra_pro', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'lifetime' },
-  { shopId: '9dk46u4urzf', shopName: "Dishant Aarak's Shop", ownerName: 'Dishant Aarak', phone: '', email: 'dishantaarak2696@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-11-19T11:26:06+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: '318ip4aol35', shopName: "Shubham More's Shop", ownerName: 'Shubham More', phone: '', email: 'shubhamvmore11@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: '11e1xqeme2cc', shopName: 'My Kirana Store', ownerName: 'shubhamvmore12', phone: '', email: 'shubhamvmore12@gmial.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-11-10T10:47:41+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: '17k8boo302x', shopName: 'My Kirana Store', ownerName: 'Google Tester', phone: '', email: 'googleuser_1790510554179@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: '5xb40zq6osh', shopName: 'My Kirana Store', ownerName: 'riteh', phone: '', email: 'shubhamnmore16@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: 'gxpb7w8vf57', shopName: 'My Kirana Store', ownerName: 'Shop Owner', phone: '', email: 'newuser_1790510027758@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: 'laer32d6wwo', shopName: "Ritika Patil's Shop", ownerName: 'Ritika Patil', phone: '', email: 'ritikapatil11117@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' },
-  { shopId: 'f5h8arrbv5j', shopName: 'riteh Kirana', ownerName: 'riteh', phone: '', email: 'shubhamnmore16@gmail.com', address: null, gstNumber: null, upiId: null, plan: 'free', planExpiry: null, createdAt: '2026-10-25T07:41:39+00:00', productCount: 0, userCount: 1, transactionCount: 0, totalSalesVolume: 0, subscriptionStatus: 'free' }
-];
+export const INITIAL_SHOPS: SuperAdminShopRecord[] = [];
 
 export function getLocalSalesReturns(shopId?: string): SalesReturn[] {
   try {
@@ -263,7 +246,10 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data?.error || `API Request Failed with status ${response.status}`);
+    const err: any = new Error(data?.error || `API Request Failed with status ${response.status}`);
+    err.status = response.status;
+    err.data = data;
+    throw err;
   }
 
   return data;
@@ -540,7 +526,9 @@ export const api = {
   notifications: {
     list: (unreadOnly?: boolean) => fetchAPI('/notifications' + (unreadOnly ? '?unreadOnly=true' : ''), { method: 'GET' }),
     markAsRead: (id: string) => fetchAPI(`/notifications/${id}/read`, { method: 'POST' }),
-    markAllAsRead: () => fetchAPI('/notifications/read-all', { method: 'POST' })
+    markRead: (id: string) => fetchAPI(`/notifications/${id}/read`, { method: 'POST' }),
+    markAllAsRead: () => fetchAPI('/notifications/read-all', { method: 'POST' }),
+    markAllRead: () => fetchAPI('/notifications/read-all', { method: 'POST' })
   },
   whatsapp: {
     status: async (shopId?: string) => {
@@ -643,24 +631,85 @@ export const api = {
     }
   },
   damagedGoods: {
-    list: async () => getLocalDamagedGoods(),
+    list: async (): Promise<DamagedItem[]> => {
+      const localList = getLocalDamagedGoods();
+      try {
+        const serverList = await fetchAPI('/damaged-goods', { method: 'GET' });
+        if (Array.isArray(serverList)) {
+          const seen = new Set(serverList.map((d: any) => String(d.id || '')));
+          const merged = [...serverList, ...localList.filter(d => d && d.id && !seen.has(String(d.id)))];
+          merged.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          saveLocalDamagedGoods(merged);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch server damaged goods, falling back to local cache:', err);
+      }
+      return localList;
+    },
     create: async (item: DamagedItem) => {
-      const list = getLocalDamagedGoods();
-      list.unshift(item);
-      saveLocalDamagedGoods(list);
-      return item;
+      try {
+        const res = await fetchAPI('/damaged-goods', {
+          method: 'POST',
+          body: JSON.stringify(item)
+        });
+        const saved: DamagedItem = res?.item || item;
+        const list = getLocalDamagedGoods().filter(d => d.id !== saved.id);
+        list.unshift(saved);
+        saveLocalDamagedGoods(list);
+        return saved;
+      } catch (err) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          const list = getLocalDamagedGoods();
+          list.unshift(item);
+          saveLocalDamagedGoods(list);
+          return item;
+        }
+        throw err;
+      }
     },
     delete: async (id: string) => {
+      try {
+        await fetchAPI(`/damaged-goods/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      } catch (err) {
+        if (typeof navigator === 'undefined' || navigator.onLine) throw err;
+      }
       const list = getLocalDamagedGoods().filter(d => d.id !== id);
       saveLocalDamagedGoods(list);
       return { success: true };
     }
   },
   stockMovements: {
-    list: async () => getLocalStockMovements(),
+    list: async (): Promise<StockMovement[]> => {
+      const localList = getLocalStockMovements();
+      try {
+        const serverList = await fetchAPI('/stock-movements', { method: 'GET' });
+        if (Array.isArray(serverList)) {
+          const seen = new Set(serverList.map((m: any) => String(m.id || '')));
+          const merged = [...serverList, ...localList.filter(m => m && m.id && !seen.has(String(m.id)))];
+          merged.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          try {
+            localStorage.setItem(`dmart_movements_${getShopId() || 'default'}`, JSON.stringify(merged.slice(0, 500)));
+          } catch {}
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch server stock movements, falling back to local cache:', err);
+      }
+      return localList;
+    },
     log: async (m: StockMovement) => {
       logStockMovement(m);
-      return m;
+      try {
+        const res = await fetchAPI('/stock-movements', {
+          method: 'POST',
+          body: JSON.stringify(m)
+        });
+        return res?.movement || m;
+      } catch (err) {
+        console.warn('Stock movement cloud sync queued locally:', err);
+        return m;
+      }
     }
   },
   salesReturns: {
@@ -716,23 +765,48 @@ export const api = {
     }
   },
   cashCounter: {
-    list: async () => getLocalCashCounterClosings(),
+    list: async (): Promise<CashCounterClosing[]> => {
+      const localList = getLocalCashCounterClosings();
+      try {
+        const serverList = await fetchAPI('/cash-counter', { method: 'GET' });
+        if (Array.isArray(serverList)) {
+          const seen = new Set(serverList.map((c: any) => String(c.id || '')));
+          const merged = [...serverList, ...localList.filter(c => c && c.id && !seen.has(String(c.id)))];
+          merged.sort((a: any, b: any) => new Date(b.closedAt || 0).getTime() - new Date(a.closedAt || 0).getTime());
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch server cash counter closings, using local cache:', err);
+      }
+      return localList;
+    },
     closeShift: async (closing: CashCounterClosing) => {
       saveLocalCashCounterClosing(closing);
-      return closing;
+      try {
+        const res = await fetchAPI('/cash-counter', {
+          method: 'POST',
+          body: JSON.stringify(closing)
+        });
+        return res?.closing || closing;
+      } catch (err) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          return closing;
+        }
+        throw err;
+      }
     }
   },
   superadmin: {
     getStats: async (key?: string) => {
-      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '5145';
-      return fetchAPI(`/superadmin/stats?key=${encodeURIComponent(masterKey)}`, {
-        headers: { 'x-superadmin-key': masterKey }
+      const masterKey = (key || sessionStorage.getItem('martgpt_superadmin_key') || '').trim();
+      return fetchAPI('/superadmin/stats', {
+        headers: masterKey ? { 'x-superadmin-key': masterKey } : {}
       });
     },
     getShops: async (key?: string) => {
-      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '5145';
-      return fetchAPI(`/superadmin/shops?key=${encodeURIComponent(masterKey)}`, {
-        headers: { 'x-superadmin-key': masterKey }
+      const masterKey = (key || sessionStorage.getItem('martgpt_superadmin_key') || '').trim();
+      return fetchAPI('/superadmin/shops', {
+        headers: masterKey ? { 'x-superadmin-key': masterKey } : {}
       });
     },
     updatePlan: async (
@@ -740,25 +814,25 @@ export const api = {
       data: { plan: string; durationDays?: number | null; customExpiry?: string | null }, 
       key?: string
     ) => {
-      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '5145';
-      return fetchAPI(`/superadmin/shops/${shopId}/plan?key=${encodeURIComponent(masterKey)}`, {
+      const masterKey = (key || sessionStorage.getItem('martgpt_superadmin_key') || '').trim();
+      return fetchAPI(`/superadmin/shops/${shopId}/plan`, {
         method: 'PUT',
-        headers: { 'x-superadmin-key': masterKey },
+        headers: masterKey ? { 'x-superadmin-key': masterKey } : {},
         body: JSON.stringify(data)
       });
     },
     deleteShop: async (shopId: string, key?: string) => {
-      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '5145';
-      return fetchAPI(`/superadmin/shops/${shopId}?key=${encodeURIComponent(masterKey)}`, {
+      const masterKey = (key || sessionStorage.getItem('martgpt_superadmin_key') || '').trim();
+      return fetchAPI(`/superadmin/shops/${shopId}`, {
         method: 'DELETE',
-        headers: { 'x-superadmin-key': masterKey }
+        headers: masterKey ? { 'x-superadmin-key': masterKey } : {}
       });
     },
     impersonate: async (shopId: string, key?: string) => {
-      const masterKey = key || sessionStorage.getItem('martgpt_superadmin_key') || '5145';
-      return fetchAPI(`/superadmin/impersonate/${shopId}?key=${encodeURIComponent(masterKey)}`, {
+      const masterKey = (key || sessionStorage.getItem('martgpt_superadmin_key') || '').trim();
+      return fetchAPI(`/superadmin/impersonate/${shopId}`, {
         method: 'POST',
-        headers: { 'x-superadmin-key': masterKey }
+        headers: masterKey ? { 'x-superadmin-key': masterKey } : {}
       });
     }
   }

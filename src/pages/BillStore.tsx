@@ -9,6 +9,7 @@ import {
 import { api } from '../lib/api';
 import { getBillItemsReturnStatus, getBillReturnSummary } from '../lib/salesReturnUtils';
 import { printHtmlThermal } from '../lib/printThermalHtml';
+import { formatWhatsAppBillText } from '../lib/whatsappBillText';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -457,41 +458,20 @@ export default function BillStore() {
       return;
     }
 
-    const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
-    const shopAddr = shopData?.address ? `📍 ${shopData.address}\n` : '';
-    const shopPh = shopData?.phone ? `📞 Ph: ${shopData.phone}\n` : '';
-    const billShortId = String(bill.id || '').slice(-8).toUpperCase();
-    const d = bill.createdAt ? new Date(bill.createdAt) : new Date();
-    const dateStr = d.toLocaleDateString('en-IN');
-    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const receiptLink = `${window.location.origin}/receipt/${bill.id}`;
-
-    const itemsText = (bill.items || [])
-      .map((it, idx) => `${idx + 1}. *${it.name}* (${it.qty}x) = ₹${(Number(it.sellingPrice) * Number(it.qty)).toFixed(2)}`)
-      .join('\n');
-
-    let msg = `🏪 *${shopName.toUpperCase()}*\n`;
-    if (shopAddr) msg += shopAddr;
-    if (shopPh) msg += shopPh;
-    msg += `────────────────────\n`;
-    msg += `🧾 *TAX / RETAIL INVOICE*\n`;
-    msg += `*Inv No:* #${billShortId}\n`;
-    msg += `*Date:* ${dateStr}, ${timeStr}\n`;
-    if (cust.name) {
-      msg += `*Customer:* ${cust.name} (+91 ${targetPhone})\n`;
-    }
-    msg += `*Mode:* ${(bill.paymentMethod || 'Cash').toUpperCase()}\n`;
-    msg += `────────────────────\n`;
-    msg += `🛒 *PURCHASED ITEMS:*\n${itemsText}\n`;
-    msg += `────────────────────\n`;
-    if (Number(bill.discountAmount) > 0) {
-      msg += `Subtotal: ₹${Number(bill.subtotal || bill.totalAmount).toFixed(2)}\n`;
-      msg += `Discount: -₹${Number(bill.discountAmount).toFixed(2)}\n`;
-    }
-    msg += `💰 *TOTAL AMOUNT: ₹${Number(bill.totalAmount || 0).toFixed(2)}*\n`;
-    msg += `────────────────────\n`;
-    msg += `📄 *View Full E-Bill / PDF:*\n${receiptLink}\n\n`;
-    msg += `🙏 *Thank you for shopping with us! Please visit again.* 😊`;
+    const msg = formatWhatsAppBillText({
+      shopName: shopData?.shopName || shopData?.name,
+      shopAddress: shopData?.address,
+      shopPhone: shopData?.phone,
+      billId: bill.id,
+      createdAt: bill.createdAt,
+      customerName: cust.name,
+      customerPhone: targetPhone,
+      items: bill.items || [],
+      subtotal: Number(bill.subtotal || bill.totalAmount || 0),
+      discountAmount: Number(bill.discountAmount || 0),
+      totalAmount: Number(bill.totalAmount || 0),
+      paymentMethod: bill.paymentMethod || 'Cash'
+    });
 
     window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };

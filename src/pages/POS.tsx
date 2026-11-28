@@ -22,6 +22,7 @@ import { printReceiptElementThermal, getConfiguredPaperSize, printReturnVoucherT
 import { POSShiftCloseModal } from '../components/pos/POSShiftCloseModal';
 import { POSSalesReturnModal } from '../components/pos/POSSalesReturnModal';
 import { saveReceiptOffline, cacheProductsOffline, getCachedProductsOffline, pruneOldReceipts } from '../lib/storage';
+import { formatWhatsAppBillText } from '../lib/whatsappBillText';
 import JsBarcode from 'jsbarcode';
 
 const playSoundboxAlert = (amount: number, method: string) => {
@@ -259,52 +260,20 @@ export default function POS() {
     paymentMode: string = 'Paid',
     custName: string = ''
   ) => {
-    const shopName = shopData?.shopName || shopData?.name || 'Kirana Store';
-    const shopPhone = shopData?.phone ? `📞 Ph: ${shopData.phone}` : '';
-    const shopAddr = shopData?.address ? `📍 ${shopData.address}` : '';
-    const shopGst = (isGstActive && shopData?.gstNumber) ? `🏢 GSTIN: ${shopData.gstNumber}` : '';
-    const now = new Date();
-    const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    const formattedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-    // Determine public URL for digital receipt link
-    let customPublicUrl = (shopData as any)?.publicUrl?.trim()?.replace(/\/$/, '');
-    if (customPublicUrl && customPublicUrl.includes('vercel.app')) {
-      customPublicUrl = 'https://ultra-u3ej.onrender.com';
-    }
-    if (!customPublicUrl && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      customPublicUrl = window.location.origin;
-    }
-    const finalBaseUrl = customPublicUrl || 'https://ultra-u3ej.onrender.com';
-    const receiptLink = `${finalBaseUrl}/receipt/${txId}`;
-
-    const numTotal = Number(billTotal || 0);
-    const totalQty = itemsList.reduce((sum, item) => sum + Number(item.qty || 1), 0);
-
-    // Simple, clean WhatsApp bill — just header + link
-    let text = `🏪 *${shopName.toUpperCase()}*\n`;
-    if (shopAddr) text += `${shopAddr}\n`;
-    if (shopPhone) text += `${shopPhone}\n`;
-    if (shopGst) text += `${shopGst}\n`;
-    text += `────────────────────\n`;
-    text += `🧾 *RETAIL BILL*\n`;
-    text += `*Inv:* #${txId.slice(0, 8).toUpperCase()}\n`;
-    text += `*Date:* ${formattedDate}, ${formattedTime}\n`;
-    if (custName) {
-      text += `*Customer:* ${custName} (+91 ${phone})\n`;
-    }
-    text += `*Items:* ${itemsList.length} (${totalQty} qty)\n`;
-    if (discount > 0) text += `🏷️ *Discount:* -₹${discount.toFixed(2)}\n`;
-    if (paymentMode) text += `💳 *Payment Mode:* ${paymentMode.toUpperCase()}\n`;
-    text += `💰 *Total: ₹${numTotal.toFixed(2)}*\n`;
-    text += `────────────────────\n`;
-
-    if (receiptLink) {
-      text += `📄 *View Full E-Bill / Download PDF:*\n${receiptLink}\n\n`;
-    }
-
-    text += `🙏 *Thank you for shopping with us!*\nPlease visit again! 😊`;
-    return text;
+    return formatWhatsAppBillText({
+      shopName: shopData?.shopName || shopData?.name,
+      shopAddress: shopData?.address,
+      shopPhone: shopData?.phone,
+      gstNumber: shopData?.gstNumber,
+      isGstActive,
+      billId: txId,
+      customerName: custName,
+      customerPhone: phone,
+      items: itemsList,
+      discountAmount: discount,
+      totalAmount: Number(billTotal || 0),
+      paymentMethod: paymentMode
+    });
   };
 
   const dispatchWhatsAppBill = async (phone: string, text: string, txId: string, retryCount = 0) => {

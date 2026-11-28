@@ -2,20 +2,12 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
-const MASTER_KEY = process.env.SUPERADMIN_KEY || '5145';
-
-const SUPERADMIN_IDENTIFIERS = [
-  'shubham45mgm@gmail.com',
-  'shubhamnmore16@gmail.com',
-  'shubhamvmore12@gmail.com'
-];
+const { JWT_SECRET, getMasterKey, isSuperAdminUser } = require('../middleware/auth');
 
 const superAdminMiddleware = async (req, res, next) => {
   try {
-    const rawKey = req.headers['x-superadmin-key'] || req.query.key || req.headers['x-master-key'];
-    if (rawKey && String(rawKey).trim() === MASTER_KEY) {
+    const rawKey = req.headers['x-superadmin-key'] || req.headers['x-master-key'] || req.query.key;
+    if (rawKey && String(rawKey).trim() === getMasterKey()) {
       req.isSuperAdmin = true;
       return next();
     }
@@ -31,11 +23,8 @@ const superAdminMiddleware = async (req, res, next) => {
           { projection: { _id: 0, uid: 1, email: 1, displayName: 1, role: 1 } }
         );
         const target = user || decoded;
-        const isAuthorized =
-          target.role === 'super_admin' ||
-          (target.email && SUPERADMIN_IDENTIFIERS.includes(target.email.toLowerCase()));
 
-        if (isAuthorized) {
+        if (isSuperAdminUser(target)) {
           req.user = target;
           req.isSuperAdmin = true;
           return next();
@@ -296,6 +285,16 @@ router.delete('/shops/:shopId', async (req, res) => {
       db.collection('customers').deleteMany({ shopId }),
       db.collection('expenses').deleteMany({ shopId }),
       db.collection('udhar_transactions').deleteMany({ shopId }),
+      db.collection('suppliers').deleteMany({ shopId }),
+      db.collection('purchases').deleteMany({ shopId }),
+      db.collection('staff').deleteMany({ shopId }),
+      db.collection('staff_attendance').deleteMany({ shopId }),
+      db.collection('staff_salary_payments').deleteMany({ shopId }),
+      db.collection('sales_returns').deleteMany({ shopId }),
+      db.collection('notifications').deleteMany({ shopId }),
+      db.collection('damaged_goods').deleteMany({ shopId }),
+      db.collection('stock_movements').deleteMany({ shopId }),
+      db.collection('cash_counter_closings').deleteMany({ shopId }),
       db.collection('shops').deleteOne({ shopId })
     ]);
 

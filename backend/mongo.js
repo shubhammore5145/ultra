@@ -113,7 +113,13 @@ async function ensureIndexes(db) {
     db.collection('staff_salary_payments').createIndex({ shopId: 1, paymentDate: -1 }),
     db.collection('sales_returns').createIndex({ id: 1 }, { unique: true }),
     db.collection('sales_returns').createIndex({ shopId: 1, createdAt: -1 }),
-    db.collection('sales_returns').createIndex({ shopId: 1, originalBillId: 1 })
+    db.collection('sales_returns').createIndex({ shopId: 1, originalBillId: 1 }),
+    db.collection('damaged_goods').createIndex({ id: 1 }, { unique: true }),
+    db.collection('damaged_goods').createIndex({ shopId: 1, createdAt: -1 }),
+    db.collection('stock_movements').createIndex({ id: 1 }, { unique: true }),
+    db.collection('stock_movements').createIndex({ shopId: 1, createdAt: -1 }),
+    db.collection('cash_counter_closings').createIndex({ id: 1 }, { unique: true }),
+    db.collection('cash_counter_closings').createIndex({ shopId: 1, closedAt: -1 })
   ]);
 }
 

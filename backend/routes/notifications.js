@@ -1,38 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const pool = require('../db');
+const { requireAuth, verifyBearerToken, isSuperAdminUser, getMasterKey } = require('../middleware/auth');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
-
-function getAuthContext(req) {
-  try {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      if (token.startsWith('sb_')) {
-        const [b64] = token.slice(3).split('.');
-        const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-        return { shopId: payload.shopId || req.headers['x-shop-id'] || null, uid: payload.uid, role: payload.role || 'admin' };
-      }
-      const decoded = jwt.verify(token, JWT_SECRET);
-      return { shopId: decoded.shopId || req.headers['x-shop-id'] || null, uid: decoded.uid, role: decoded.role };
-    }
-  } catch {}
-
-  const shopId = req.headers['x-shop-id'] || req.query.shopId || null;
-  return { shopId, uid: null, role: null };
+function isSuperAdminRequest(req) {
+  const rawKey = req.headers['x-superadmin-key'] || req.headers['x-master-key'];
+  if (rawKey && String(rawKey).trim() === getMasterKey()) {
+    return true;
+  }
+  const user = verifyBearerToken(req);
+  return isSuperAdminUser(user);
 }
 
 // ── 1. GET /api/notifications ─────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
     const db = await pool.getDb();
-    const { shopId } = getAuthContext(req);
+    const shopId = req.user.shopId;
 
-    const filter = shopId
-      ? { $or: [{ shopId }, { shopId: null }, { shopId: 'all' }, { shopId: '' }] }
-      : { $or: [{ shopId: null }, { shopId: 'all' }, { shopId: '' }] };
+    const filter = { $or: [{ shopId }, { shopId: 'all' }] };
 
     const rows = pool.stripMongoIds(
       await db.collection('notifications').find(filter).sort({ createdAt: -1 }).limit(100).toArray()
@@ -50,7 +36,7 @@ router.get('/', async (req, res) => {
         } catch {
           readByList = [];
         }
-        isReadForShop = shopId ? readByList.includes(shopId) : Boolean(n.isRead);
+        isReadForShop = readByList.includes(shopId);
       }
 
       if (!isReadForShop) unreadCount++;
@@ -68,29 +54,12 @@ router.get('/', async (req, res) => {
 async function handleReadAll(req, res) {
   try {
     const db = await pool.getDb();
-    const { shopId } = getAuthContext(req);
+    const shopId = req.user.shopId;
 
-    if (!shopId) {
-      await db.collection('notifications').updateMany({}, { $set: { isRead: 1 } });
-      return res.json({ success: true, message: 'All marked as read' });
-    }
-
-    await db.collection('notifications').updateMany({ shopId }, { $set: { isRead: 1 } });
-
-    const broadcasts = await db.collection('notifications')
-      .find({ $or: [{ shopId: null }, { shopId: 'all' }, { shopId: '' }] })
-      .toArray();
-
-    for (const b of broadcasts) {
-      let list = [];
-      try {
-        list = typeof b.readBy === 'string' ? JSON.parse(b.readBy) : (b.readBy || []);
-      } catch {}
-      if (!list.includes(shopId)) {
-        list.push(shopId);
-        await db.collection('notifications').updateOne({ id: b.id }, { $set: { readBy: list } });
-      }
-    }
+    await Promise.all([
+      db.collection('notifications').updateMany({ shopId }, { $set: { isRead: 1 } }),
+      db.collection('notifications').updateMany({ shopId: 'all' }, { $addToSet: { readBy: shopId } })
+    ]);
 
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (err) {
@@ -99,16 +68,16 @@ async function handleReadAll(req, res) {
   }
 }
 
-router.put('/action/read-all', handleReadAll);
-router.put('/read-all', handleReadAll);
-router.post('/read-all', handleReadAll);
+router.put('/action/read-all', requireAuth, handleReadAll);
+router.put('/read-all', requireAuth, handleReadAll);
+router.post('/read-all', requireAuth, handleReadAll);
 
 // ── 3. Mark single notification as read (supports PUT & POST) ─────────────────
 async function handleReadOne(req, res) {
   try {
     const db = await pool.getDb();
     const { id } = req.params;
-    const { shopId } = getAuthContext(req);
+    const shopId = req.user.shopId;
 
     const notif = await db.collection('notifications').findOne({ id });
     if (!notif) {
@@ -116,21 +85,14 @@ async function handleReadOne(req, res) {
     }
 
     if (notif.shopId && notif.shopId !== 'all') {
-      await db.collection('notifications').updateOne({ id }, { $set: { isRead: 1 } });
+      if (notif.shopId !== shopId) {
+        return res.status(403).json({ error: 'Forbidden: Notification belongs to another store' });
+      }
+      await db.collection('notifications').updateOne({ id, shopId }, { $set: { isRead: 1 } });
+    } else if (notif.shopId === 'all') {
+      await db.collection('notifications').updateOne({ id }, { $addToSet: { readBy: shopId } });
     } else {
-      let readByList = [];
-      try {
-        readByList = typeof notif.readBy === 'string' ? JSON.parse(notif.readBy) : (notif.readBy || []);
-      } catch {
-        readByList = [];
-      }
-
-      if (shopId && !readByList.includes(shopId)) {
-        readByList.push(shopId);
-        await db.collection('notifications').updateOne({ id }, { $set: { readBy: readByList } });
-      } else if (!shopId) {
-        await db.collection('notifications').updateOne({ id }, { $set: { isRead: 1 } });
-      }
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     res.json({ success: true, message: 'Notification marked as read' });
@@ -140,22 +102,42 @@ async function handleReadOne(req, res) {
   }
 }
 
-router.put('/:id/read', handleReadOne);
-router.post('/:id/read', handleReadOne);
+router.put('/:id/read', requireAuth, handleReadOne);
+router.post('/:id/read', requireAuth, handleReadOne);
 
-// ── 4. POST /api/notifications ────────────────────────────────────────────────
+// ── 4. POST /api/notifications (Super Admin or scoped Store Admin) ────────────
 router.post('/', async (req, res) => {
   try {
+    const superAdmin = isSuperAdminRequest(req);
+    const user = superAdmin ? null : verifyBearerToken(req);
+
+    if (!superAdmin && !user) {
+      return res.status(401).json({ error: 'Unauthorized: Valid session or Super Admin credentials required' });
+    }
+
     const db = await pool.getDb();
     const { shopId, title, message, type, channel, actionUrl } = req.body;
     if (!title || !message) {
       return res.status(400).json({ error: 'Title and message are required' });
     }
 
+    let targetShopId;
+    if (superAdmin) {
+      targetShopId = shopId || 'all';
+    } else {
+      if (user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only store admins can create notifications' });
+      }
+      if (shopId && shopId !== user.shopId) {
+        return res.status(403).json({ error: 'Cannot create notifications for another store' });
+      }
+      targetShopId = user.shopId;
+    }
+
     const id = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const doc = {
       id,
-      shopId: shopId || 'all',
+      shopId: targetShopId,
       title,
       message,
       type: type || 'info',
@@ -177,8 +159,19 @@ router.post('/', async (req, res) => {
 // ── 5. DELETE /api/notifications/:id ──────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
+    const superAdmin = isSuperAdminRequest(req);
+    const user = superAdmin ? null : verifyBearerToken(req);
+
+    if (!superAdmin && !user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const db = await pool.getDb();
-    await db.collection('notifications').deleteOne({ id: req.params.id });
+    const filter = superAdmin ? { id: req.params.id } : { id: req.params.id, shopId: user.shopId };
+    const result = await db.collection('notifications').deleteOne(filter);
+    if (!result.deletedCount) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
     res.json({ success: true, message: 'Notification deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });

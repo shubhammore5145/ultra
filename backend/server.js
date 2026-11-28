@@ -29,8 +29,8 @@ app.use((req, res, next) => {
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
 // In-Memory Rate Limiter for Auth Routes (Brute-force protection)
 const rateLimitMap = new Map();
@@ -100,59 +100,28 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
+const { requireAuth } = require('./middleware/auth');
 
-function extractShopId(req) {
-  if (req.query?.shopId && req.query.shopId !== 'undefined' && req.query.shopId !== 'null') {
-    return String(req.query.shopId).trim();
-  }
-  if (req.body?.shopId && req.body.shopId !== 'undefined' && req.body.shopId !== 'null') {
-    return String(req.body.shopId).trim();
-  }
-  if (req.headers['x-shop-id'] && req.headers['x-shop-id'] !== 'undefined' && req.headers['x-shop-id'] !== 'null') {
-    return String(req.headers['x-shop-id']).trim();
-  }
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const rawToken = authHeader.split(' ')[1];
-    if (rawToken) {
-      if (rawToken.startsWith('sb_')) {
-        try {
-          const jsonStr = Buffer.from(rawToken.slice(3), 'base64').toString('utf8');
-          const payload = JSON.parse(jsonStr);
-          if (payload?.shopId) return String(payload.shopId).trim();
-        } catch (e) {}
-      }
-      try {
-        const decoded = jwt.decode(rawToken);
-        if (decoded?.shopId) return String(decoded.shopId).trim();
-      } catch (e) {}
-    }
-  }
-  return 'default';
-}
-
-// --- WhatsApp Bot Routes (Isolated per Shop) ---
-app.get('/api/whatsapp/status', (req, res) => {
-  const shopId = extractShopId(req);
+// --- WhatsApp Bot Routes (Authenticated & Strictly Isolated per Shop) ---
+app.get('/api/whatsapp/status', requireAuth, (req, res) => {
+  const shopId = req.user.shopId;
   res.json(whatsappBot.getStatus(shopId));
 });
 
-app.post('/api/whatsapp/start', (req, res) => {
-  const shopId = extractShopId(req);
+app.post('/api/whatsapp/start', requireAuth, (req, res) => {
+  const shopId = req.user.shopId;
   whatsappBot.initializeWhatsApp(shopId);
   res.json({ success: true, message: `WhatsApp initialization started for shop ${shopId}` });
 });
 
-app.post('/api/whatsapp/logout', async (req, res) => {
-  const shopId = extractShopId(req);
+app.post('/api/whatsapp/logout', requireAuth, async (req, res) => {
+  const shopId = req.user.shopId;
   await whatsappBot.logout(shopId);
   res.json({ success: true, message: `WhatsApp logged out for shop ${shopId}` });
 });
 
-app.post('/api/whatsapp/send', async (req, res) => {
-  const shopId = extractShopId(req);
+app.post('/api/whatsapp/send', requireAuth, async (req, res) => {
+  const shopId = req.user.shopId;
   const { phone, message } = req.body;
   if (!phone || !message) {
     return res.status(400).json({ error: 'Phone and message are required' });
@@ -167,8 +136,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
 });
 
 // Bulk WhatsApp Reminder for Udhar Customers
-app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
-  const shopId = extractShopId(req);
+app.post('/api/whatsapp/bulk-reminder', requireAuth, async (req, res) => {
+  const shopId = req.user.shopId;
   const { customers, shopName } = req.body;
   if (!customers || !Array.isArray(customers) || customers.length === 0) {
     return res.status(400).json({ error: 'Customers array is required' });
@@ -216,8 +185,8 @@ app.post('/api/whatsapp/bulk-reminder', async (req, res) => {
   res.json({ success: true, results });
 });
 
-app.post('/api/whatsapp/send-bill', async (req, res) => {
-  const shopId = extractShopId(req);
+app.post('/api/whatsapp/send-bill', requireAuth, async (req, res) => {
+  const shopId = req.user.shopId;
   const { phone, message, billNo } = req.body;
   if (!phone || !message) {
     return res.status(400).json({ error: 'Phone and message are required' });
@@ -267,13 +236,13 @@ async function generateAndSendNightlySummary(shopId, targetPhone) {
 
   try {
     expenses = await db.collection('expenses')
-      .find({ $or: [{ shopId: resolvedShopId }, { shopId: null }], date: { $gte: startIso.slice(0, 10), $lte: endIso.slice(0, 10) } })
+      .find({ shopId: resolvedShopId, date: { $gte: startIso.slice(0, 10), $lte: endIso.slice(0, 10) } })
       .toArray();
   } catch {}
 
   try {
     const prods = await db.collection('products')
-      .find({ $or: [{ shopId: resolvedShopId }, { shopId: null }], isDeleted: { $ne: 1 } })
+      .find({ shopId: resolvedShopId, isDeleted: { $ne: 1 } })
       .toArray();
     lowStock = prods.filter((p) => Number(p.stock || 0) <= Number(p.minStock || 0)).slice(0, 5);
   } catch {}
@@ -292,8 +261,17 @@ async function generateAndSendNightlySummary(shopId, targetPhone) {
     else if (method === 'upi') upiSales += amt;
     else if (method === 'udhar') udharSales += amt;
     else if (method === 'split') {
-      cashSales += amt / 2;
-      upiSales += amt / 2;
+      const sc = Number(t.splitAmounts?.cash || 0);
+      const su = Number(t.splitAmounts?.upi || 0);
+      const sud = Number(t.splitAmounts?.udhar || 0);
+      if (t.splitAmounts && (sc > 0 || su > 0 || sud > 0)) {
+        cashSales += sc;
+        upiSales += su;
+        udharSales += sud;
+      } else {
+        cashSales += amt / 2;
+        upiSales += amt / 2;
+      }
     } else {
       cashSales += amt;
     }
@@ -356,13 +334,14 @@ ${lowStockAlert}
 ━━━━━━━━━━━━━━━━━━━
 ✨ *Generated automatically by MartGPT POS*`;
 
-  await whatsappBot.sendMessage(recipientPhone, summaryMessage);
+  await whatsappBot.sendMessage(recipientPhone, summaryMessage, resolvedShopId);
   return { success: true, message: 'Nightly summary sent to ' + recipientPhone, preview: summaryMessage };
 }
 
 // Nightly Business WhatsApp Summary Endpoint
-app.post('/api/whatsapp/nightly-summary', async (req, res) => {
-  const { shopId, targetPhone } = req.body;
+app.post('/api/whatsapp/nightly-summary', requireAuth, async (req, res) => {
+  const shopId = req.user.shopId;
+  const { targetPhone } = req.body;
   try {
     const result = await generateAndSendNightlySummary(shopId, targetPhone);
     res.json(result);
@@ -376,8 +355,6 @@ app.post('/api/whatsapp/nightly-summary', async (req, res) => {
 const lastSummarySent = {}; // Key: `${shopId}_${YYYY-MM-DD}`
 
 async function checkAndSendScheduledSummaries() {
-  const status = whatsappBot.getStatus();
-  if (status.status !== 'CONNECTED') return;
 
   // Indian Standard Time (IST = UTC + 5:30)
   const now = new Date();
@@ -393,6 +370,8 @@ async function checkAndSendScheduledSummaries() {
     const shops = await db.collection('shops').find({}, { projection: { shopId: 1, name: 1, phone: 1, settings: 1 } }).toArray();
 
     for (const shop of shops) {
+      if (whatsappBot.getStatus(shop.shopId).status !== 'CONNECTED') continue;
+
       let settings = {};
       try {
         settings = typeof shop.settings === 'string' ? JSON.parse(shop.settings) : (shop.settings || {});

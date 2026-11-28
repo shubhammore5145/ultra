@@ -1,70 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const pool = require('../db');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
-
-// Middleware to verify token and inject shopId
-const authMiddleware = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  const headerShopId = req.headers['x-shop-id'];
-  const fallbackShopId = headerShopId && headerShopId !== 'default' ? headerShopId : 'mg4q6ov7ym';
-
-  if (!authHeader) {
-    req.user = { uid: 'guest_user', shopId: fallbackShopId, role: 'admin' };
-    return next();
-  }
-
-  const token = authHeader.split(' ')[1];
-  if (!token) {
-    req.user = { uid: 'guest_user', shopId: fallbackShopId, role: 'admin' };
-    return next();
-  }
-
-  if (token.startsWith('sb_')) {
-    try {
-      const [payloadB64] = token.slice(3).split('.');
-      if (!payloadB64) {
-        req.user = { uid: 'guest_user', shopId: fallbackShopId, role: 'admin' };
-        return next();
-      }
-      const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
-      const resolvedShop = payload.shopId && payload.shopId !== 'default' ? payload.shopId : fallbackShopId;
-      req.user = { uid: payload.uid || 'local_user', shopId: resolvedShop, role: payload.role || 'admin' };
-      return next();
-    } catch (e) {
-      console.warn('Failed to parse sb_ token, using fallback session:', e.message);
-      req.user = { uid: 'local_user', shopId: fallbackShopId, role: 'admin' };
-      return next();
-    }
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    if (!req.user.shopId || req.user.shopId === 'default') {
-      req.user.shopId = fallbackShopId;
-    }
-    return next();
-  } catch {
-    try {
-      const decoded = jwt.decode(token);
-      if (decoded && (decoded.uid || decoded.user_id || decoded.sub || decoded.email)) {
-        req.user = {
-          uid: decoded.uid || decoded.user_id || decoded.sub || 'user',
-          shopId: decoded.shopId && decoded.shopId !== 'default' ? decoded.shopId : fallbackShopId,
-          role: decoded.role || 'admin'
-        };
-        return next();
-      }
-    } catch {}
-
-    req.user = { uid: 'staff_user', shopId: fallbackShopId, role: 'admin' };
-    return next();
-  }
-};
+const { requireAuth, isSuperAdminUser } = require('../middleware/auth');
 
 function toOptNum(val) {
   if (val === undefined || val === null || val === '') return null;
@@ -181,34 +119,20 @@ router.post('/coupons/validate', async (req, res) => {
   }
 });
 
-router.use(authMiddleware);
+router.use(requireAuth);
 
 // --- PRODUCTS ---
 router.get('/products', async (req, res) => {
   try {
     const db = await pool.getDb();
-    const rawShopId = req.headers['x-shop-id'] || req.user?.shopId;
-    let targetShopId = rawShopId && rawShopId !== 'default' ? rawShopId : 'mg4q6ov7ym';
+    const targetShopId = req.user.shopId;
 
-    let rows = pool.stripMongoIds(
+    const rows = pool.stripMongoIds(
       await db.collection('products')
         .find({ shopId: targetShopId, isDeleted: { $ne: 1 } })
         .sort({ name: 1 })
         .toArray()
     );
-
-    if ((!rows || rows.length === 0) && targetShopId !== 'mg4q6ov7ym') {
-      const fallbackRows = pool.stripMongoIds(
-        await db.collection('products')
-          .find({ shopId: 'mg4q6ov7ym', isDeleted: { $ne: 1 } })
-          .sort({ name: 1 })
-          .toArray()
-      );
-      if (fallbackRows && fallbackRows.length > 0) {
-        rows = fallbackRows;
-        targetShopId = 'mg4q6ov7ym';
-      }
-    }
 
     const shopDoc = await db.collection('shops').findOne({ shopId: targetShopId }, { projection: { _id: 0, settings: 1 } });
     const shopSettings = parseJsonSafe(shopDoc?.settings, {});
@@ -245,6 +169,16 @@ router.post('/products', async (req, res) => {
     } = req.body;
 
     const productId = id || crypto.randomUUID();
+    if (id) {
+      const existingOwner = await db.collection('products').findOne(
+        { id: productId },
+        { projection: { _id: 0, shopId: 1 } }
+      );
+      if (existingOwner && existingOwner.shopId && existingOwner.shopId !== req.user.shopId) {
+        return res.status(409).json({ error: 'Product ID belongs to another shop.' });
+      }
+    }
+
     const doc = {
       id: productId,
       shopId: req.user.shopId,
@@ -277,7 +211,7 @@ router.post('/products', async (req, res) => {
     };
 
     await db.collection('products').updateOne(
-      { id: productId },
+      { id: productId, shopId: req.user.shopId },
       { $set: doc },
       { upsert: true }
     );
@@ -399,9 +333,18 @@ router.post('/customers', async (req, res) => {
     const db = await pool.getDb();
     const { id, name, phone, address, balance, aadharNumber, photoUrl, aadharPhotoUrl } = req.body;
     const customerId = id || crypto.randomUUID();
+    if (id) {
+      const existingOwner = await db.collection('customers').findOne(
+        { id: customerId },
+        { projection: { _id: 0, shopId: 1 } }
+      );
+      if (existingOwner && existingOwner.shopId && existingOwner.shopId !== req.user.shopId) {
+        return res.status(409).json({ error: 'Customer ID belongs to another shop.' });
+      }
+    }
 
     await db.collection('customers').updateOne(
-      { id: customerId },
+      { id: customerId, shopId: req.user.shopId },
       {
         $set: {
           id: customerId,
@@ -522,9 +465,9 @@ router.get('/transactions', async (req, res) => {
 router.delete('/transactions/:id', async (req, res) => {
   try {
     const db = await pool.getDb();
-    const shopId = req.user?.shopId || 'default';
+    const shopId = req.user.shopId;
     const { permanent } = req.query;
-    const filter = { id: req.params.id, $or: [{ shopId }, { shopId: null }] };
+    const filter = { id: req.params.id, shopId };
 
     if (permanent === 'true') {
       await db.collection('transactions').deleteOne(filter);
@@ -821,6 +764,12 @@ router.put('/shops', async (req, res) => {
 });
 
 router.put('/shops/plan', async (req, res) => {
+  if (!isSuperAdminUser(req.user)) {
+    return res.status(403).json({
+      error: 'Direct plan self-upgrade is disabled. Contact support or Super Admin.'
+    });
+  }
+
   const { plan, planExpiry, couponCode } = req.body;
   try {
     const db = await pool.getDb();
@@ -1212,7 +1161,7 @@ router.post('/staff-attendance', async (req, res) => {
 
       if (existing) {
         await db.collection('staff_attendance').updateOne(
-          { id: existing.id },
+          { id: existing.id, shopId: req.user.shopId },
           { $set: { status: item.status || 'present', notes: item.notes || null } }
         );
       } else {
@@ -1274,7 +1223,7 @@ router.post('/staff-salary-payments', async (req, res) => {
 
     if (type === 'salary' || type === 'advance') {
       try {
-        const staffDoc = await db.collection('staff').findOne({ id: staffId });
+        const staffDoc = await db.collection('staff').findOne({ id: staffId, shopId: req.user.shopId });
         const staffName = staffDoc?.name || 'Staff';
         await db.collection('expenses').insertOne({
           id: crypto.randomUUID(),
@@ -1664,12 +1613,168 @@ router.post('/sales-returns', async (req, res) => {
   }
 });
 
+// --- DAMAGED GOODS & WRITE-OFFS ---
+router.get('/damaged-goods', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const rows = pool.stripMongoIds(
+      await db.collection('damaged_goods')
+        .find({ shopId: req.user.shopId })
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .toArray()
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/damaged-goods', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const { id, productId, productName, qty, costPrice, totalLoss, reason, notes, createdAt } = req.body;
+    const itemId = id || crypto.randomUUID();
+    const doc = {
+      id: itemId,
+      shopId: req.user.shopId,
+      productId: String(productId || ''),
+      productName: String(productName || 'Product'),
+      qty: Number(qty || 0),
+      costPrice: Number(costPrice || 0),
+      totalLoss: Number(totalLoss || 0),
+      reason: String(reason || 'other'),
+      notes: notes ? String(notes) : '',
+      createdAt: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString(),
+      addedBy: req.user.uid
+    };
+    await db.collection('damaged_goods').updateOne(
+      { id: itemId, shopId: req.user.shopId },
+      { $set: doc },
+      { upsert: true }
+    );
+    res.json({ success: true, item: doc });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/damaged-goods/:id', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    await db.collection('damaged_goods').deleteOne({ id: req.params.id, shopId: req.user.shopId });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- STOCK MOVEMENTS (AUDIT TRAIL) ---
+router.get('/stock-movements', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const filter = { shopId: req.user.shopId };
+    if (req.query.productId) filter.productId = String(req.query.productId);
+    const rows = pool.stripMongoIds(
+      await db.collection('stock_movements')
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .toArray()
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/stock-movements', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const { id, productId, productName, type, qty, previousStock, newStock, reason, referenceId, createdAt } = req.body;
+    const movId = id || crypto.randomUUID();
+    const doc = {
+      id: movId,
+      shopId: req.user.shopId,
+      productId: String(productId || ''),
+      productName: String(productName || 'Product'),
+      type: String(type || 'audit_adjustment'),
+      qty: Number(qty || 0),
+      previousStock: Number(previousStock || 0),
+      newStock: Number(newStock || 0),
+      reason: reason ? String(reason) : '',
+      referenceId: referenceId ? String(referenceId) : undefined,
+      createdAt: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString(),
+      addedBy: req.user.uid
+    };
+    await db.collection('stock_movements').updateOne(
+      { id: movId, shopId: req.user.shopId },
+      { $set: doc },
+      { upsert: true }
+    );
+    res.json({ success: true, movement: doc });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- CASH COUNTER / REGISTER SHIFT CLOSINGS ---
+router.get('/cash-counter', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const rows = pool.stripMongoIds(
+      await db.collection('cash_counter_closings')
+        .find({ shopId: req.user.shopId })
+        .sort({ closedAt: -1 })
+        .limit(365)
+        .toArray()
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/cash-counter', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const {
+      id, cashierName, openingCash, cashSales, cashReturns, cashExpenses,
+      expectedCash, actualCountedCash, discrepancy, notes, closedAt
+    } = req.body;
+    const closingId = id || crypto.randomUUID();
+    const doc = {
+      id: closingId,
+      shopId: req.user.shopId,
+      cashierName: String(cashierName || req.user.uid || 'Cashier'),
+      openingCash: Number(openingCash || 0),
+      cashSales: Number(cashSales || 0),
+      cashReturns: Number(cashReturns || 0),
+      cashExpenses: Number(cashExpenses || 0),
+      expectedCash: Number(expectedCash || 0),
+      actualCountedCash: Number(actualCountedCash || 0),
+      discrepancy: Number(discrepancy || 0),
+      notes: notes ? String(notes) : '',
+      closedAt: closedAt ? new Date(closedAt).toISOString() : new Date().toISOString(),
+      createdBy: req.user.uid
+    };
+    await db.collection('cash_counter_closings').updateOne(
+      { id: closingId, shopId: req.user.shopId },
+      { $set: doc },
+      { upsert: true }
+    );
+    res.json({ success: true, closing: doc });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- RECYCLE BIN ---
 router.get('/recycle-bin', async (req, res) => {
   try {
     const db = await pool.getDb();
-    const shopId = req.user?.shopId || 'default';
-    const filter = { $or: [{ shopId }, { shopId: null }], isDeleted: 1 };
+    const shopId = req.user.shopId;
+    const filter = { shopId, isDeleted: 1 };
 
     const [deletedProducts, deletedTransactions, deletedCustomers] = await Promise.all([
       db.collection('products').find(filter, { projection: { _id: 0 } }).sort({ deletedAt: -1, createdAt: -1 }).toArray(),
@@ -1696,7 +1801,7 @@ router.get('/recycle-bin', async (req, res) => {
 
 router.post('/recycle-bin/restore', async (req, res) => {
   const { type, id } = req.body;
-  const shopId = req.user?.shopId || 'default';
+  const shopId = req.user.shopId;
   const collectionMap = {
     product: 'products',
     transaction: 'transactions',
@@ -1708,7 +1813,7 @@ router.post('/recycle-bin/restore', async (req, res) => {
   try {
     const db = await pool.getDb();
     await db.collection(col).updateOne(
-      { id, $or: [{ shopId }, { shopId: null }] },
+      { id, shopId },
       { $set: { isDeleted: 0, deletedAt: null } }
     );
     res.json({ success: true });
@@ -1719,7 +1824,7 @@ router.post('/recycle-bin/restore', async (req, res) => {
 
 router.post('/recycle-bin/purge', async (req, res) => {
   const { type, id } = req.body;
-  const shopId = req.user?.shopId || 'default';
+  const shopId = req.user.shopId;
   const collectionMap = {
     product: 'products',
     transaction: 'transactions',
@@ -1730,7 +1835,7 @@ router.post('/recycle-bin/purge', async (req, res) => {
 
   try {
     const db = await pool.getDb();
-    await db.collection(col).deleteOne({ id, $or: [{ shopId }, { shopId: null }], isDeleted: 1 });
+    await db.collection(col).deleteOne({ id, shopId, isDeleted: 1 });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1738,8 +1843,8 @@ router.post('/recycle-bin/purge', async (req, res) => {
 });
 
 router.post('/recycle-bin/empty', async (req, res) => {
-  const shopId = req.user?.shopId || 'default';
-  const filter = { $or: [{ shopId }, { shopId: null }], isDeleted: 1 };
+  const shopId = req.user.shopId;
+  const filter = { shopId, isDeleted: 1 };
   try {
     const db = await pool.getDb();
     await Promise.all([

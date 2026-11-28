@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  ShieldCheck, 
   Store, 
   Users, 
   Package, 
@@ -11,7 +10,6 @@ import {
   Zap, 
   Star, 
   Calendar, 
-  Clock, 
   ExternalLink, 
   Trash2, 
   RefreshCw, 
@@ -19,17 +17,15 @@ import {
   Key, 
   Check, 
   Copy, 
-  AlertTriangle, 
   Phone, 
   Mail, 
   MapPin, 
-  SlidersHorizontal,
-  ChevronRight,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { api, INITIAL_SHOPS } from '../lib/api';
+import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 
@@ -70,8 +66,6 @@ interface SuperAdminStats {
   };
 }
 
-const MASTER_PIN = import.meta.env.VITE_SUPERADMIN_KEY || '5145';
-
 export default function SuperAdmin() {
   const { userData, login } = useAuth();
   const navigate = useNavigate();
@@ -88,26 +82,9 @@ export default function SuperAdmin() {
   // Data State
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [shops, setShops] = useState<ShopRecord[]>(() => {
-    try {
-      const cached = localStorage.getItem('martgpt_superadmin_shops_cache');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_SHOPS;
-  });
-  const [stats, setStats] = useState<SuperAdminStats | null>(() => ({
-    totalShops: 16,
-    totalUsers: 15,
-    totalProducts: 266,
-    totalTransactions: 100,
-    totalSalesVolume: 52378,
-    activePaidSubscriptions: 3,
-    planCounts: { free: 13, plus: 0, pro: 0, ultra_pro: 3 }
-  }));
-  const [errorMsg, setErrorMsg] = useState('');
+  const [shops, setShops] = useState<ShopRecord[]>([]);
+  const [stats, setStats] = useState<SuperAdminStats | null>(null);
+  const [_errorMsg, setErrorMsg] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Filters & Search
@@ -125,7 +102,25 @@ export default function SuperAdmin() {
   // Impersonation State
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
-  // Check pin submit
+  // Check if current logged-in JWT belongs to an authorized Super Admin
+  useEffect(() => {
+    if (isAuthenticated || !userData?.email) return;
+    let cancelled = false;
+    api.superadmin
+      .getStats('')
+      .then((res) => {
+        if (!cancelled && res && res.stats) {
+          setIsAuthenticated(true);
+          setStats(res.stats);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, userData?.email]);
+
+  // Check pin submit strictly against backend
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const enteredKey = pinInput.trim();
@@ -143,20 +138,10 @@ export default function SuperAdmin() {
         setIsAuthenticated(true);
         setStats(res.stats);
       } else {
-        if (enteredKey === (import.meta.env.VITE_SUPERADMIN_KEY || '5145')) {
-          sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
-          setIsAuthenticated(true);
-        } else {
-          setPinError('Incorrect password! Please enter the valid admin password.');
-        }
-      }
-    } catch {
-      if (enteredKey === (import.meta.env.VITE_SUPERADMIN_KEY || '5145')) {
-        sessionStorage.setItem('martgpt_superadmin_key', enteredKey);
-        setIsAuthenticated(true);
-      } else {
         setPinError('Incorrect password! Please enter the valid admin password.');
       }
+    } catch (err: any) {
+      setPinError(err?.message || 'Incorrect password! Please enter the valid admin password.');
     } finally {
       setAuthenticating(false);
     }
@@ -164,7 +149,7 @@ export default function SuperAdmin() {
 
   // Fetch Shops and Stats
   const fetchData = async () => {
-    const activeKey = sessionStorage.getItem('martgpt_superadmin_key') || MASTER_PIN;
+    const activeKey = sessionStorage.getItem('martgpt_superadmin_key') || '';
     setRefreshing(true);
     setErrorMsg('');
     try {
@@ -182,24 +167,14 @@ export default function SuperAdmin() {
       if (statsRes?.stats) {
         setStats(statsRes.stats);
       }
-      if (shopsRes?.shops && Array.isArray(shopsRes.shops) && shopsRes.shops.length > 0) {
+      if (shopsRes?.shops && Array.isArray(shopsRes.shops)) {
         setShops(shopsRes.shops);
-        try {
-          localStorage.setItem('martgpt_superadmin_shops_cache', JSON.stringify(shopsRes.shops));
-        } catch {}
-      } else if (Array.isArray(shopsRes) && shopsRes.length > 0) {
+      } else if (Array.isArray(shopsRes)) {
         setShops(shopsRes);
-        try {
-          localStorage.setItem('martgpt_superadmin_shops_cache', JSON.stringify(shopsRes));
-        } catch {}
-      } else {
-        // Fallback to existing or INITIAL_SHOPS to never show empty list
-        setShops(prev => (prev && prev.length > 0 ? prev : INITIAL_SHOPS));
       }
     } catch (err: any) {
       console.error('Superadmin data load error:', err);
       setErrorMsg(err.message || 'Failed to load shops. Please check network connection.');
-      setShops(prev => (prev && prev.length > 0 ? prev : INITIAL_SHOPS));
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -227,7 +202,7 @@ export default function SuperAdmin() {
 
     setImpersonatingId(shop.shopId);
     try {
-      const masterKey = sessionStorage.getItem('martgpt_superadmin_key') || MASTER_PIN;
+      const masterKey = sessionStorage.getItem('martgpt_superadmin_key') || '';
       const res = await api.superadmin.impersonate(shop.shopId, masterKey);
       if (res?.success && res.token && res.user) {
         // Save store session
@@ -249,7 +224,7 @@ export default function SuperAdmin() {
     if (!selectedShopForPlan) return;
     setUpdatingPlan(true);
     try {
-      const masterKey = sessionStorage.getItem('martgpt_superadmin_key') || MASTER_PIN;
+      const masterKey = sessionStorage.getItem('martgpt_superadmin_key') || '';
       let durationDays: number | null = null;
       let customExpiry: string | null = null;
 
@@ -294,7 +269,7 @@ export default function SuperAdmin() {
     }
 
     try {
-      const masterKey = sessionStorage.getItem('martgpt_superadmin_key') || MASTER_PIN;
+      const masterKey = sessionStorage.getItem('martgpt_superadmin_key') || '';
       const res = await api.superadmin.deleteShop(shop.shopId, masterKey);
       if (res?.success) {
         alert(`Shop ${shop.shopName} (${shop.shopId}) has been deleted.`);
@@ -354,7 +329,7 @@ export default function SuperAdmin() {
   }, [shops, searchQuery, selectedPlanFilter, sortBy]);
 
   // Plan Badge Helper
-  const renderPlanBadge = (plan: string, expiry?: string | null, daysRemaining?: number | null) => {
+  const renderPlanBadge = (plan: string, _expiry?: string | null, daysRemaining?: number | null) => {
     const p = (plan || 'free').toLowerCase();
     let badgeClass = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300';
     let icon = <Store className="h-3.5 w-3.5 mr-1" />;

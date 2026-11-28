@@ -4,7 +4,8 @@ import {
   LayoutDashboard, ShoppingCart, Package, Users, CreditCard,
   FileText, Settings, ArrowLeftRight, Wallet,
   HelpCircle, ClipboardList, LogOut, X, Barcode, Bell,
-  Receipt, TrendingUp, UserCheck, Trash2, Menu, Crown, RotateCcw
+  Receipt, TrendingUp, UserCheck, Trash2, Menu, RotateCcw,
+  PanelLeftClose
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -32,7 +33,7 @@ const navItems = [
 ];
 
 /** Desktop Sidebar */
-export function Sidebar() {
+export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
   const { userData, shopData, logout } = useAuth();
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const filteredNav = navItems.filter(item => {
@@ -58,9 +59,9 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-border bg-card">
-      {/* Logo */}
+      {/* Logo & Collapse Button */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden shadow-md shadow-primary/30">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden shadow-md shadow-primary/30 shrink-0">
           <img src="/favicon.svg" alt="MartGPT" className="h-full w-full object-cover" />
         </div>
         <div className="min-w-0 flex-1">
@@ -69,6 +70,17 @@ export function Sidebar() {
             <span className="text-[11px] text-muted-foreground capitalize">{userData?.role || 'Admin'}</span>
           </div>
         </div>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            title="Collapse Sidebar"
+            aria-label="Collapse Sidebar"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 cursor-pointer"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

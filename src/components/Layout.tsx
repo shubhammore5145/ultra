@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, LogOut, Bell, WifiOff, RefreshCw, Download } from 'lucide-react';
+import { Menu, LogOut, Bell, WifiOff, RefreshCw, Download, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api, getOfflineQueue, syncOfflineQueue } from '../lib/api';
 import { Sidebar, MobileBottomNav, MobileMoreMenu } from './Sidebar';
@@ -17,6 +17,10 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isPosPage = location.pathname === '/pos';
+  const [sidebarOverride, setSidebarOverride] = useState<{ path: string; collapsed: boolean } | null>(null);
+  const sidebarCollapsed = sidebarOverride?.path === location.pathname ? sidebarOverride.collapsed : isPosPage;
+  const toggleSidebar = () => setSidebarOverride({ path: location.pathname, collapsed: !sidebarCollapsed });
+  const collapseSidebar = () => setSidebarOverride({ path: location.pathname, collapsed: true });
 
   useEffect(() => {
     // Listen for PWA installation prompt
@@ -132,8 +136,19 @@ export default function Layout() {
       {/* Top Navigation Bar */}
       <header className="shrink-0 border-b border-border bg-card/80 backdrop-blur-md z-40 sticky top-0 print:hidden">
         <div className="flex h-14 items-center justify-between px-4">
-          {/* Left: Brand */}
+          {/* Left: Brand & ChatGPT-style Sidebar Toggle */}
           <div className="flex items-center gap-3">
+            {/* Desktop Sidebar Collapse / Expand Toggle */}
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? 'Open Sidebar' : 'Hide Sidebar'}
+              aria-label={sidebarCollapsed ? 'Open Sidebar' : 'Hide Sidebar'}
+              className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer shrink-0"
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+
             {/* Mobile menu trigger */}
             <button
               className="flex md:hidden h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -248,14 +263,18 @@ export default function Layout() {
       </header>
 
       <div className="flex flex-1 overflow-hidden print:block print:overflow-visible print:h-auto">
-        {/* Desktop Sidebar */}
-        <aside className="hidden md:block print:hidden">
-          <Sidebar />
+        {/* Desktop Collapsible Sidebar */}
+        <aside
+          className={`hidden md:block shrink-0 transition-all duration-200 ease-out overflow-hidden print:hidden ${
+            sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-60 opacity-100'
+          }`}
+        >
+          <Sidebar onCollapse={collapseSidebar} />
         </aside>
 
         {/* Main Content with Native Touch Scrolling on Mobile */}
         <main className={`flex-1 bg-background ${isPosPage ? 'md:overflow-hidden md:flex md:flex-col overflow-y-auto' : 'overflow-y-auto'} overscroll-y-contain print:block print:overflow-visible print:h-auto print:bg-white`}>
-          <div className={`${isPosPage ? 'p-2 sm:p-3 md:p-4 md:pb-4 max-w-[1600px] md:h-full md:flex md:flex-col min-h-0' : 'p-3 sm:p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1 print:p-0 print:m-0 print:max-w-none print:h-auto print:block`}>
+          <div className={`${isPosPage ? 'p-2 sm:p-3 md:p-4 md:pb-4 max-w-full md:h-full md:flex md:flex-col min-h-0' : 'p-3 sm:p-4 pb-24 md:p-6 md:pb-6 max-w-7xl'} mx-auto w-full flex-1 print:p-0 print:m-0 print:max-w-none print:h-auto print:block`}>
             <ErrorBoundary inline fallbackTitle="Screen Module Recovered">
               <Outlet />
             </ErrorBoundary>

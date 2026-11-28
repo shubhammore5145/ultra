@@ -201,7 +201,7 @@ export function getLocalSalesReturns(shopId?: string): SalesReturn[] {
 
 export function saveLocalSalesReturn(ret: SalesReturn, shopId?: string) {
   try {
-    const list = getLocalSalesReturns(shopId);
+    const list = getLocalSalesReturns(shopId).filter((r) => r && r.id !== ret.id);
     list.unshift(ret);
     localStorage.setItem(`dmart_returns_${shopId || getShopId() || 'default'}`, JSON.stringify(list.slice(0, 500)));
   } catch {}
@@ -664,10 +664,55 @@ export const api = {
     }
   },
   salesReturns: {
-    list: async () => getLocalSalesReturns(),
+    list: async (originalBillId?: string): Promise<SalesReturn[]> => {
+      const localList = getLocalSalesReturns();
+      try {
+        const query = originalBillId ? `?originalBillId=${encodeURIComponent(originalBillId)}` : '';
+        const serverList = await fetchAPI(`/sales-returns${query}`, { method: 'GET' });
+        if (Array.isArray(serverList)) {
+          // Merge any legacy local-only returns by ID so historical returns still guard against duplicates
+          const seenIds = new Set(serverList.map((r: any) => String(r.id || '')));
+          const merged = [...serverList];
+          for (const localRet of localList) {
+            if (localRet && localRet.id && !seenIds.has(String(localRet.id))) {
+              if (!originalBillId || localRet.originalBillId === originalBillId) {
+                merged.push(localRet);
+              }
+            }
+          }
+          return merged.sort(
+            (a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          );
+        }
+      } catch (err) {
+        console.warn('Failed to fetch server sales returns, falling back to local cache:', err);
+      }
+      return originalBillId
+        ? localList.filter((r) => r.originalBillId === originalBillId)
+        : localList;
+    },
     create: async (ret: SalesReturn) => {
-      saveLocalSalesReturn(ret);
-      return ret;
+      try {
+        invalidateProductsCache();
+        const res = await fetchAPI('/sales-returns', {
+          method: 'POST',
+          body: JSON.stringify(ret)
+        });
+        const record: SalesReturn = res?.returnRecord || ret;
+        saveLocalSalesReturn(record);
+        return {
+          ...record,
+          stockUpdates: Array.isArray(res?.stockUpdates) ? res.stockUpdates : [],
+          stockRestocked: Boolean(res?.stockRestocked)
+        };
+      } catch (err: any) {
+        // Offline fallback ONLY when device is offline; server 4xx validation (e.g. Already Returned) MUST throw
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          saveLocalSalesReturn(ret);
+          return { ...ret, stockUpdates: [], stockRestocked: false, offline: true };
+        }
+        throw err;
+      }
     }
   },
   cashCounter: {

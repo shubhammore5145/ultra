@@ -1308,6 +1308,362 @@ router.delete('/staff-salary-payments/:id', async (req, res) => {
   }
 });
 
+// --- SALES RETURNS (PARTIAL + DUPLICATE GUARDED IN MONGODB) ---
+function roundReturnQty(val) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 1000) / 1000;
+}
+
+class SalesReturnHttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function buildBillLineReturnStates(txItems, priorReturns) {
+  const states = (Array.isArray(txItems) ? txItems : []).map((it, idx) => ({
+    itemIndex: idx,
+    productId: String(it.productId || it.id || '').trim(),
+    name: String(it.name || it.productName || 'Product').trim(),
+    purchasedQty: roundReturnQty(Math.max(0, Number(it.qty || 0))),
+    returnedQty: 0
+  }));
+
+  const unindexed = [];
+  for (const ret of Array.isArray(priorReturns) ? priorReturns : []) {
+    const retItems = Array.isArray(ret.items) ? ret.items : parseJsonSafe(ret.items, []);
+    for (const rItem of retItems) {
+      const rQty = roundReturnQty(Math.max(0, Number(rItem.qty || 0)));
+      if (rQty <= 0) continue;
+      const idx = typeof rItem.itemIndex === 'number' ? rItem.itemIndex : -1;
+      const target = idx >= 0 && idx < states.length ? states[idx] : null;
+      const rPid = String(rItem.productId || '').trim();
+      const rName = String(rItem.productName || '').trim().toLowerCase();
+
+      const matchesIndexed =
+        target &&
+        ((rPid && target.productId && target.productId === rPid) ||
+          (rName && target.name.toLowerCase() === rName) ||
+          (!rPid && !rName));
+
+      if (target && matchesIndexed) {
+        target.returnedQty = roundReturnQty(target.returnedQty + rQty);
+      } else {
+        unindexed.push({ productId: rPid, productName: String(rItem.productName || ''), qty: rQty });
+      }
+    }
+  }
+
+  for (const rItem of unindexed) {
+    let rem = rItem.qty;
+    const rPid = rItem.productId;
+    const rName = rItem.productName.trim().toLowerCase();
+    const candidates = states.filter(
+      (st) => (rPid && st.productId && st.productId === rPid) || (rName && st.name.toLowerCase() === rName)
+    );
+    for (const st of candidates) {
+      if (rem <= 0) break;
+      const cap = roundReturnQty(Math.max(0, st.purchasedQty - st.returnedQty));
+      if (cap > 0) {
+        const take = roundReturnQty(Math.min(cap, rem));
+        st.returnedQty = roundReturnQty(st.returnedQty + take);
+        rem = roundReturnQty(rem - take);
+      }
+    }
+    if (rem > 0 && candidates.length > 0) {
+      candidates[0].returnedQty = roundReturnQty(candidates[0].returnedQty + rem);
+    }
+  }
+
+  return states;
+}
+
+router.get('/sales-returns', async (req, res) => {
+  try {
+    const db = await pool.getDb();
+    const { originalBillId } = req.query;
+    const filter = { shopId: req.user.shopId };
+    if (originalBillId) filter.originalBillId = String(originalBillId);
+
+    const rows = pool.stripMongoIds(
+      await db.collection('sales_returns')
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .toArray()
+    );
+
+    const formatted = rows.map((r) => ({
+      ...r,
+      items: Array.isArray(r.items) ? r.items : parseJsonSafe(r.items, [])
+    }));
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/sales-returns', async (req, res) => {
+  const {
+    id,
+    originalBillId,
+    customerId,
+    customerName,
+    customerPhone,
+    items,
+    totalRefund,
+    refundMethod,
+    reason,
+    createdAt
+  } = req.body;
+
+  try {
+    const billId = String(originalBillId || '').trim();
+    if (!billId) {
+      return res.status(400).json({ error: 'Original Bill ID is required for a sales return.' });
+    }
+
+    const parsedItems = Array.isArray(items) ? items : parseJsonSafe(items, []);
+    if (!Array.isArray(parsedItems) || parsedItems.length === 0) {
+      return res.status(400).json({ error: 'Please select at least 1 product to return.' });
+    }
+
+    const returnId = String(id || `RET-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4)}`).trim();
+    const createdIso = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString();
+    const normalizedMethod = refundMethod === 'udhar' ? 'credit_note' : (refundMethod || 'cash');
+    const shopId = req.user.shopId;
+
+    let savedRecord = null;
+    const stockUpdates = [];
+
+    await pool.withTransaction(async (db, session) => {
+      const existingReturnWithId = await db.collection('sales_returns').findOne(
+        { id: returnId, shopId },
+        { session }
+      );
+      if (existingReturnWithId) {
+        throw new SalesReturnHttpError(409, 'This sales return has already been recorded.');
+      }
+
+      const [txDoc, priorReturns] = await Promise.all([
+        db.collection('transactions').findOne({ id: billId, shopId }, { session }),
+        db.collection('sales_returns').find({ originalBillId: billId, shopId }, { session }).toArray()
+      ]);
+
+      const normalizedItems = [];
+
+      if (txDoc) {
+        const txItems = Array.isArray(txDoc.items) ? txDoc.items : parseJsonSafe(txDoc.items, []);
+        const lineStates = buildBillLineReturnStates(txItems, priorReturns);
+
+        for (const reqItem of parsedItems) {
+          const reqQty = roundReturnQty(Number(reqItem.qty || 0));
+          const reqName = String(reqItem.productName || reqItem.name || 'Product').trim();
+          const reqPid = String(reqItem.productId || '').trim();
+          if (reqQty <= 0) {
+            throw new SalesReturnHttpError(400, `Return quantity for "${reqName}" must be greater than 0.`);
+          }
+
+          let targetLine = null;
+          if (typeof reqItem.itemIndex === 'number' && reqItem.itemIndex >= 0 && reqItem.itemIndex < lineStates.length) {
+            const candidate = lineStates[reqItem.itemIndex];
+            const idOk = !reqPid || !candidate.productId || candidate.productId === reqPid;
+            const nameOk = !reqName || candidate.name.toLowerCase() === reqName.toLowerCase();
+            if (idOk || nameOk) {
+              targetLine = candidate;
+            }
+          }
+
+          if (!targetLine) {
+            const matches = lineStates.filter(
+              (st) => (reqPid && st.productId && st.productId === reqPid) || st.name.toLowerCase() === reqName.toLowerCase()
+            );
+            targetLine = matches.find((st) => roundReturnQty(st.purchasedQty - st.returnedQty) > 0.0001) || matches[0] || null;
+          }
+
+          if (!targetLine) {
+            throw new SalesReturnHttpError(400, `"${reqName}" was not found in Bill #${billId.slice(-8).toUpperCase()}.`);
+          }
+
+          const remaining = roundReturnQty(Math.max(0, targetLine.purchasedQty - targetLine.returnedQty));
+          if (remaining <= 0.0001) {
+            throw new SalesReturnHttpError(409, `"${targetLine.name}" is already returned on this bill.`);
+          }
+          if (reqQty > remaining + 0.0001) {
+            throw new SalesReturnHttpError(
+              400,
+              `Cannot return ${reqQty} of "${targetLine.name}". Only ${remaining} remaining on this bill.`
+            );
+          }
+
+          // Reserve this quantity immediately so duplicate rows in the same request cannot bypass the cap
+          targetLine.returnedQty = roundReturnQty(targetLine.returnedQty + reqQty);
+
+          const unitPrice = Number(reqItem.sellingPrice || 0);
+          const itemRefund = reqItem.refundAmount !== undefined ? Number(reqItem.refundAmount) : roundReturnQty(unitPrice * reqQty);
+          normalizedItems.push({
+            itemIndex: targetLine.itemIndex,
+            productId: targetLine.productId || reqPid,
+            productName: targetLine.name || reqName,
+            qty: reqQty,
+            purchasedQty: targetLine.purchasedQty,
+            sellingPrice: unitPrice,
+            refundAmount: Number(itemRefund.toFixed(2)),
+            condition: reqItem.condition === 'damaged' ? 'damaged' : 'resellable'
+          });
+        }
+      } else {
+        // Fallback for offline-created bills not yet synced: still guard duplicates via priorReturns
+        const returnedMap = new Map();
+        for (const pRet of priorReturns) {
+          const pItems = Array.isArray(pRet.items) ? pRet.items : parseJsonSafe(pRet.items, []);
+          for (const it of pItems) {
+            const key = String(it.productId || it.productName || '').trim().toLowerCase();
+            if (!key) continue;
+            returnedMap.set(key, roundReturnQty((returnedMap.get(key) || 0) + Number(it.qty || 0)));
+          }
+        }
+
+        for (const reqItem of parsedItems) {
+          const reqQty = roundReturnQty(Number(reqItem.qty || 0));
+          const reqName = String(reqItem.productName || reqItem.name || 'Product').trim();
+          const reqPid = String(reqItem.productId || '').trim();
+          const key = String(reqPid || reqName).trim().toLowerCase();
+          if (reqQty <= 0) {
+            throw new SalesReturnHttpError(400, `Return quantity for "${reqName}" must be greater than 0.`);
+          }
+
+          const purchased = reqItem.purchasedQty !== undefined ? roundReturnQty(Number(reqItem.purchasedQty)) : null;
+          const alreadyRet = returnedMap.get(key) || 0;
+          if (purchased !== null) {
+            const remaining = roundReturnQty(Math.max(0, purchased - alreadyRet));
+            if (remaining <= 0.0001) {
+              throw new SalesReturnHttpError(409, `"${reqName}" is already returned on this bill.`);
+            }
+            if (reqQty > remaining + 0.0001) {
+              throw new SalesReturnHttpError(400, `Cannot return ${reqQty} of "${reqName}". Only ${remaining} remaining.`);
+            }
+          }
+          returnedMap.set(key, roundReturnQty(alreadyRet + reqQty));
+
+          const unitPrice = Number(reqItem.sellingPrice || 0);
+          const itemRefund = reqItem.refundAmount !== undefined ? Number(reqItem.refundAmount) : roundReturnQty(unitPrice * reqQty);
+          normalizedItems.push({
+            ...(typeof reqItem.itemIndex === 'number' ? { itemIndex: reqItem.itemIndex } : {}),
+            productId: reqPid,
+            productName: reqName,
+            qty: reqQty,
+            ...(purchased !== null ? { purchasedQty: purchased } : {}),
+            sellingPrice: unitPrice,
+            refundAmount: Number(itemRefund.toFixed(2)),
+            condition: reqItem.condition === 'damaged' ? 'damaged' : 'resellable'
+          });
+        }
+      }
+
+      const computedTotalRefund = normalizedItems.reduce((sum, it) => sum + Number(it.refundAmount || 0), 0);
+      const finalTotalRefund = Number((totalRefund !== undefined ? Number(totalRefund) : computedTotalRefund).toFixed(2));
+      const resolvedCustomerId = customerId || txDoc?.customerId || null;
+
+      savedRecord = {
+        id: returnId,
+        shopId,
+        originalBillId: billId,
+        customerId: resolvedCustomerId,
+        customerName: customerName || txDoc?.customerName || 'Walk-in Customer',
+        customerPhone: customerPhone || txDoc?.customerPhone || '',
+        items: normalizedItems,
+        totalRefund: finalTotalRefund,
+        refundMethod: normalizedMethod,
+        reason: String(reason || 'Customer Return'),
+        createdAt: createdIso
+      };
+
+      await db.collection('sales_returns').insertOne(savedRecord, { session });
+
+      for (const item of normalizedItems) {
+        if (item.condition === 'resellable') {
+          let targetProd = null;
+          if (item.productId) {
+            targetProd = await db.collection('products').findOne(
+              { id: item.productId, shopId, isDeleted: { $ne: 1 } },
+              { session }
+            );
+          }
+          if (!targetProd && item.productName) {
+            targetProd = await db.collection('products').findOne(
+              {
+                shopId,
+                isDeleted: { $ne: 1 },
+                name: { $regex: new RegExp(`^${pool.escapeRegex(item.productName)}$`, 'i') }
+              },
+              { session }
+            );
+          }
+
+          if (targetProd) {
+            const prevStock = roundReturnQty(Number(targetProd.stock || 0));
+            const newStock = roundReturnQty(prevStock + item.qty);
+            await db.collection('products').updateOne(
+              { id: targetProd.id, shopId },
+              { $set: { stock: newStock } },
+              { session }
+            );
+            stockUpdates.push({
+              productId: targetProd.id,
+              productName: targetProd.name,
+              qty: item.qty,
+              previousStock: prevStock,
+              newStock
+            });
+          }
+        }
+      }
+
+      if (normalizedMethod === 'credit_note' && resolvedCustomerId && finalTotalRefund > 0) {
+        const custDoc = await db.collection('customers').findOne(
+          { id: resolvedCustomerId, shopId, isDeleted: { $ne: 1 } },
+          { session }
+        );
+        if (custDoc) {
+          await db.collection('customers').updateOne(
+            { id: resolvedCustomerId, shopId },
+            { $inc: { balance: -finalTotalRefund } },
+            { session }
+          );
+          await db.collection('udhar_transactions').insertOne(
+            {
+              id: crypto.randomUUID(),
+              shopId,
+              customerId: resolvedCustomerId,
+              amount: finalTotalRefund,
+              type: 'payment',
+              notes: `Sales Return Credit #${returnId} (Bill #${billId.slice(-8).toUpperCase()})`,
+              createdAt: createdIso
+            },
+            { session }
+          );
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      returnRecord: savedRecord,
+      stockUpdates,
+      stockRestocked: true
+    });
+  } catch (err) {
+    if (err instanceof SalesReturnHttpError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Sales Return Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to process sales return.' });
+  }
+});
+
 // --- RECYCLE BIN ---
 router.get('/recycle-bin', async (req, res) => {
   try {

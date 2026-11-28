@@ -110,7 +110,10 @@ async function ensureIndexes(db) {
     db.collection('staff_attendance').createIndex({ id: 1 }, { unique: true }),
     db.collection('staff_attendance').createIndex({ shopId: 1, staffId: 1, date: 1 }),
     db.collection('staff_salary_payments').createIndex({ id: 1 }, { unique: true }),
-    db.collection('staff_salary_payments').createIndex({ shopId: 1, paymentDate: -1 })
+    db.collection('staff_salary_payments').createIndex({ shopId: 1, paymentDate: -1 }),
+    db.collection('sales_returns').createIndex({ id: 1 }, { unique: true }),
+    db.collection('sales_returns').createIndex({ shopId: 1, createdAt: -1 }),
+    db.collection('sales_returns').createIndex({ shopId: 1, originalBillId: 1 })
   ]);
 }
 

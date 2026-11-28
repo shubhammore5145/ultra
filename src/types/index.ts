@@ -210,9 +210,11 @@ export interface SalesReturn {
   customerName?: string;
   customerPhone?: string;
   items: {
+    itemIndex?: number;
     productId: string;
     productName: string;
     qty: number;
+    purchasedQty?: number;
     sellingPrice: number;
     refundAmount: number;
     condition: 'resellable' | 'damaged';

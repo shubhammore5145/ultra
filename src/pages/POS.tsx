@@ -15,8 +15,9 @@ import Tesseract from 'tesseract.js';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
-import type { Product, CartItem, Customer } from '../types';
+import type { Product, CartItem, Customer, SalesReturn } from '../types';
 import { compressImage } from '../lib/imageCompressor';
+import { getBillItemsReturnStatus, roundQty } from '../lib/salesReturnUtils';
 import { POSShiftCloseModal } from '../components/pos/POSShiftCloseModal';
 import { POSSalesReturnModal } from '../components/pos/POSSalesReturnModal';
 import { saveReceiptOffline, cacheProductsOffline, getCachedProductsOffline, pruneOldReceipts } from '../lib/storage';
@@ -209,8 +210,16 @@ export default function POS() {
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnSearchTerm, setReturnSearchTerm] = useState('');
   const [returnAllTransactions, setReturnAllTransactions] = useState<any[]>([]);
+  const [returnsHistory, setReturnsHistory] = useState<SalesReturn[]>([]);
   const [selectedReturnTx, setSelectedReturnTx] = useState<any | null>(null);
-  const [selectedReturnItem, setSelectedReturnItem] = useState<{ id: string; name: string; maxQty: number; price: number } | null>(null);
+  const [selectedReturnItem, setSelectedReturnItem] = useState<{
+    itemIndex: number;
+    id: string;
+    name: string;
+    purchasedQty: number;
+    maxQty: number;
+    price: number;
+  } | null>(null);
   const [returnQty, setReturnQty] = useState('1');
   const [returnReason, setReturnReason] = useState('Customer Exchange / Surplus');
   const [returnCondition, setReturnCondition] = useState<'resellable' | 'damaged'>('resellable');
@@ -900,8 +909,19 @@ export default function POS() {
     setShowReturnModal(true);
     setReturnLoading(true);
     try {
-      const txs = await api.transactions.list();
-      setReturnAllTransactions(Array.isArray(txs) ? txs : []);
+      const [txs, retList] = await Promise.all([
+        api.transactions.list(),
+        api.salesReturns.list()
+      ]);
+      const custMap = new Map(customers.map((c) => [c.id, c]));
+      const enriched = (Array.isArray(txs) ? txs : []).map((tx: any) => {
+        const c = tx.customerId ? custMap.get(tx.customerId) : undefined;
+        return c
+          ? { ...tx, customerName: tx.customerName || c.name, customerPhone: tx.customerPhone || c.phone }
+          : tx;
+      });
+      setReturnAllTransactions(enriched);
+      setReturnsHistory(Array.isArray(retList) ? retList : []);
     } catch (e) {
       console.error('Failed to load transactions for return', e);
     } finally {
@@ -912,30 +932,74 @@ export default function POS() {
   // Submit Sales Return
   const handleProcessSalesReturn = async () => {
     if (!selectedReturnTx || !selectedReturnItem) return;
-    const qtyToReturn = parseFloat(returnQty) || 0;
-    if (qtyToReturn <= 0 || qtyToReturn > selectedReturnItem.maxQty) {
-      alert(`Please enter a valid quantity between 1 and ${selectedReturnItem.maxQty}.`);
+    const qtyToReturn = roundQty(parseFloat(returnQty) || 0);
+    if (qtyToReturn <= 0 || qtyToReturn > selectedReturnItem.maxQty + 0.0001) {
+      alert(`Please enter a valid quantity between 0.01 and ${selectedReturnItem.maxQty}.`);
+      return;
+    }
+
+    if (returnRefundMethod === 'udhar' && !selectedReturnTx.customerId) {
+      alert('Customer Credit (Udhar) is only available for bills linked to a registered customer. Please choose Cash Refund.');
+      return;
+    }
+
+    // Re-check latest line status before calling API
+    const lineStatus = getBillItemsReturnStatus(selectedReturnTx, returnsHistory)[selectedReturnItem.itemIndex];
+    if (lineStatus && (lineStatus.isFullyReturned || qtyToReturn > lineStatus.remainingQty + 0.0001)) {
+      alert(
+        lineStatus.isFullyReturned
+          ? `"${selectedReturnItem.name}" is already returned on this bill.`
+          : `Only ${lineStatus.remainingQty} remaining for "${selectedReturnItem.name}" on this bill.`
+      );
       return;
     }
 
     setReturnLoading(true);
     try {
-      const refundTotal = qtyToReturn * selectedReturnItem.price;
+      const refundTotal = Number((qtyToReturn * selectedReturnItem.price).toFixed(2));
       const targetProd = products.find(p => p.id === selectedReturnItem.id || p.name === selectedReturnItem.name);
+
+      const createRes = await api.salesReturns.create({
+        id: `RET-${Date.now().toString().slice(-8)}`,
+        originalBillId: selectedReturnTx.id || 'TX-RET',
+        customerId: selectedReturnTx.customerId,
+        customerName: selectedReturnTx.customerName || 'Walk-in Customer',
+        customerPhone: selectedReturnTx.customerPhone || '',
+        items: [{
+          itemIndex: selectedReturnItem.itemIndex,
+          productId: targetProd?.id || selectedReturnItem.id,
+          productName: selectedReturnItem.name,
+          qty: qtyToReturn,
+          purchasedQty: selectedReturnItem.purchasedQty,
+          sellingPrice: selectedReturnItem.price || 0,
+          refundAmount: refundTotal,
+          condition: returnCondition
+        }],
+        totalRefund: refundTotal,
+        refundMethod: returnRefundMethod === 'udhar' ? 'credit_note' : 'cash',
+        reason: returnReason,
+        createdAt: new Date().toISOString()
+      } as any);
+
+      const serverStockRestocked = Boolean((createRes as any)?.stockRestocked);
+      const su = Array.isArray((createRes as any)?.stockUpdates) ? (createRes as any).stockUpdates[0] : null;
 
       if (targetProd) {
         if (returnCondition === 'resellable') {
-          const newStock = (targetProd.stock || 0) + qtyToReturn;
-          await api.products.update(targetProd.id, { ...targetProd, stock: newStock });
+          const prevStock = su ? su.previousStock : Number(targetProd.stock || 0);
+          const newStock = su ? su.newStock : roundQty(prevStock + qtyToReturn);
+          if (!serverStockRestocked) {
+            await api.products.update(targetProd.id, { ...targetProd, stock: newStock });
+          }
           await api.stockMovements.log({
             id: crypto.randomUUID(),
             productId: targetProd.id,
             productName: targetProd.name,
             qty: qtyToReturn,
-            previousStock: targetProd.stock || 0,
+            previousStock: prevStock,
             newStock,
             type: 'return_inward',
-            reason: `Return from Invoice #${selectedReturnTx.id?.slice(0, 8)}`,
+            reason: `Return from Invoice #${selectedReturnTx.id?.slice(-8).toUpperCase()}`,
             createdAt: new Date().toISOString()
           });
         } else {
@@ -953,27 +1017,12 @@ export default function POS() {
         }
       }
 
-      await api.salesReturns.create({
-        id: crypto.randomUUID(),
-        originalBillId: selectedReturnTx.id || 'TX-RET',
-        customerName: selectedReturnTx.customerName || 'Walk-in Customer',
-        customerPhone: selectedReturnTx.customerPhone || '',
-        items: [{
-          productId: targetProd?.id || selectedReturnItem.id,
-          productName: selectedReturnItem.name,
-          qty: qtyToReturn,
-          sellingPrice: selectedReturnItem.price || 0,
-          refundAmount: refundTotal,
-          condition: returnCondition
-        }],
-        totalRefund: refundTotal,
-        refundMethod: returnRefundMethod === 'udhar' ? 'credit_note' : 'cash',
-        reason: returnReason,
-        createdAt: new Date().toISOString()
-      } as any);
-
-      const updatedProds = await api.products.list();
-      setProducts(updatedProds);
+      const [updatedProds, updatedReturns] = await Promise.all([
+        api.products.list(),
+        api.salesReturns.list()
+      ]);
+      setProducts(Array.isArray(updatedProds) ? updatedProds : []);
+      setReturnsHistory(Array.isArray(updatedReturns) ? updatedReturns : []);
 
       alert(`✅ Sales Return processed successfully! Refund amount: ₹${refundTotal.toFixed(2)} (${returnRefundMethod === 'cash' ? 'Cash Refund' : 'Credited to Customer Udhar'})`);
       setShowReturnModal(false);
@@ -981,7 +1030,11 @@ export default function POS() {
       setSelectedReturnItem(null);
       setReturnQty('1');
     } catch (err: any) {
-      alert('Return failed: ' + (err.message || 'Error'));
+      try {
+        const latestReturns = await api.salesReturns.list();
+        setReturnsHistory(Array.isArray(latestReturns) ? latestReturns : []);
+      } catch {}
+      alert('Return blocked: ' + (err.message || 'Error'));
     } finally {
       setReturnLoading(false);
     }
@@ -3484,6 +3537,7 @@ export default function POS() {
         setReturnSearchTerm={setReturnSearchTerm}
         returnLoading={returnLoading}
         returnAllTransactions={returnAllTransactions}
+        returnsHistory={returnsHistory}
         selectedReturnItem={selectedReturnItem}
         setSelectedReturnItem={setSelectedReturnItem}
         returnQty={returnQty}

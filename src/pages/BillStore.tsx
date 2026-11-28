@@ -7,17 +7,19 @@ import {
   Package
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { getBillItemsReturnStatus, getBillReturnSummary } from '../lib/salesReturnUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import JsBarcode from 'jsbarcode';
-import type { Transaction, Customer, Product } from '../types';
+import type { Transaction, Customer, Product, SalesReturn } from '../types';
 
 export default function BillStore() {
   const { shopData } = useAuth();
   const [sales, setSales] = useState<Transaction[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -34,14 +36,16 @@ export default function BillStore() {
   const fetchBills = async () => {
     setLoading(true);
     try {
-      const [txList, custList, prodList] = await Promise.all([
+      const [txList, custList, prodList, retList] = await Promise.all([
         api.transactions.list(),
         api.customers.list(),
-        api.products.list()
+        api.products.list(),
+        api.salesReturns.list().catch(() => [])
       ]);
       setSales(Array.isArray(txList) ? txList : []);
       setCustomers(Array.isArray(custList) ? custList : []);
       setProducts(Array.isArray(prodList) ? prodList : []);
+      setSalesReturns(Array.isArray(retList) ? retList : []);
     } catch (err: any) {
       console.error('Failed to load bills:', err);
     } finally {
@@ -773,6 +777,7 @@ export default function BillStore() {
                     const itemCount = bill.items?.length || 0;
                     const previewNames = (bill.items || []).slice(0, 2).map(it => it.name).join(', ');
                     const pInfo = getBillProfit(bill);
+                    const retSummary = getBillReturnSummary(bill, salesReturns);
 
                     return (
                       <tr key={bill.id} className="hover:bg-muted/30 transition-colors group">
@@ -781,6 +786,16 @@ export default function BillStore() {
                           <span className="bg-muted px-2 py-1 rounded-md text-xs">
                             #{billShortId}
                           </span>
+                          {retSummary.isFullyReturned && (
+                            <span className="mt-1 block w-fit px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[9px] font-black font-sans uppercase">
+                              Already Returned
+                            </span>
+                          )}
+                          {retSummary.isPartiallyReturned && (
+                            <span className="mt-1 block w-fit px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[9px] font-black font-sans uppercase">
+                              Part Returned
+                            </span>
+                          )}
                         </td>
 
                         {/* Date & Time */}
@@ -907,15 +922,26 @@ export default function BillStore() {
                 const itemCount = bill.items?.length || 0;
                 const previewNames = (bill.items || []).slice(0, 3).map(it => it.name).join(', ');
                 const pInfo = getBillProfit(bill);
+                const retSummary = getBillReturnSummary(bill, salesReturns);
 
                 return (
                   <div key={bill.id} className="p-3.5 space-y-2.5">
                     {/* Top Row: Invoice No, Mode & Date */}
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-black text-xs bg-muted px-2 py-0.5 rounded-md text-foreground">
                           #{billShortId}
                         </span>
+                        {retSummary.isFullyReturned && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[9px] font-black uppercase">
+                            Already Returned
+                          </span>
+                        )}
+                        {retSummary.isPartiallyReturned && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[9px] font-black uppercase">
+                            Part Returned
+                          </span>
+                        )}
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                           bill.paymentMethod === 'cash' 
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' 
@@ -1084,34 +1110,48 @@ export default function BillStore() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
-                      {selectedBill.items?.map((it, idx) => {
-                        const qty = Number(it.qty || 1);
-                        const sp = Number(it.sellingPrice || 0);
-                        let cp = Number((it as any).purchasePrice);
-                        if (!cp || cp <= 0) {
-                          const prod = (it.id && productMap.get(it.id)) || (it.name && productNameMap.get(it.name.trim().toLowerCase()));
-                          if (prod && Number(prod.purchasePrice) > 0) cp = Number(prod.purchasePrice);
-                        }
-                        const itemProfit = (sp - (cp || 0)) * qty;
+                      {(() => {
+                        const itemReturnStatuses = getBillItemsReturnStatus(selectedBill, salesReturns);
+                        return selectedBill.items?.map((it, idx) => {
+                          const qty = Number(it.qty || 1);
+                          const sp = Number(it.sellingPrice || 0);
+                          let cp = Number((it as any).purchasePrice);
+                          if (!cp || cp <= 0) {
+                            const prod = (it.id && productMap.get(it.id)) || (it.name && productNameMap.get(it.name.trim().toLowerCase()));
+                            if (prod && Number(prod.purchasePrice) > 0) cp = Number(prod.purchasePrice);
+                          }
+                          const itemProfit = (sp - (cp || 0)) * qty;
+                          const rStatus = itemReturnStatuses[idx];
 
-                        return (
-                          <tr key={idx} className="hover:bg-muted/20">
-                            <td className="px-3 py-2 font-bold text-foreground">
-                              {it.name}
-                            </td>
-                            <td className="px-2 py-2 text-center font-bold">{qty}</td>
-                            <td className="px-2 py-2 text-right text-muted-foreground">
-                              ₹{(cp || 0).toFixed(0)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-medium">
-                              ₹{sp.toFixed(2)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-black text-emerald-600 dark:text-emerald-400">
-                              +₹{itemProfit.toFixed(1)}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                          return (
+                            <tr key={idx} className="hover:bg-muted/20">
+                              <td className="px-3 py-2 font-bold text-foreground">
+                                <span>{it.name}</span>
+                                {rStatus?.isFullyReturned && (
+                                  <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[9px] font-black">
+                                    Already Returned
+                                  </span>
+                                )}
+                                {rStatus?.isPartiallyReturned && (
+                                  <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[9px] font-black">
+                                    {rStatus.returnedQty}/{rStatus.purchasedQty} Returned
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-center font-bold">{qty}</td>
+                              <td className="px-2 py-2 text-right text-muted-foreground">
+                                ₹{(cp || 0).toFixed(0)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium">
+                                ₹{sp.toFixed(2)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-black text-emerald-600 dark:text-emerald-400">
+                                +₹{itemProfit.toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>

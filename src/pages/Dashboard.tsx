@@ -1,20 +1,32 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   IndianRupee, ShoppingCart, TrendingUp, Users, Wallet,
   AlertTriangle, Download, Sparkles, RefreshCw, Zap,
   Smartphone, CreditCard, Banknote, MessageCircle, CheckCircle2,
-  ChevronRight, ArrowUpRight, ShieldCheck, Printer, X, FileText
+  ChevronRight, ArrowUpRight, ShieldCheck, Printer, X,
+  BarChart3, Package, Clock, RotateCcw, Award
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid
+} from 'recharts';
 import { Button } from '../components/ui/button';
 import { api } from '../lib/api';
+import { printReceiptElementThermal, getConfiguredPaperSize } from '../lib/printThermalHtml';
+import { getBillReturnSummary } from '../lib/salesReturnUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlan } from '../contexts/PlanContext';
-import type { Product, Transaction, Expense, Customer } from '../types';
+import type { Product, Transaction, Expense, Customer, SalesReturn } from '../types';
 
 export default function Dashboard() {
   const { shopData } = useAuth();
-  const { canAccess, openUpgradeModal } = usePlan();
+  const { canAccess } = usePlan();
   const navigate = useNavigate();
   
   // Financial metrics
@@ -35,6 +47,9 @@ export default function Dashboard() {
   const [newCustomersToday, setNewCustomersToday] = useState(0);
   
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const [allReturns, setAllReturns] = useState<SalesReturn[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sendingSummary, setSendingSummary] = useState(false);
   const [summaryStatus, setSummaryStatus] = useState<string | null>(null);
@@ -46,7 +61,6 @@ export default function Dashboard() {
   });
   const [countedCash, setCountedCash] = useState('');
   const [settlementNotes, setSettlementNotes] = useState('');
-  const [isPrintingZReport, setIsPrintingZReport] = useState(false);
 
   const parseDate = useCallback((dateVal: any): Date | null => {
     if (!dateVal) return null;
@@ -80,19 +94,24 @@ export default function Dashboard() {
         return d >= twentyFourHoursAgo && d <= now;
       };
       
-      const [rawProducts, rawTransactions, rawExpenses, rawCustomers] = await Promise.all([
+      const [rawProducts, rawTransactions, rawExpenses, rawCustomers, rawReturns] = await Promise.all([
         api.products.list(),
         api.transactions.list(),
         api.expenses.list(),
-        api.customers.list()
+        api.customers.list(),
+        api.salesReturns.list().catch(() => [])
       ]);
 
       const products: Product[] = Array.isArray(rawProducts) ? rawProducts : [];
       const transactions: Transaction[] = Array.isArray(rawTransactions) ? rawTransactions : [];
       const expenses: Expense[] = Array.isArray(rawExpenses) ? rawExpenses : [];
       const customers: Customer[] = Array.isArray(rawCustomers) ? rawCustomers : [];
+      const returnsList: SalesReturn[] = Array.isArray(rawReturns) ? rawReturns : [];
 
       setAllProducts(products);
+      setAllTransactions(transactions);
+      setAllCustomers(customers);
+      setAllReturns(returnsList);
 
       // Financial breakdown calculation
       let salesTotal = 0;
@@ -117,6 +136,10 @@ export default function Dashboard() {
             upiTotal += amount;
           } else if (method === 'udhar') {
             udharGivenToday += amount;
+          } else if (method === 'split' && t.splitAmounts) {
+            cashTotal += Number(t.splitAmounts.cash || 0);
+            upiTotal += Number(t.splitAmounts.upi || 0);
+            udharGivenToday += Number(t.splitAmounts.udhar || 0);
           } else if (method === 'split') {
             cashTotal += amount / 2;
             upiTotal += amount / 2;
@@ -265,35 +288,213 @@ export default function Dashboard() {
   const aiInsights = getAIInsights();
   const netProfit = todaysSales - todaysExpenses;
   const cashInDrawer = Math.max(0, todaysCash - todaysExpenses);
+  const avgBillValue = todaysOrders > 0 ? todaysSales / todaysOrders : 0;
+
+  // Percentage splits of today's collection
+  const paymentTotalToday = todaysCash + todaysUPI + todaysUdhar;
+  const cashSharePct = paymentTotalToday > 0 ? Math.round((todaysCash / paymentTotalToday) * 100) : 0;
+  const upiSharePct = paymentTotalToday > 0 ? Math.round((todaysUPI / paymentTotalToday) * 100) : 0;
+  const udharSharePct = paymentTotalToday > 0 ? Math.max(0, 100 - cashSharePct - upiSharePct) : 0;
+
+  // Derived visual analytics: 7-day trend, top movers, recent bills, inventory health, and today's returns
+  const storeVisuals = useMemo(() => {
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const toLocalDayKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const prodMap = new Map<string, Product>();
+    const prodNameMap = new Map<string, Product>();
+    let totalCostVal = 0;
+    let totalRetailVal = 0;
+    let outOfStockCount = 0;
+    let lowStockCount = 0;
+    let expiringSoonCount = 0;
+    const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    for (const p of allProducts) {
+      if (p.id) prodMap.set(p.id, p);
+      if (p.name) prodNameMap.set(p.name.trim().toLowerCase(), p);
+      const st = Number(p.stock || 0);
+      if (st > 0) {
+        totalCostVal += st * Number(p.purchasePrice || 0);
+        totalRetailVal += st * Number(p.sellingPrice || 0);
+      }
+      if (st <= 0) outOfStockCount++;
+      else if (st <= (p.minStock || 5)) lowStockCount++;
+
+      if (p.expiryDate) {
+        const exp = new Date(p.expiryDate);
+        if (!isNaN(exp.getTime()) && exp <= thirtyDaysLater && exp >= new Date(now.getTime() - 24 * 60 * 60 * 1000)) {
+          expiringSoonCount++;
+        }
+      }
+    }
+
+    // 7-day buckets
+    const dayBuckets = new Map<string, { day: string; cash: number; upi: number; udhar: number; total: number; bills: number }>();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const key = toLocalDayKey(d);
+      dayBuckets.set(key, {
+        day: i === 0 ? 'Today' : d.toLocaleDateString('en-IN', { weekday: 'short' }),
+        cash: 0,
+        upi: 0,
+        udhar: 0,
+        total: 0,
+        bills: 0
+      });
+    }
+
+    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const todaySoldMap = new Map<string, { name: string; qty: number; revenue: number }>();
+    const weekSoldMap = new Map<string, { name: string; qty: number; revenue: number }>();
+    let todayItemProfit = 0;
+
+    for (const tx of allTransactions) {
+      const dt = parseDate(tx.createdAt);
+      if (!dt) continue;
+      const key = toLocalDayKey(dt);
+      const amt = Number(tx.totalAmount || 0);
+      const method = (tx.paymentMethod || 'cash').toLowerCase();
+      const bucket = dayBuckets.get(key);
+      if (bucket) {
+        bucket.total += amt;
+        bucket.bills += 1;
+        if (method === 'cash') bucket.cash += amt;
+        else if (method === 'upi') bucket.upi += amt;
+        else if (method === 'udhar') bucket.udhar += amt;
+        else if (method === 'split' && tx.splitAmounts) {
+          bucket.cash += Number(tx.splitAmounts.cash || 0);
+          bucket.upi += Number(tx.splitAmounts.upi || 0);
+          bucket.udhar += Number(tx.splitAmounts.udhar || 0);
+        } else if (method === 'split') {
+          bucket.cash += amt / 2;
+          bucket.upi += amt / 2;
+        } else {
+          bucket.cash += amt;
+        }
+      }
+
+      const isTodayTx = key === todayKey;
+      const isWeekTx = dt >= sevenDaysAgo;
+
+      if (isTodayTx || isWeekTx) {
+        const items = Array.isArray(tx.items) ? tx.items : [];
+        for (const it of items as any[]) {
+          const itemName = String(it.name || it.productName || 'Item').trim();
+          const qty = Number(it.qty || 1);
+          const sp = Number(it.sellingPrice ?? it.price ?? 0);
+          const rev = sp * qty;
+          const mapKey = String(it.productId || it.id || itemName.toLowerCase());
+
+          if (isTodayTx) {
+            const matchedProd = (it.id && prodMap.get(it.id)) || prodNameMap.get(itemName.toLowerCase());
+            const cp = Number(it.purchasePrice || matchedProd?.purchasePrice || 0);
+            todayItemProfit += (sp - cp) * qty;
+
+            const prev = todaySoldMap.get(mapKey) || { name: itemName, qty: 0, revenue: 0 };
+            prev.qty += qty;
+            prev.revenue += rev;
+            todaySoldMap.set(mapKey, prev);
+          }
+          if (isWeekTx) {
+            const prevW = weekSoldMap.get(mapKey) || { name: itemName, qty: 0, revenue: 0 };
+            prevW.qty += qty;
+            prevW.revenue += rev;
+            weekSoldMap.set(mapKey, prevW);
+          }
+        }
+      }
+    }
+
+    const usingTodayProducts = todaySoldMap.size > 0;
+    const rawTop = Array.from((usingTodayProducts ? todaySoldMap : weekSoldMap).values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+    const maxTopRevenue = rawTop[0]?.revenue || 1;
+
+    const custMap = new Map<string, Customer>();
+    allCustomers.forEach((c) => {
+      if (c.id) custMap.set(c.id, c);
+    });
+
+    const recentBills = [...allTransactions]
+      .sort((a, b) => (parseDate(b.createdAt)?.getTime() || 0) - (parseDate(a.createdAt)?.getTime() || 0))
+      .slice(0, 5)
+      .map((tx) => {
+        const cust = tx.customerId ? custMap.get(tx.customerId) : undefined;
+        return {
+          ...tx,
+          resolvedCustomer: tx.customerName || cust?.name || 'Walk-in Customer',
+          returnSummary: getBillReturnSummary(tx, allReturns)
+        };
+      });
+
+    let todayReturnCount = 0;
+    let todayReturnAmount = 0;
+    for (const r of allReturns) {
+      const rd = parseDate(r.createdAt);
+      if (rd && toLocalDayKey(rd) === todayKey) {
+        todayReturnCount++;
+        todayReturnAmount += Number(r.totalRefund || 0);
+      }
+    }
+
+    return {
+      chartData: Array.from(dayBuckets.values()).map((d) => ({
+        ...d,
+        cash: Math.round(d.cash),
+        upi: Math.round(d.upi),
+        udhar: Math.round(d.udhar),
+        total: Math.round(d.total)
+      })),
+      topProducts: rawTop,
+      topProductsWindow: usingTodayProducts ? 'Today' : 'Last 7 Days',
+      maxTopRevenue,
+      recentBills,
+      todayItemProfit,
+      todayReturnCount,
+      todayReturnAmount,
+      inventoryHealth: {
+        totalSkus: allProducts.length,
+        totalCostVal,
+        totalRetailVal,
+        outOfStockCount,
+        lowStockCount,
+        expiringSoonCount
+      }
+    };
+  }, [allProducts, allTransactions, allCustomers, allReturns, parseDate]);
 
   return (
     <div className="space-y-6 pb-10 animate-fadeInUp">
       {/* Hero Action Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 text-white p-6 rounded-3xl shadow-xl">
-        <div>
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 text-white p-5 sm:p-6 rounded-3xl shadow-xl">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500 text-white uppercase tracking-wider">
               Live POS Store
             </span>
-            <span className="text-white/60 text-xs">
+            <span className="text-white/75 text-xs font-medium">
               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black mt-1">
+          <h1 className="text-2xl sm:text-3xl font-black mt-1 truncate">
             {shopData?.shopName || shopData?.name || 'MartGPT Store'}
           </h1>
           <p className="text-xs sm:text-sm text-indigo-200 mt-0.5">
-            Monitor real-time cash, UPI, udhar collections, and store performance.
+            Monitor real-time cash, UPI, udhar collections, top products, and 7-day sales velocity.
           </p>
         </div>
 
-        {/* Primary Action Buttons */}
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Primary Action Buttons (clean single-line alignment on desktop) */}
+        <div className="flex items-center gap-2.5 flex-wrap lg:flex-nowrap shrink-0 w-full xl:w-auto">
           <Button
             onClick={() => navigate('/pos')}
-            className="h-12 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold shadow-lg shadow-emerald-500/30 flex items-center gap-2 text-base transition-transform active:scale-95 cursor-pointer"
+            className="h-11 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold shadow-lg shadow-emerald-500/30 flex items-center gap-2 text-sm sm:text-base transition-transform active:scale-95 cursor-pointer whitespace-nowrap"
           >
-            <Zap className="h-5 w-5 fill-white" /> Start POS Billing
+            <Zap className="h-4 w-4 sm:h-5 sm:w-5 fill-white" /> Start POS Billing
             <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 text-[10px] bg-emerald-700 rounded font-mono">F2</kbd>
           </Button>
 
@@ -301,14 +502,14 @@ export default function Dashboard() {
             variant="outline"
             onClick={handleSendNightlySummary}
             disabled={sendingSummary}
-            className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white font-semibold flex items-center gap-2 text-xs"
+            className="h-11 px-3.5 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white font-semibold flex items-center gap-2 text-xs whitespace-nowrap cursor-pointer"
             title="Send daily business summary to owner's WhatsApp"
           >
             <MessageCircle className="h-4 w-4 text-emerald-400" />
-            {sendingSummary ? 'Sending...' : 'WhatsApp Summary'}
+            <span>{sendingSummary ? 'Sending...' : 'WhatsApp Summary'}</span>
             {!canAccess('nightly_summary') && (
-              <span className="text-[10px] bg-purple-500/90 text-white font-black px-1.5 py-0.5 rounded-full ml-0.5 shadow-sm">
-                ⚡ PRO
+              <span className="text-[10px] bg-purple-500/90 text-white font-black px-1.5 py-0.5 rounded-full shadow-sm">
+                PRO
               </span>
             )}
           </Button>
@@ -316,7 +517,7 @@ export default function Dashboard() {
           <Button
             variant="outline"
             onClick={() => setShowSettlementModal(true)}
-            className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white font-semibold flex items-center gap-2 text-xs cursor-pointer"
+            className="h-11 px-3.5 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white font-semibold flex items-center gap-2 text-xs whitespace-nowrap cursor-pointer"
             title="End-of-Day Register Settlement & Cash Count"
           >
             <ShieldCheck className="h-4 w-4 text-amber-400" />
@@ -328,7 +529,7 @@ export default function Dashboard() {
             size="icon"
             onClick={() => fetchDashboardData(true)}
             disabled={isRefreshing}
-            className="h-12 w-12 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white"
+            className="h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white shrink-0 cursor-pointer"
             title="Refresh Store Data"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -338,7 +539,7 @@ export default function Dashboard() {
             variant="outline"
             size="icon"
             onClick={handleExportCSV}
-            className="h-12 w-12 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white"
+            className="h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 border-white/20 text-white shrink-0 cursor-pointer"
             title="Export Daily Report (CSV)"
           >
             <Download className="h-4 w-4" />
@@ -353,10 +554,17 @@ export default function Dashboard() {
       )}
 
       {/* ─── PAYMENT BREAKDOWN ROW (Today's Collections: Cash vs UPI vs Udhar) ─── */}
-      <div className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <CreditCard className="h-3.5 w-3.5 text-primary" /> Today's Collection & Payment Breakdown
-        </h2>
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <CreditCard className="h-3.5 w-3.5 text-primary" /> Today's Collection &amp; Payment Breakdown
+          </h2>
+          {paymentTotalToday > 0 && (
+            <span className="text-[11px] font-semibold text-muted-foreground">
+              Cash {cashSharePct}% • UPI {upiSharePct}% • Udhar {udharSharePct}%
+            </span>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Today's Cash Collected */}
@@ -370,7 +578,15 @@ export default function Dashboard() {
             <div className="stat-value text-emerald-600 dark:text-emerald-400">
               ₹{todaysCash.toFixed(2)}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Cash received in counter</p>
+            <div className="flex items-center justify-between mt-1.5">
+              <p className="text-[11px] text-muted-foreground">Cash received in counter</p>
+              <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                {cashSharePct}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
+              <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${cashSharePct}%` }} />
+            </div>
           </div>
 
           {/* Today's UPI Received */}
@@ -384,7 +600,15 @@ export default function Dashboard() {
             <div className="stat-value text-blue-600 dark:text-blue-400">
               ₹{todaysUPI.toFixed(2)}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Direct to bank account</p>
+            <div className="flex items-center justify-between mt-1.5">
+              <p className="text-[11px] text-muted-foreground">Direct to bank account</p>
+              <span className="text-[10px] font-black text-blue-700 dark:text-blue-300 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                {upiSharePct}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
+              <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${upiSharePct}%` }} />
+            </div>
           </div>
 
           {/* Today's Udhar Given */}
@@ -398,7 +622,15 @@ export default function Dashboard() {
             <div className="stat-value text-rose-600 dark:text-rose-400">
               ₹{todaysUdhar.toFixed(2)}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Credit sales recorded today</p>
+            <div className="flex items-center justify-between mt-1.5">
+              <p className="text-[11px] text-muted-foreground">Credit sales recorded today</p>
+              <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-500/10 px-1.5 py-0.5 rounded">
+                {udharSharePct}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
+              <div className="h-full bg-rose-500 rounded-full transition-all duration-500" style={{ width: `${udharSharePct}%` }} />
+            </div>
           </div>
 
           {/* Net Cash in Drawer (Galla) */}
@@ -412,15 +644,21 @@ export default function Dashboard() {
             <div className="stat-value text-amber-600 dark:text-amber-400">
               ₹{cashInDrawer.toFixed(2)}
             </div>
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-[11px] text-muted-foreground">Cash minus expenses</p>
+            <div className="flex items-center justify-between mt-1.5 gap-1">
+              <p className="text-[11px] text-muted-foreground truncate">Cash minus expenses</p>
               <button
                 type="button"
                 onClick={() => setShowSettlementModal(true)}
-                className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30"
+                className="text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30 shrink-0"
               >
-                <ShieldCheck className="h-3 w-3" /> Register Closing
+                <ShieldCheck className="h-3 w-3" /> Settle
               </button>
+            </div>
+            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
+              <div
+                className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                style={{ width: todaysCash > 0 ? `${Math.min(100, Math.round((cashInDrawer / todaysCash) * 100))}%` : '0%' }}
+              />
             </div>
           </div>
         </div>
@@ -456,10 +694,19 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="stat-value text-red-500">₹{todaysExpenses.toFixed(2)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Costs logged today</p>
+          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+            <span>Costs logged today</span>
+            <button
+              type="button"
+              onClick={() => navigate('/expenses')}
+              className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+            >
+              Add / View →
+            </button>
+          </div>
         </div>
 
-        {/* Net Profit (Today's Sales - Expenses) */}
+        {/* Net Cash Flow & Estimated Profit */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
             <span className="stat-label">Today's Net Margin</span>
@@ -470,10 +717,17 @@ export default function Dashboard() {
           <div className={`stat-value ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
             ₹{netProfit.toFixed(2)}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Sales minus Expenses</p>
+          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+            <span>Sales minus Expenses</span>
+            {storeVisuals.todayItemProfit > 0 && (
+              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                Item Profit: ₹{storeVisuals.todayItemProfit.toFixed(0)}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Today's Order Count */}
+        {/* Today's Order Count & Avg Bill */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-3">
             <span className="stat-label">Today's Invoices</span>
@@ -483,11 +737,319 @@ export default function Dashboard() {
           </div>
           <div className="stat-value">{todaysOrders}</div>
           <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-            <span>Invoices completed</span>
+            <span>Avg Bill: <strong className="text-foreground">₹{avgBillValue.toFixed(0)}</strong></span>
             {last24hOrders > todaysOrders && (
               <span className="text-[11px] font-bold text-muted-foreground">
                 24h: {last24hOrders} bills
               </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── STORE INVENTORY & RETURNS HEALTH STRIP ─── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <button
+          type="button"
+          onClick={() => navigate('/products')}
+          className="p-3.5 rounded-2xl bg-card border border-border hover:border-indigo-500/50 transition-all text-left flex items-center gap-3 cursor-pointer shadow-xs"
+        >
+          <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 shrink-0">
+            <Package className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-muted-foreground">Total Catalog</p>
+            <p className="text-base font-black text-foreground">{storeVisuals.inventoryHealth.totalSkus} Products</p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/inventory')}
+          className="p-3.5 rounded-2xl bg-card border border-border hover:border-emerald-500/50 transition-all text-left flex items-center gap-3 cursor-pointer shadow-xs"
+        >
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 shrink-0">
+            <IndianRupee className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-muted-foreground">Stock Value (Cost)</p>
+            <p className="text-base font-black text-foreground truncate">
+              ₹{Math.round(storeVisuals.inventoryHealth.totalCostVal).toLocaleString('en-IN')}
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/inventory')}
+          className="p-3.5 rounded-2xl bg-card border border-border hover:border-amber-500/50 transition-all text-left flex items-center gap-3 cursor-pointer shadow-xs"
+        >
+          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 shrink-0">
+            <AlertTriangle className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-muted-foreground">Stock Alerts</p>
+            <p className="text-base font-black text-foreground">
+              {storeVisuals.inventoryHealth.outOfStockCount + storeVisuals.inventoryHealth.lowStockCount} Low / Out
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/sales-return')}
+          className="p-3.5 rounded-2xl bg-card border border-border hover:border-rose-500/50 transition-all text-left flex items-center gap-3 cursor-pointer shadow-xs"
+        >
+          <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 shrink-0">
+            <RotateCcw className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-muted-foreground">Today's Returns</p>
+            <p className="text-base font-black text-foreground">
+              {storeVisuals.todayReturnCount} (₹{storeVisuals.todayReturnAmount.toFixed(0)})
+            </p>
+          </div>
+        </button>
+      </div>
+
+      {/* ─── VISUAL ANALYTICS ROW: 7-DAY SALES CHART + COLLECTION MIX ─── */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* 7-Day Sales & Collection Chart */}
+        <div className="kirana-card lg:col-span-2">
+          <div className="border-b border-border px-5 py-4 flex flex-wrap justify-between items-center gap-2">
+            <div>
+              <h2 className="text-base font-bold flex items-center gap-2 text-foreground">
+                <BarChart3 className="h-4 w-4 text-primary" /> 7-Day Sales &amp; Collection Trend
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Daily Cash, UPI, and Udhar revenue comparison over the last 7 days
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] font-bold">
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block" /> Cash
+              </span>
+              <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                <span className="w-2.5 h-2.5 rounded-xs bg-blue-500 inline-block" /> UPI
+              </span>
+              <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                <span className="w-2.5 h-2.5 rounded-xs bg-rose-500 inline-block" /> Udhar
+              </span>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 h-[270px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={storeVisuals.chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis
+                  dataKey="day"
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                />
+                <Tooltip
+                  formatter={(val: any, name: any) => [`₹${Number(val || 0).toLocaleString('en-IN')}`, String(name).toUpperCase()]}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    borderColor: 'hsl(var(--border))',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    color: 'hsl(var(--foreground))'
+                  }}
+                />
+                <Bar dataKey="cash" name="Cash" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="upi" name="UPI" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="udhar" name="Udhar" stackId="a" fill="#f43f5e" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Today's Payment Mix Visual Summary */}
+        <div className="kirana-card flex flex-col justify-between">
+          <div className="border-b border-border px-5 py-4 flex justify-between items-center">
+            <h2 className="text-base font-bold flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-emerald-500" /> Payment Share Today
+            </h2>
+            <button
+              type="button"
+              onClick={() => navigate('/analytics')}
+              className="text-xs text-primary hover:underline font-semibold flex items-center cursor-pointer"
+            >
+              Analytics <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+
+          <div className="p-5 space-y-5 flex-1 flex flex-col justify-center">
+            <div>
+              <div className="flex justify-between items-baseline mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Collection Mix</span>
+                <span className="text-sm font-black text-foreground">₹{paymentTotalToday.toFixed(0)}</span>
+              </div>
+              <div className="h-4 w-full bg-muted rounded-full overflow-hidden flex">
+                {cashSharePct > 0 && (
+                  <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${cashSharePct}%` }} title={`Cash: ${cashSharePct}%`} />
+                )}
+                {upiSharePct > 0 && (
+                  <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${upiSharePct}%` }} title={`UPI: ${upiSharePct}%`} />
+                )}
+                {udharSharePct > 0 && (
+                  <div className="h-full bg-rose-500 transition-all duration-500" style={{ width: `${udharSharePct}%` }} title={`Udhar: ${udharSharePct}%`} />
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
+                  <Banknote className="h-4 w-4" /> Cash ({cashSharePct}%)
+                </div>
+                <span className="font-black text-foreground">₹{todaysCash.toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <div className="flex items-center gap-2 font-bold text-blue-700 dark:text-blue-300">
+                  <Smartphone className="h-4 w-4" /> UPI Digital ({upiSharePct}%)
+                </div>
+                <span className="font-black text-foreground">₹{todaysUPI.toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-300">
+                  <CreditCard className="h-4 w-4" /> Credit / Udhar ({udharSharePct}%)
+                </div>
+                <span className="font-black text-foreground">₹{todaysUdhar.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── TOP SELLING ITEMS + RECENT COUNTER BILLS ROW ─── */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Top Selling Fast Movers */}
+        <div className="kirana-card">
+          <div className="border-b border-border px-5 py-4 flex justify-between items-center">
+            <h2 className="text-base font-bold flex items-center gap-2">
+              <Award className="h-4 w-4 text-amber-500" /> Fast-Moving Products ({storeVisuals.topProductsWindow})
+            </h2>
+            <button
+              type="button"
+              onClick={() => navigate('/analytics')}
+              className="text-xs text-primary hover:underline font-semibold flex items-center cursor-pointer"
+            >
+              Full Report <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="p-5">
+            {storeVisuals.topProducts.length > 0 ? (
+              <div className="space-y-3">
+                {storeVisuals.topProducts.map((item, idx) => {
+                  const pct = Math.max(8, Math.round((item.revenue / storeVisuals.maxTopRevenue) * 100));
+                  return (
+                    <div key={`${item.name}-${idx}`} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="h-5 w-5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-black text-[10px] flex items-center justify-center shrink-0">
+                            #{idx + 1}
+                          </span>
+                          <span className="font-bold text-foreground truncate">{item.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] font-semibold text-muted-foreground">×{Number(item.qty.toFixed(2))}</span>
+                          <span className="font-black text-emerald-600 dark:text-emerald-400">₹{item.revenue.toFixed(0)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 rounded-full"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-10 text-center text-xs text-muted-foreground">
+                Complete your first bill in POS to see top-selling products here.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Counter Bills Live Feed */}
+        <div className="kirana-card">
+          <div className="border-b border-border px-5 py-4 flex justify-between items-center">
+            <h2 className="text-base font-bold flex items-center gap-2">
+              <Clock className="h-4 w-4 text-indigo-500" /> Recent Bills Activity
+            </h2>
+            <button
+              type="button"
+              onClick={() => navigate('/bill-store')}
+              className="text-xs text-primary hover:underline font-semibold flex items-center cursor-pointer"
+            >
+              All Bills <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="divide-y divide-border/70">
+            {storeVisuals.recentBills.length > 0 ? (
+              storeVisuals.recentBills.map((bill) => {
+                const dt = parseDate(bill.createdAt);
+                const pm = (bill.paymentMethod || 'cash').toLowerCase();
+                return (
+                  <div
+                    key={bill.id}
+                    onClick={() => navigate('/bill-store')}
+                    className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-black text-xs text-foreground">
+                          #{String(bill.id || '').slice(-8).toUpperCase()}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          pm === 'cash'
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : pm === 'upi'
+                            ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                            : 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                        }`}>
+                          {pm}
+                        </span>
+                        {bill.returnSummary.isFullyReturned && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 text-[10px] font-black">
+                            Returned
+                          </span>
+                        )}
+                        {bill.returnSummary.isPartiallyReturned && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 text-[10px] font-black">
+                            Part Return
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {bill.resolvedCustomer} • {(bill.items || []).length} items •{' '}
+                        {dt ? dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
+                      </p>
+                    </div>
+                    <span className="font-black text-sm text-foreground shrink-0">
+                      ₹{Number(bill.totalAmount || 0).toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-12 text-center text-xs text-muted-foreground">
+                No recent transactions yet. Start billing from POS!
+              </div>
             )}
           </div>
         </div>
@@ -814,11 +1376,8 @@ export default function Dashboard() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setIsPrintingZReport(true);
-                    setTimeout(() => {
-                      window.print();
-                      setTimeout(() => setIsPrintingZReport(false), 800);
-                    }, 250);
+                    const el = document.getElementById('zreport-template');
+                    printReceiptElementThermal(el, getConfiguredPaperSize(shopData), 'Daily Z-Report');
                   }}
                   className="w-full sm:w-auto text-xs font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/10 cursor-pointer"
                 >
